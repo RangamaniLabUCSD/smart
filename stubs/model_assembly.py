@@ -1114,9 +1114,10 @@ class Model(object):
 # SOLVING
 #===============================================================================
 #===============================================================================
-    def set_time(self, t, dt):
-        self.dt = dt
-        self.dT.assign(dt) 
+    def set_time(self, t, dt=None):
+        if not dt:
+            self.dt = dt
+            self.dT.assign(dt) 
         self.t = t
         self.T.assign(t)
 
@@ -1124,12 +1125,11 @@ class Model(object):
         print("New dt: %f" % self.dt)
 
     def forward_time_step(self, factor=1):
-        print(self.dt)
         self.dT.assign(float(self.dt*factor))
         self.t = float(self.t+self.dt*factor)
         self.T.assign(self.t)
 
-        print("t: %f , dt: %f" % (self.t, self.dt))
+        print("t: %f , dt: %f" % (self.t, self.dt*factor))
 
     def stopwatch(self, key, stop=False):
         if key not in self.timers.keys():
@@ -1158,7 +1158,7 @@ class Model(object):
                 print('%f assigned to time-dependent parameter %s' % (newValue, param.parameter_name))
 
     def strang_RDR_step_forward(self):
-                # first reaction step (half time step) t=[t,t+dt/2]
+        # first reaction step (half time step) t=[t,t+dt/2]
         for i in range(10):
             self.boundary_reactions_forward()
         print("finished first reaction step")
@@ -1211,21 +1211,15 @@ class Model(object):
         self.u['cyto']['n'].assign(self.u['cyto']['u'])
 
 
-    def lhs_rhs(self):
-        # hard-coded right now for quicker testing
-        pm_M = [f.dolfin_form for f in self.Forms.select_by('form_type', 'M') if f.compartment_name=='pm']
-        pm_R = [f.dolfin_form for f in self.Forms.select_by('form_type', 'R') if f.compartment_name=='pm']
-        F_pm = sum(pm_M + pm_R)
-        self.a['pm'] = d.lhs(F_pm)
-        self.L['pm'] = d.rhs(F_pm)
+    def get_lhs_rhs(self):
+        # solve the lower dimensional problem first (usually stiffer)
+        comp_list = [self.CD.Dict[key] for key in self.u.keys()]
+        split_forms = {}
 
-        cyto_M = [f.dolfin_form for f in self.Forms.select_by('form_type', 'M') if f.compartment_name=='cyto']
-        cyto_R = [f.dolfin_form for f in self.Forms.select_by('form_type', 'R') if f.compartment_name=='cyto']
-        cyto_D = [f.dolfin_form for f in self.Forms.select_by('form_type', 'D') if f.compartment_name=='cyto']
-        cyto_B = [f.dolfin_form for f in self.Forms.select_by('form_type', 'B') if f.compartment_name=='cyto']
-        F_cyto = sum(cyto_M + cyto_R + cyto_D + cyto_B)
-        self.a['cyto'] = d.lhs(F_cyto)
-        self.L['cyto'] = d.rhs(F_cyto)
+        for comp in comp_list:
+            split_forms[comp.name] = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+            self.a[comp.name] = d.lhs(sum(split_forms[comp.name]))
+            self.L[comp.name] = d.rhs(sum(split_forms[comp.name]))
 
 
 
