@@ -22,7 +22,7 @@ import stubs.data_manipulation as data_manipulation
 # Base Classes
 # ====================================================
 # ====================================================
-class _objectContainer(object):
+class _ObjectContainer(object):
     def __init__(self, ObjectClass, df=None, Dict=None):
         self.Dict = odict()
         self.dtypes = {}
@@ -59,7 +59,7 @@ class _objectContainer(object):
 
     def where_equals(self, property_name, value):
         """
-        Links objects from objectContainer2 to objectContainer1 (the _objectContainer invoking
+        Links objects from ObjectContainer2 to ObjectContainer1 (the _ObjectContainer invoking
         this method).
 
         Parameters
@@ -76,7 +76,7 @@ class _objectContainer(object):
         Returns
         -------
         objectList: list
-            List of objects from _objectContainer that matches the criterion
+            List of objects from _ObjectContainer that matches the criterion
         """
         objList = []
         for key, obj in self.Dict.items():
@@ -85,23 +85,23 @@ class _objectContainer(object):
         return objList
 
         #TODO: instead of linked_name make a dictionary of linked objects
-    def link_object(self, objectContainer2, property_name1, property_name2, linked_name, value_is_key=False):
+    def link_object(self, ObjectContainer2, property_name1, property_name2, linked_name, value_is_key=False):
         """
-        Links objects from objectContainer2 to objectContainer1 (the _objectContainer invoking
+        Links objects from ObjectContainer2 to ObjectContainer1 (the _ObjectContainer invoking
         this method).
 
         Parameters
         ----------
         with_attribution : bool, Optional, default: True
             Set whether or not to display who the quote is from
-        objectContainer2 : _objectContainer type
-            _objectContainer with objects we are linking to
+        ObjectContainer2 : _ObjectContainer type
+            _ObjectContainer with objects we are linking to
         property_name1 : str
-            Name of property of object in objectContainer1 to match
+            Name of property of object in ObjectContainer1 to match
         property_name2 : str
-            Name of property of object in objectContainer2 to match
+            Name of property of object in ObjectContainer2 to match
         linked_name : str
-            Name of new property in objectContainer1 with linked object
+            Name of new property in ObjectContainer1 with linked object
 
         Example Usage
         -------------
@@ -113,17 +113,17 @@ class _objectContainer(object):
 
         Returns
         -------
-        objectContainer1 : _objectContainer
-            _objectContainer where each object has an added property linking to some
-            object from objectContainer2
+        ObjectContainer1 : _ObjectContainer
+            _ObjectContainer where each object has an added property linking to some
+            object from ObjectContainer2
         """
         for _, obj1 in self.Dict.items():
             obj1_value = getattr(obj1, property_name1)
-            # if type dict, then match values of entries with objectContainer2
+            # if type dict, then match values of entries with ObjectContainer2
             if type(obj1_value) == dict:
                 newDict = odict()
                 for key, value in obj1_value.items():
-                    objList = objectContainer2.where_equals(property_name2, value)
+                    objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
                         raise Exception('Either none or more than one objects match this condition')
                     if value_is_key:
@@ -135,7 +135,7 @@ class _objectContainer(object):
             #elif type(obj1_value) == list or type(obj1_value) == set:
             #    newList = []
             #    for value in obj1_value:
-            #        objList = objectContainer2.where_equals(property_name2, value)
+            #        objList = ObjectContainer2.where_equals(property_name2, value)
             #        if len(objList) != 1:
             #            raise Exception('Either none or more than one objects match this condition')
             #        newList.append(objList[0])
@@ -143,14 +143,14 @@ class _objectContainer(object):
             elif type(obj1_value) == list or type(obj1_value) == set:
                 newDict = odict()
                 for value in obj1_value:
-                    objList = objectContainer2.where_equals(property_name2, value)
+                    objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
                         raise Exception('Either none or more than one objects match this condition')
                     newDict.update({value: objList[0]})
                 setattr(obj1, linked_name, newDict)
             # standard behavior
             else: 
-                objList = objectContainer2.where_equals(property_name2, obj1_value)
+                objList = ObjectContainer2.where_equals(property_name2, obj1_value)
                 if len(objList) != 1:
                     raise Exception('Either none or more than one objects match this condition')
                 setattr(obj1, linked_name, objList[0])
@@ -228,7 +228,7 @@ class _objectContainer(object):
             self.Dict[key].print(propertyList=propertyList)
 
 
-class _objectInstance(object):
+class _ObjectInstance(object):
     def __init__(self, name, Dict=None):
         self.name = name
         if Dict:
@@ -276,12 +276,12 @@ class _objectInstance(object):
 # ==============================================================================
 
 # parameters, compartments, species, reactions, fluxes
-class ParameterContainer(_objectContainer):
+class ParameterContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Parameter, df, Dict)
         self.propertyList = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
 
-class Parameter(_objectInstance):
+class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assembleTimeDependentParameters(self): 
@@ -291,7 +291,7 @@ class Parameter(_objectInstance):
             self.dolfinConstant = d.Constant(self.value)
 
 
-class SpeciesContainer(_objectContainer):
+class SpeciesContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Species, df, Dict)
         self.propertyList = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'sub_species', 'group']
@@ -403,7 +403,7 @@ class SpeciesContainer(_objectContainer):
 
 
 
-class Species(_objectInstance):
+class Species(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
         self.sub_species = {} # additional compartments this species may live in in addition to its primary one
@@ -412,7 +412,7 @@ class Species(_objectInstance):
         self.parent_species = None
 
 
-class CompartmentContainer(_objectContainer):
+class CompartmentContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Compartment, df, Dict)
         self.propertyList = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
@@ -472,7 +472,7 @@ class CompartmentContainer(_objectContainer):
 
 
 
-class Compartment(_objectInstance):
+class Compartment(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def compute_nvolume(self):
@@ -480,7 +480,7 @@ class Compartment(_objectInstance):
 
 
 
-class ReactionContainer(_objectContainer):
+class ReactionContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Reaction, df, Dict)
         self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
@@ -581,7 +581,7 @@ class ReactionContainer(_objectContainer):
         return FluxContainer(Dict=odict([(f.flux_name, f) for f in self.fluxList]))
 
 
-class Reaction(_objectInstance):
+class Reaction(_ObjectInstance):
     def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None):
         if eqn_f_str:
             print(eqn_f_str)
@@ -646,7 +646,7 @@ class Reaction(_objectInstance):
 
 
 
-class FluxContainer(_objectContainer):
+class FluxContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Flux, df, Dict)
         self.propertyList = ['species_name', 'symEqn', 'sign', 'involved_species',
@@ -655,7 +655,7 @@ class FluxContainer(_objectContainer):
 
 
 
-class Flux(_objectInstance):
+class Flux(_ObjectInstance):
     def __init__(self, flux_name, species_name, symEqn, sign, spDict, paramDict, group, explicit_restriction_to_domain=None):
         super().__init__(flux_name)
 
@@ -1051,36 +1051,5 @@ class Form(object):
         self.species_name = species_name
         self.form_type = form_type
         self.flux_name = flux_name
-
-
-# ====================================================
-# General python
-
-# pandas
-class ref:
-    """
-    Pandas dataframe doesn't play nice with dolfin indexed functions since it will try
-    to take the length but dolfin will not return anything. We use ref() to trick pandas
-    into treating the dolfin indexed function as a normal object rather than something
-    with an associated length
-    """
-    def __init__(self, obj): self.obj = obj
-    def get(self):    return self.obj
-    def set(self, obj):      self.obj = obj
-
-def insert_dataframe_col(df, columnName, columnNumber=None, items=None):
-    """
-    pandas requires some weird manipulation to insert some things, e.g. dictionaries, as dataframe entries
-    items is a list of things
-    by default, will insert a column of empty dicts as the last column
-    """
-    if items == None:
-        items = [{} for x in range(df.shape[0])]
-    if columnNumber == None:
-        columnNumber = df.columns.size
-    df.insert(columnNumber, columnName, items)
-
-def nan_to_None(df):
-    return df.replace({pd.np.nan: None})
 
 
