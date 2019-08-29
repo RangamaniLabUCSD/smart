@@ -8,79 +8,76 @@ import pickle
 from stubs import unit
 import stubs.model_assembly as model_assembly
 
-# matplotlib settings
-lwsmall = 1.5
-lwmed = 3
-lineopacity = 0.6
-fsmed = 7
-fssmall = 5
+# # matplotlib settings
+# lwsmall = 1.5
+# lwmed = 3
+# lineopacity = 0.6
+# fsmed = 7
+# fssmall = 5
 
-class data(object):
-    def __init__(self, model_parameters):
-        self.model_parameters = model_parameters
+
+
+class Data(object):
+    def __init__(self, config):
+        self.config = config
         self.solutions = {}
         self.errors = {}
         #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
         self.plots = {'solutions': plt.figure()}
         self.timer = d.Timer()
 
-    def initVTK(self, sdf, speciesList):
-        for spName in speciesList:
-            self.solutions[spName] = {}
-            sp = sdf.loc[sdf.species_name==spName].squeeze()
-            #compName = sp.compartment_name
-            #compIdx = int(sp.compartment_index)
-            #num_species = sp.num_species
-            #concentration_units = sp.concentration_units
+    def initVTK(self, SD):
+        for sp_name, sp in SD.Dict.items():
+            self.solutions[sp_name] = {}
 
-            self.solutions[spName]['num_species'] = sp.num_species
-            self.solutions[spName]['compName'] = sp.compartment_name
-            self.solutions[spName]['compIdx'] = int(sp.compartment_index)
-            self.solutions[spName]['concentration_units'] = sp.concentration_units
+            self.solutions[sp_name]['num_species'] = sp.compartment.num_species
+            self.solutions[sp_name]['comp_name'] = sp.compartment_name
+            self.solutions[sp_name]['comp_idx'] = int(sp.compartment_index)
+            self.solutions[sp_name]['concentration_units'] = sp.concentration_units
 
-            fileStr = self.model_parameters['solnDir'] + '/' + spName + '.pvd'
-            self.solutions[spName]['vtk'] = d.File(fileStr)
+            file_str = self.config.directory['solutions'] + '/' + sp_name + '.pvd'
+            self.solutions[sp_name]['vtk'] = d.File(file_str)
 
     def storeVTK(self, u, t):
-        for spName in self.solutions.keys():
-            compName = self.solutions[spName]['compName']
-            compIdx = self.solutions[spName]['compIdx']
-            if self.solutions[spName]['num_species'] == 1:
-                self.solutions[spName]['vtk'] << (u[compName]['u'], t)
+        for sp_name in self.solutions.keys():
+            comp_name = self.solutions[sp_name]['comp_name']
+            comp_idx = self.solutions[sp_name]['comp_idx']
+            if self.solutions[sp_name]['num_species'] == 1:
+                self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
             else:
-                self.solutions[spName]['vtk'] << (u[compName]['u'].split()[compIdx], t)
+                self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
 
-    def computeStatistics(self, u, t, V, speciesList):
-
-        for spName in speciesList:
-            compName = self.solutions[spName]['compName']
-            compIdx = self.solutions[spName]['compIdx']
+    def computeStatistics(self, u, t, V, SD):
+        #for sp_name in speciesList:
+        for sp_name in SD.keys():
+            comp_name = self.solutions[sp_name]['comp_name']
+            comp_idx = self.solutions[sp_name]['comp_idx']
 
             # compute statistics and append values
-            ustats = dolfinGetFunctionStats(u[compName]['u'], V[compName], compIdx)
+            ustats = dolfinGetFunctionStats(u[comp_name]['u'], V[comp_name], comp_idx)
             for key, value in ustats.items():
-                if key not in self.solutions[spName].keys():
-                    self.solutions[spName][key] = [value]
+                if key not in self.solutions[sp_name].keys():
+                    self.solutions[sp_name][key] = [value]
                 else:
-                    self.solutions[spName][key].append(value)
+                    self.solutions[sp_name][key].append(value)
 
             # append the time
-            if 'tvec' not in self.solutions[spName].keys():
-                self.solutions[spName]['tvec'] = [t]
+            if 'tvec' not in self.solutions[sp_name].keys():
+                self.solutions[sp_name]['tvec'] = [t]
             else:
-                self.solutions[spName]['tvec'].append(t)
+                self.solutions[sp_name]['tvec'].append(t)
 
-    def computeError(self, u, compName, errorNormKeys):
+    def computeError(self, u, comp_name, errorNormKeys):
         errorNormDict = {'L2': 2, 'Linf': np.Inf}
-        if compName not in self.errors.keys():
-            self.errors[compName] = {}
+        if comp_name not in self.errors.keys():
+            self.errors[comp_name] = {}
         for key in errorNormKeys:
-            if key not in self.errors[compName].keys():
-                self.errors[compName][key] = [np.linalg.norm(u[compName]['u'].vector().get_local()
-                                        - u[compName]['k'].vector().get_local(), ord=errorNormDict[key])]
+            if key not in self.errors[comp_name].keys():
+                self.errors[comp_name][key] = [np.linalg.norm(u[comp_name]['u'].vector().get_local()
+                                        - u[comp_name]['k'].vector().get_local(), ord=errorNormDict[key])]
             else:
-                self.errors[compName][key].append(np.linalg.norm(u[compName]['u'].vector().get_local()
-                                        - u[compName]['k'].vector().get_local(), ord=errorNormDict[key]))
+                self.errors[comp_name][key].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
+                                        - u[comp_name]['k'].vector().get_local(), ord=errorNormDict[key]))
 
     def initPlot(self):
         # NOTE: for now plots are individual; add an option to group species into subplots by category
@@ -117,14 +114,16 @@ class data(object):
     def outputPickle(self):
         saveKeys = ['tvec','min','mean','max','std']
         newDict = {}
-        for spName in self.solutions.keys():
-            newDict[spName] = {}
+        for sp_name in self.solutions.keys():
+            newDict[sp_name] = {}
             for key in saveKeys:
-                newDict[spName][key] = self.solutions[spName][key]
+                newDict[sp_name][key] = self.solutions[sp_name][key]
 
         # pickle file
         with open('solutions_'+self.model_parameters['tag']+'.obj', 'wb') as pickle_file:
-            pickle.dump(newDict, pickle_file)
+            pickle.dump(newDict, pickle_file) 
+
+
 
 #    def finalizePlot(self):
 #        for idx, key in enumerate(self.solutions.keys()):

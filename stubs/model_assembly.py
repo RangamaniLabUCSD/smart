@@ -416,6 +416,9 @@ class CompartmentContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Compartment, df, Dict)
         self.propertyList = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
+        self.meshes = {}
+    def load_mesh(self, mesh_key, mesh_str):
+        self.meshes[mesh_key] = d.Mesh(mesh_str)
     def extract_submeshes(self, main_mesh_str, save_to_file):
         main_mesh = self.Dict[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
@@ -515,8 +518,8 @@ class ReactionContainer(_ObjectContainer):
             sub_sp_name = sp_name+'_sub_'+comp_name
             compartment_counts.append(comp_name)
             if sub_sp_name not in SD.Dict.keys():
-                print((colored('\nSpecies %s will have a new function defined on compartment %s \
-                               with name: %s\n' % (sp_name, comp_name, sub_sp_name))))
+                print((colored('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
+                    % (sp_name, comp_name, sub_sp_name))))
 
                 sub_sp = copy(SD.Dict[sp_name])
                 sub_sp.is_an_added_species = True
@@ -653,6 +656,69 @@ class FluxContainer(_ObjectContainer):
                              'involved_parameters', 'source_compartment', 
                              'destination_compartment', 'ukeys', 'group']
 
+    def check_and_replace_sub_species(self, CD, config):
+        # TODO: this is a rough fix... find a more robust way to implement this
+        # unfortunately this probably has to be done at the flux rather than
+        # reaction level...
+        fluxes_to_remove = []
+        new_flux_list = []
+        for flux_name, f in self.Dict.items():
+            has_a_sub_species = False
+            is_source = False
+            sp_to_remove = []
+            sp_to_add = []
+            for sp_name, sp in f.spDict.items():
+                if sp.sub_species and (f.destination_compartment in sp.sub_species.keys()
+                                     or f.source_compartment in sp.sub_species.keys()):
+                    if f.destination_compartment in sp.sub_species.keys():
+                        # flux is volume -> surface
+                        sub_sp = sp.sub_species[f.destination_compartment]
+                        sp_to_remove.append(sp_name)
+                    elif f.source_compartment in sp.sub_species.keys():
+                        # flux is surface -> volume
+                        sub_sp = sp.sub_species[f.source_compartment]
+                        # in this case, we want to create another flux for the sub species
+                        is_source = True
+
+                    sub_sp_name = sub_sp.name
+
+                    f.symEqn = f.symEqn.subs({sp_name: sub_sp_name})
+                    sp_to_add.append((sub_sp_name, sub_sp))
+
+                    has_a_sub_species = True
+
+            for (sp_add, sp_obj) in sp_to_add:
+                f.spDict.update({sp_add: sp_obj})
+                print("Modifying flux %s to use subspecies %s!" % (f.flux_name, sp_add))#, sub_sp_name))
+            for sp_remove in sp_to_remove:
+                f.spDict.pop(sp_remove)
+
+            if has_a_sub_species:
+                new_flux_name = flux_name + ' [sub]'
+                new_f = Flux(f.flux_name + ' [sub]', f.species_name, f.symEqn, f.sign, f.spDict,
+                                          f.paramDict, f.group, f.explicit_restriction_to_domain)
+                new_f.get_additional_flux_properties(CD, config)
+
+                fluxes_to_remove.append(flux_name)
+                new_flux_list.append((new_flux_name, new_f))
+
+                # in this case, we want to create another flux for the sub species
+                if is_source:
+                    f.spDict.pop(f.species_name)
+                    new_flux_name = f.flux_name + ' [sub_]'
+                    new_flux = Flux(f.flux_name + ' [sub_]', sub_sp_name, f.symEqn, f.sign, f.spDict, f.paramDict,
+                                    f.group, f.explicit_restriction_to_domain)
+                    new_flux.get_additional_flux_properties(CD, config)
+
+                    new_flux_list.append((new_flux_name, new_flux))
+        for flux_rm in fluxes_to_remove:
+            print('removing flux %s' %  flux_rm)
+            self.Dict.pop(flux_rm)
+
+        for (new_flux_name, new_f) in new_flux_list:
+            print('adding flux %s' % new_flux_name)
+            self.Dict.update({new_flux_name: new_f})
+
 
 
 class Flux(_ObjectInstance):
@@ -673,7 +739,8 @@ class Flux(_ObjectInstance):
         self.involved_species = list(spDict.keys())
         self.involved_parameters = list(paramDict.keys())
 
-    def get_additional_flux_properties(self, CD, model_parameters):
+
+    def get_additional_flux_properties(self, CD, config):
         # get additional properties of the flux
         self.get_involved_species_parameters_compartment(CD)
         self.get_flux_dimensionality()
@@ -681,8 +748,8 @@ class Flux(_ObjectInstance):
         self.get_flux_units()
         self.get_is_linear()
         self.get_is_linear_comp()
-        self.get_ukeys(model_parameters)
-        self.get_integration_measure(CD, model_parameters)
+        self.get_ukeys(config)
+        self.get_integration_measure(CD, config)
         self.flux_to_dolfin()
 
     def get_involved_species_parameters_compartment(self, CD):
@@ -730,12 +797,13 @@ class Flux(_ObjectInstance):
             self.boundary_marker = self.involved_compartments[self.source_compartment].cell_marker
 
     def get_flux_units(self):
-        destinationSp = self.spDict[self.species_name]
-        compartment_units = destinationSp.compartment.compartment_units
-        if self.boundary_marker:
-            self.flux_units = destinationSp.concentration_units / compartment_units * destinationSp.D_units
+        sp = self.spDict[self.species_name]
+        compartment_units = sp.compartment.compartment_units
+        # a boundary flux
+        if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]) or sp.parent_species:
+            self.flux_units = sp.concentration_units / compartment_units * sp.D_units
         else:
-            self.flux_units = destinationSp.concentration_units / ureg.s
+            self.flux_units = sp.concentration_units / ureg.s
 
     def get_is_linear(self):
         """
@@ -774,7 +842,7 @@ class Flux(_ObjectInstance):
 
         self.is_linear_wrt_comp = is_linear_wrt_comp
 
-    def get_integration_measure(self, CD, model_parameters):
+    def get_integration_measure(self, CD, config):
         sp = self.spDict[self.species_name]
         flux_dim = self.flux_dimensionality
         min_dim = min(CD.get_property('dimensionality').values())
@@ -788,14 +856,14 @@ class Flux(_ObjectInstance):
             self.int_measure = sp.compartment.dx
         # volumetric flux (min dimension)
         elif flux_dim[1] == min_dim < max_dim:
-            if model_parameters['ignore_surface_diffusion']:
+            if config.settings['ignore_surface_diffusion']:
                 self.int_measure = sp.compartment.dP
             else:
                 self.int_measure = sp.compartment.dx
         else:
             raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
 
-    def get_ukeys(self, model_parameters):
+    def get_ukeys(self, config):
         """
         Given the dimensionality of a flux (e.g. 2d surface to 3d vol) and the dimensionality
         of a species, determine which term of u should be used
@@ -803,17 +871,22 @@ class Flux(_ObjectInstance):
         self.ukeys = {}
         flux_vars = [str(x) for x in self.symList if str(x) in self.involved_species]
         for var_name in flux_vars:
-            self.ukeys[var_name] = self.get_ukey(var_name, model_parameters)
+            self.ukeys[var_name] = self.get_ukey(var_name, config)
 
-    def get_ukey(self, var_name, model_parameters):
+    def get_ukey(self, var_name, config):
         sp = self.spDict[self.species_name]
         var = self.spDict[var_name]
 
-        # boundary fluxes
+        # boundary fluxes (surface -> volume)
         if var.dimensionality < sp.dimensionality: 
             return 'u' # always true if operator splitting to decouple compartments
+
+        if sp.name == var.parent_species:
+            print('Debug 1')
+            return 'u'
         
-        if model_parameters['solver']['nonlinear'] == 'picard':
+        if config.solver['nonlinear'] == 'picard':
+            # volume -> surface
             if var.dimensionality > sp.dimensionality:
                 if self.is_linear_wrt_comp[var.compartment_name]:
                     return 'bt'
@@ -827,7 +900,7 @@ class Flux(_ObjectInstance):
                 else:
                     return 'k'
 
-        elif model_parameters['solver']['nonlinear'] == 'newton':
+        elif config.solver['nonlinear'] == 'newton':
             return 'u'
 
         raise Exception("If you made it to this far in get_ukey() I missed some logic...") 
@@ -849,11 +922,12 @@ class Flux(_ObjectInstance):
                 var = self.spDict[var_name]
                 ukey = self.ukeys[var_name]
                 if ukey[0] == 'b':
-                    print(self.species_name)
-                    print(var_name)
-                    print(self.symEqn)
-                    sub_species = var.sub_species[self.destination_compartment]
-                    value_dict[var_name] = sub_species.u[ukey[1]]
+                    if not var.parent_species:
+                        sub_species = var.sub_species[self.destination_compartment]
+                        value_dict[var_name] = sub_species.u[ukey[1]]
+                        print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
+                    else:
+                        value_dict[var_name] = var.u[ukey[1]]
                 else:
                     value_dict[var_name] = var.u[ukey]
 
@@ -869,6 +943,8 @@ class Flux(_ObjectInstance):
 
 
 
+
+
 # ==============================================================================
 # ==============================================================================
 # Model class consists of parameters, species, etc. and is used for simulation
@@ -876,13 +952,13 @@ class Flux(_ObjectInstance):
 # ==============================================================================
 
 class Model(object):
-    def __init__(self, PD, SD, CD, RD, FD, model_parameters):
+    def __init__(self, PD, SD, CD, RD, FD, config):
         self.PD = PD
         self.SD = SD
         self.CD = CD
         self.RD = RD
         self.FD = FD
-        self.model_parameters = model_parameters
+        self.config = config
 
         self.u = SD.u
         self.v = SD.v
@@ -890,52 +966,18 @@ class Model(object):
 
         self.idx = 0
         self.t = 0.0
-        self.dt = 0.0
-        self.T = d.Constant(t)
-        self.dT = d.Constant(dt)
+        self.dt = config.solver['initial_dt']
+        self.T = d.Constant(self.t)
+        self.dT = d.Constant(self.dt)
+        self.t_final = config.solver['T']
 
         self.timers = {}
         self.timings = ddict(list)
 
         self.Forms = FormContainer()
 
-    def set_time(self, t, dt):
-        self.dt = dt
-        self.dT = d.Constant(dt)
-        self.t = t
-        self.T = d.Constant(t)
+        self.data = data_manipulation.Data(config)
 
-        print("New time: %f" % self.t)
-        print("New dt: %f" % self.dt)
-
-    def update_time(self):
-        self.t = t+dt
-        self.T = d.Constant(self.t)
-
-    def stopwatch(self, key, stop=False):
-        if key not in self.timers.keys():
-            self.timers[key] = d.Timer()
-        if not stop:
-            self.timers[key].start()
-        else:
-            elapsed_time = self.timers[key].elapsed()[0]
-            self.timers[key].stop()
-            self.timings[key].append()
-            return elapsed_time
-
-    def solver_step_forward(self, t, dt):
-
-        self.update_time()
-
-
-    def updateTimeDependentParameters(self, t=None): 
-        if not t:
-            t = self.t
-        for param_name, param in self.PD.Dict.items():
-            if param.is_time_dependent:
-                newValue = param.symExpr.subs({'t': t}).evalf()
-                param.dolfinConstant.get().assign(newValue)
-                print('%f assigned to time-dependent parameter %s' % (newValue, param.parameter_name))
 
     def assemble_reactive_fluxes(self):
         """
@@ -997,7 +1039,7 @@ class Model(object):
             setattr(j, 'dolfin_flux', prod)
 
             BRform = -prod
-            self.Forms.add(Form(BRform, sp.name, form_key, flux_name=j.name))
+            self.Forms.add(Form(BRform, sp, form_key, flux_name=j.name))
 
 
     def assemble_diffusive_fluxes(self):
@@ -1012,19 +1054,94 @@ class Model(object):
                 v = sp.v
                 D = sp.D
 
-                if sp.dimensionality == max_dim or not model_parameters['ignore_surface_diffusion']:
+                if sp.dimensionality == max_dim and not sp.parent_species:
+                    #or not self.config.settings['ignore_surface_diffusion']:
                     dx = sp.compartment.dx
                     Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
-                    self.Forms.add(Form(Dform, sp.name, 'D'))
-                elif sp.dimensionality < max_dim and model_parameters['ignore_surface_diffusion']:
-                    dx = sp.compartment.dP
+                    self.Forms.add(Form(Dform, sp, 'D'))
+                elif sp.dimensionality < max_dim or sp.parent_species:
+                    if self.config.settings['ignore_surface_diffusion']:
+                        dx=sp.compartment.dP
+                    else:
+                        dx = sp.compartment.dx
+                        Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
+                        self.Forms.add(Form(Dform, sp, 'D'))
+
+                #if sp.dimensionality == max_dim or not self.config.settings['ignore_surface_diffusion']:
+                #    dx = sp.compartment.dx
+                #    Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
+                #    self.Forms.add(Form(Dform, sp, 'D'))
+                #elif sp.dimensionality < max_dim and self.config.settings['ignore_surface_diffusion']:
+                #    dx = sp.compartment.dP
 
                 # time derivative
                 Mform = (u-un)/dT * v * dx
-                self.Forms.add(Form(Mform, sp.name, 'M'))
+                self.Forms.add(Form(Mform, sp, 'M'))
 
             else:
                 print("Species %s is not in a reaction?" %  sp_name)
+
+    def set_allow_extrapolation(self):
+        for comp_name in self.u.keys():
+            ucomp = self.u[comp_name] 
+            for func_key in ucomp.keys():
+                if func_key != 't': # trial function by convention
+                    self.u[comp_name][func_key].set_allow_extrapolation(True)
+
+#===============================================================================
+#===============================================================================
+# SOLVING
+#===============================================================================
+#===============================================================================
+    def set_time(self, t, dt):
+        self.dt = dt
+        self.dT.assign(dt) 
+        self.t = t
+        self.T.assign(t)
+
+        print("New time: %f" % self.t)
+        print("New dt: %f" % self.dt)
+
+    def forward_time_step(self, factor=1):
+        print(self.dt)
+        self.dT.assign(float(self.dt*factor))
+        self.t = float(self.t+self.dt)
+        self.T.assign(self.t)
+
+    def stopwatch(self, key, stop=False):
+        if key not in self.timers.keys():
+            self.timers[key] = d.Timer()
+        if not stop:
+            self.timers[key].start()
+        else:
+            elapsed_time = self.timers[key].elapsed()[0]
+            self.timers[key].stop()
+            self.timings[key].append()
+            return elapsed_time
+
+#    def solver_step_forward(self):
+#
+#        self.update_time()
+
+
+    def updateTimeDependentParameters(self, t=None): 
+        if not t:
+            t = self.t
+        for param_name, param in self.PD.Dict.items():
+            if param.is_time_dependent:
+                newValue = param.symExpr.subs({'t': t}).evalf()
+                param.dolfinConstant.get().assign(newValue)
+                print('%f assigned to time-dependent parameter %s' % (newValue, param.parameter_name))
+
+    def strang_RDR_step_forward(self):
+        # first reaction step
+        self.forward_time_step(factor=1/10)
+
+
+
+
+
+
 
 #     def init_solver(self):
 
@@ -1037,10 +1154,21 @@ class FormContainer(object):
         self.form_list.append(new_form)
     def select_by(self, selection_key, value):
         return [f for f in self.form_list if getattr(f, selection_key)==value]
+    def inspect(self, form_list=None):
+        if not form_list:
+            form_list = self.form_list
+
+        for index, form in enumerate(form_list):
+            print("Form with index %d from form_list..." % index)
+            if form.flux_name:
+                print("Flux name: %s" % form.flux_name)
+            print("Species name: %s" % form.species_name)
+            print("Form type: %s" % form.form_type)
+            form.inspect()
 
 
 class Form(object):
-    def __init__(self, dolfin_form, species_name, form_type, flux_name=None):
+    def __init__(self, dolfin_form, species, form_type, flux_name=None):
         # form_type:
         # 'M': transient/mass form (holds time derivative)
         # 'D': diffusion form
@@ -1048,8 +1176,13 @@ class Form(object):
         # 'B': boundary reaction forms
 
         self.dolfin_form = dolfin_form
-        self.species_name = species_name
+        self.species = species
+        self.species_name = species.name
+        self.compartment_name = species.compartment_name
         self.form_type = form_type
         self.flux_name = flux_name
 
-
+    def inspect(self):
+        integrals = self.dolfin_form.integrals()
+        for index, integral in enumerate(integrals):
+            print(str(integral) + "\n")
