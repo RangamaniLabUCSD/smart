@@ -417,6 +417,7 @@ class CompartmentContainer(_ObjectContainer):
         super().__init__(Compartment, df, Dict)
         self.propertyList = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
         self.meshes = {}
+        self.vertex_mappings = {} # from submesh -> parent indices
     def load_mesh(self, mesh_key, mesh_str):
         self.meshes[mesh_key] = d.Mesh(mesh_str)
     def extract_submeshes(self, main_mesh_str, save_to_file):
@@ -434,9 +435,11 @@ class CompartmentContainer(_ObjectContainer):
             vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
+
         for key, obj in self.Dict.items():
             if key!=main_mesh_str and obj.dimensionality==surfaceDim:
                 submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)                
+                self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
                 self.meshes[key] = submesh
                 obj.mesh = submesh
                 if save_to_file:
@@ -460,7 +463,23 @@ class CompartmentContainer(_ObjectContainer):
             self.Dict[key].num_vertices = num_vertices
 
         self.vmf = vmf
+        self.bmesh = bmesh
         self.bmf = bmf
+    
+    # create vertex mappings
+    https://fenicsproject.org/qa/13595/interpret-vertex_to_dof_map-dof_to_vertex_map-function/
+    def create_vertex_mapping(self, submesh, Vsubmesh, bmesh, Vdof):
+        # gets a mapping from vertex indices on a submesh (of a boundary mesh) to its parent mesh
+        submesh_vertices = d.dof_to_vertex_map(Vsubmesh)
+        bmesh_vertices = [int(x) for x in submesh.data().array("parent_vertex_indices", 0)]
+        mesh_vertices = [bmesh.entity_map(0)[x] for x in bmesh_vertices]
+        return d.vertex_to_dof_map(Vdof)[mesh_vertices]
+
+        TODO: fix this
+
+
+
+
     def compute_scaling_factors(self):
         self.doToAll('compute_nvolume')
         for key, obj in self.Dict.items():
@@ -975,6 +994,8 @@ class Model(object):
         self.timings = ddict(list)
 
         self.Forms = FormContainer()
+        self.a = {}
+        self.L = {}
 
         self.data = data_manipulation.Data(config)
 
@@ -1105,8 +1126,10 @@ class Model(object):
     def forward_time_step(self, factor=1):
         print(self.dt)
         self.dT.assign(float(self.dt*factor))
-        self.t = float(self.t+self.dt)
+        self.t = float(self.t+self.dt*factor)
         self.T.assign(self.t)
+
+        print("t: %f , dt: %f" % (self.t, self.dt))
 
     def stopwatch(self, key, stop=False):
         if key not in self.timers.keys():
@@ -1126,6 +1149,7 @@ class Model(object):
 
     def updateTimeDependentParameters(self, t=None): 
         if not t:
+            # custom time
             t = self.t
         for param_name, param in self.PD.Dict.items():
             if param.is_time_dependent:
@@ -1134,11 +1158,74 @@ class Model(object):
                 print('%f assigned to time-dependent parameter %s' % (newValue, param.parameter_name))
 
     def strang_RDR_step_forward(self):
+                # first reaction step (half time step) t=[t,t+dt/2]
+        for i in range(10):
+            self.boundary_reactions_forward()
+        print("finished first reaction step")
+
+        # diffusion step (full time step) t=[t,t+dt]
+        self.set_time(self.t-self.dt/2, self.dt) # reset time back to t
+        self.updateTimeDependentParameters
+        self.diffusion_forward() 
+        self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
+        print("finished diffusion step")
+
+        # second reaction step (half time step) t=[t+dt/2,t+dt]
+        self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
+        for i in range(10):
+            self.boundary_reactions_forward()
+        print("finished second reaction step")
+
+
+
+# for i in range(10):
+#     model.boundary_reactions_forward()
+
+# print("finished first reaction step")
+
+# # diffusion step (full time step) t=[t,t+dt]
+# model.set_time(model.t-model.dt/2, model.dt) # reset time back to t
+# model.updateTimeDependentParameters
+# model.diffusion_forward() 
+# model.SD.Dict['A_sub_pm'].u['u'].interpolate(model.u['cyto']['u'])
+# print("finished diffusion step")
+
+# # second reaction step (half time step) t=[t+dt/2,t+dt]
+# self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
+# for i in range(10):
+#     self.boundary_reactions_forward()
+# print("finished second reaction step")
+
+
+    def boundary_reactions_forward(self):
         # first reaction step
-        self.forward_time_step(factor=1/10)
+        self.forward_time_step(factor=1/20)
+        self.updateTimeDependentParameters()
+        d.solve(self.a['pm']==self.L['pm'], self.u['pm']['u'])
+        self.u['pm']['n'].assign(self.u['pm']['u'])
+
+    def diffusion_forward(self):
+        self.forward_time_step()
+        self.updateTimeDependentParameters
+        d.solve(self.a['cyto']==self.L['cyto'], self.u['cyto']['u'])
+        self.u['cyto']['n'].assign(self.u['cyto']['u'])
 
 
+    def lhs_rhs(self):
+        # hard-coded right now for quicker testing
+        pm_M = [f.dolfin_form for f in self.Forms.select_by('form_type', 'M') if f.compartment_name=='pm']
+        pm_R = [f.dolfin_form for f in self.Forms.select_by('form_type', 'R') if f.compartment_name=='pm']
+        F_pm = sum(pm_M + pm_R)
+        self.a['pm'] = d.lhs(F_pm)
+        self.L['pm'] = d.rhs(F_pm)
 
+        cyto_M = [f.dolfin_form for f in self.Forms.select_by('form_type', 'M') if f.compartment_name=='cyto']
+        cyto_R = [f.dolfin_form for f in self.Forms.select_by('form_type', 'R') if f.compartment_name=='cyto']
+        cyto_D = [f.dolfin_form for f in self.Forms.select_by('form_type', 'D') if f.compartment_name=='cyto']
+        cyto_B = [f.dolfin_form for f in self.Forms.select_by('form_type', 'B') if f.compartment_name=='cyto']
+        F_cyto = sum(cyto_M + cyto_R + cyto_D + cyto_B)
+        self.a['cyto'] = d.lhs(F_cyto)
+        self.L['cyto'] = d.rhs(F_cyto)
 
 
 
