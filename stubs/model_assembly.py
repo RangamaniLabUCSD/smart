@@ -465,18 +465,6 @@ class CompartmentContainer(_ObjectContainer):
         self.vmf = vmf
         self.bmesh = bmesh
         self.bmf = bmf
-    
-    # create vertex mappings
-    https://fenicsproject.org/qa/13595/interpret-vertex_to_dof_map-dof_to_vertex_map-function/
-    def create_vertex_mapping(self, submesh, Vsubmesh, bmesh, Vdof):
-        # gets a mapping from vertex indices on a submesh (of a boundary mesh) to its parent mesh
-        submesh_vertices = d.dof_to_vertex_map(Vsubmesh)
-        bmesh_vertices = [int(x) for x in submesh.data().array("parent_vertex_indices", 0)]
-        mesh_vertices = [bmesh.entity_map(0)[x] for x in bmesh_vertices]
-        return d.vertex_to_dof_map(Vdof)[mesh_vertices]
-
-        TODO: fix this
-
 
 
 
@@ -713,13 +701,13 @@ class FluxContainer(_ObjectContainer):
                 f.spDict.pop(sp_remove)
 
             if has_a_sub_species:
-                new_flux_name = flux_name + ' [sub]'
-                new_f = Flux(f.flux_name + ' [sub]', f.species_name, f.symEqn, f.sign, f.spDict,
-                                          f.paramDict, f.group, f.explicit_restriction_to_domain)
-                new_f.get_additional_flux_properties(CD, config)
+                #new_flux_name = flux_name + ' [sub]'
+                #new_f = Flux(f.flux_name + ' [sub]', f.species_name, f.symEqn, f.sign, f.spDict,
+                #                          f.paramDict, f.group, f.explicit_restriction_to_domain)
+                #new_f.get_additional_flux_properties(CD, config)
 
-                fluxes_to_remove.append(flux_name)
-                new_flux_list.append((new_flux_name, new_f))
+                #fluxes_to_remove.append(flux_name)
+                #new_flux_list.append((new_flux_name, new_f))
 
                 # in this case, we want to create another flux for the sub species
                 if is_source:
