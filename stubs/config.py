@@ -107,7 +107,7 @@ class Config(object):
         RD.doToAll('reaction_to_fluxes')
         FD = RD.get_flux_container()
         FD.doToAll('get_additional_flux_properties', {"CD": CD, "config": self})
-        FD.check_and_replace_sub_species(CD, self)
+        FD.check_and_replace_sub_species(SD, CD, self)
 
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)
 

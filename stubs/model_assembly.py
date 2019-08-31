@@ -665,70 +665,63 @@ class FluxContainer(_ObjectContainer):
                              'involved_parameters', 'source_compartment', 
                              'destination_compartment', 'ukeys', 'group']
 
-    def check_and_replace_sub_species(self, CD, config):
-        # TODO: this is a rough fix... find a more robust way to implement this
-        # unfortunately this probably has to be done at the flux rather than
-        # reaction level...
+    def check_and_replace_sub_species(self, SD, CD, config):
         fluxes_to_remove = []
-        new_flux_list = []
         for flux_name, f in self.Dict.items():
-            has_a_sub_species = False
-            is_source = False
-            sp_to_remove = []
-            sp_to_add = []
+            tagged_for_removal = False
             for sp_name, sp in f.spDict.items():
                 if sp.sub_species and (f.destination_compartment in sp.sub_species.keys()
                                      or f.source_compartment in sp.sub_species.keys()):
-                    if f.destination_compartment in sp.sub_species.keys():
-                        # flux is volume -> surface
-                        sub_sp = sp.sub_species[f.destination_compartment]
-                        sp_to_remove.append(sp_name)
-                    elif f.source_compartment in sp.sub_species.keys():
-                        # flux is surface -> volume
-                        sub_sp = sp.sub_species[f.source_compartment]
-                        # in this case, we want to create another flux for the sub species
-                        is_source = True
+                    tagged_for_removal = True
+                    print("flux %s tagged for removal" % flux_name)
+                    #for sub_sp_name in sp.sub_species.keys():
+                    for sub_sp in sp.sub_species.values():
+                        sub_sp_name = sub_sp.name
+                        f.symEqn = f.symEqn.subs({sp_name: sub_sp_name})
+                        print("subbed %s for %s" % (sp_name, sub_sp_name))
 
-                    sub_sp_name = sub_sp.name
+            if tagged_for_removal:
+                fluxes_to_remove.append(f)
+                tagged_for_removal = False
 
-                    f.symEqn = f.symEqn.subs({sp_name: sub_sp_name})
-                    sp_to_add.append((sub_sp_name, sub_sp))
+        new_flux_list = []
+        for f in fluxes_to_remove:
+            #if SD.Dict[f.species_name].compartment_name == f.source_compartment:
+            new_flux_name = f.flux_name + ' [sub**]'
+            involved_species = [str(x) for x in f.symEqn.free_symbols if str(x) in SD.Dict.keys()]
+            if not SD.Dict[f.species_name].sub_species:
+                new_species_name = f.species_name
+            else:
+                new_species_name = SD.Dict[f.species_name].sub_species[f.source_compartment].name
 
-                    has_a_sub_species = True
+            involved_species += [new_species_name] # add the flux species
+            parent_species = [SD.Dict[x].parent_species for x in involved_species if SD.Dict[x].parent_species]
+            if f.species_name not in parent_species:
 
-            for (sp_add, sp_obj) in sp_to_add:
-                f.spDict.update({sp_add: sp_obj})
-                print("Modifying flux %s to use subspecies %s!" % (f.flux_name, sp_add))#, sub_sp_name))
-            for sp_remove in sp_to_remove:
-                f.spDict.pop(sp_remove)
+                print("symEqn")
+                print(f.symEqn)
+                print("free symbols = ")
+                print([str(x) for x in f.symEqn.free_symbols])
+                print("involved species = ")
+                print(involved_species)
+                spDict = {}
+                for sp_name in involved_species:
+                    spDict.update({sp_name: SD.Dict[sp_name]})
 
-            if has_a_sub_species:
-                #new_flux_name = flux_name + ' [sub]'
-                #new_f = Flux(f.flux_name + ' [sub]', f.species_name, f.symEqn, f.sign, f.spDict,
-                #                          f.paramDict, f.group, f.explicit_restriction_to_domain)
-                #new_f.get_additional_flux_properties(CD, config)
+                new_flux = Flux(new_flux_name, f.species_name, f.symEqn, f.sign, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
+                new_flux.get_additional_flux_properties(CD, config)
+        
+                new_flux_list.append((new_flux_name, new_flux))
+            else:
+                print("species name, source compartment: %s, %s" % (f.species_name, f.source_compartment))
 
-                #fluxes_to_remove.append(flux_name)
-                #new_flux_list.append((new_flux_name, new_f))
-
-                # in this case, we want to create another flux for the sub species
-                if is_source:
-                    f.spDict.pop(f.species_name)
-                    new_flux_name = f.flux_name + ' [sub_]'
-                    new_flux = Flux(f.flux_name + ' [sub_]', sub_sp_name, f.symEqn, f.sign, f.spDict, f.paramDict,
-                                    f.group, f.explicit_restriction_to_domain)
-                    new_flux.get_additional_flux_properties(CD, config)
-
-                    new_flux_list.append((new_flux_name, new_flux))
         for flux_rm in fluxes_to_remove:
-            print('removing flux %s' %  flux_rm)
-            self.Dict.pop(flux_rm)
+            print('removing flux %s' %  flux_rm.flux_name)
+            self.Dict.pop(flux_rm.flux_name)
 
-        for (new_flux_name, new_f) in new_flux_list:
+        for (new_flux_name, new_flux) in new_flux_list:
             print('adding flux %s' % new_flux_name)
-            self.Dict.update({new_flux_name: new_f})
-
-
+            self.Dict.update({new_flux_name: new_flux})
 
 class Flux(_ObjectInstance):
     def __init__(self, flux_name, species_name, symEqn, sign, spDict, paramDict, group, explicit_restriction_to_domain=None):
