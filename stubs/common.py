@@ -33,7 +33,7 @@ def nan_to_none(df):
 
 
 
-def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, species_index=0, index=None):
+def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, submesh_species_index=0, mesh_species_index=0, index=None):
     """
     Takes dof indices (single index or a list) on a submesh of a boundarymesh of a mesh and returns
     the dof indices of the original mesh.
@@ -41,10 +41,10 @@ def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, species_index=0, index=
     https://fenicsproject.org/qa/13595/interpret-vertex_to_dof_map-dof_to_vertex_map-function/
     https://fenicsproject.org/qa/6810/vertex-mapping-from-submesh-boundarymesh-back-actual-mesh/
     """
-    idx = submesh_dof_to_vertex(Vsubmesh, species_index, index)
+    idx = submesh_dof_to_vertex(Vsubmesh, submesh_species_index, index)
     idx = submesh_to_bmesh(submesh, idx)
     idx = bmesh_to_parent(bmesh, idx)
-    idx = mesh_vertex_to_dof(V, species_index, idx)
+    idx = mesh_vertex_to_dof(V, mesh_species_index, idx)
     return idx
 
 

@@ -17,25 +17,6 @@ submesh_dof_to_vertex = submesh_dof_to_vertex[range(0, len(submesh_dof_to_vertex
 submesh_dof_to_vertex = submesh_dof_to_vertex.astype(int)
 
 
-def submesh_dof_to_vertex(Vsubmesh, index):
-    return dof_to_vertex_map(Vsubmesh)[index]
-
-def submesh_to_bmesh(submesh, index):
-    submesh_to_bmesh_vertex = submesh.data().array("parent_vertex_indices", 0)
-    return submesh_to_bmesh_vertex[index]
-
-def bmesh_to_parent(bmesh, index):
-    return bmesh.entity_map(0).array()[index]
-
-def mesh_vertex_to_dof(V, index):
-    return vertex_to_dof_map(V)[index]
-
-def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, index):
-    idx = submesh_dof_to_vertex(Vsubmesh, index)
-    idx = submesh_to_bmesh(submesh, idx)
-    idx = bmesh_to_parent(bmesh, idx)
-    idx = mesh_vertex_to_dof(V, idx)
-    return idx
 
 
 submesh_dof_to_mesh_dof(Vs,submesh,bmesh,V,range(3))

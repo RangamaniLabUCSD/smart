@@ -11,6 +11,7 @@ from pprint import pprint
 from tabulate import tabulate
 from copy import copy
 
+import stubs.common as common
 from stubs import unit as ureg
 import stubs.data_manipulation as data_manipulation
 #import stubs.flux_assembly as flux_assembly
@@ -410,6 +411,7 @@ class Species(_ObjectInstance):
         self.is_in_a_reaction = False
         self.is_an_added_species = False
         self.parent_species = None
+        self.dof_map = {}
 
 
 class CompartmentContainer(_ObjectContainer):
@@ -1154,15 +1156,68 @@ class Model(object):
         # diffusion step (full time step) t=[t,t+dt]
         self.set_time(self.t-self.dt/2, self.dt) # reset time back to t
         self.updateTimeDependentParameters
+
+        # transfer values of solution onto volumetric field
+        self.update_solution_boundary_to_volume()
+
         self.diffusion_forward() 
-        self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
+        #self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
         print("finished diffusion step")
 
+        self.update_solution_volume_to_boundary()
         # second reaction step (half time step) t=[t+dt/2,t+dt]
         self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
         for i in range(10):
             self.boundary_reactions_forward()
         print("finished second reaction step")
+
+
+    def establish_mappings(self):
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.parent_species:
+                sp_parent = self.SD.Dict[sp.parent_species]
+                Vsub = self.V[sp.compartment_name]
+                submesh = self.CD.meshes[sp.compartment_name]
+                V = self.V[sp_parent.compartment_name]
+                submesh_species_index = sp.compartment_index
+                mesh_species_index = sp_parent.compartment_index
+
+                idx = common.submesh_dof_to_mesh_dof(Vsub, submesh, self.CD.bmesh, V,
+                                                     submesh_species_index=submesh_species_index,
+                                                     mesh_species_index=mesh_species_index)
+                sp_parent.dof_map.update({sp_name: idx})
+
+    def update_solution_boundary_to_volume(self):
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.parent_species:
+                sp_parent = self.SD.Dict[sp.parent_species]
+                submesh_species_index = sp.compartment_index
+                idx = sp_parent.dof_map[sp_name]
+
+                pcomp_name = sp_parent.compartment_name
+                comp_name = sp.compartment_name
+
+                self.u[pcomp_name]['u'].vector()[idx] = \
+                    data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
+
+                print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
+
+    def update_solution_volume_to_boundary(self):
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.sub_species:
+                for comp_name, sp_sub in sp.sub_species.items():
+                    sub_name = sp_sub.name
+                    submesh_species_index = sp_sub.compartment_index
+                    idx = sp.dof_map[sub_name]
+
+                    pcomp_name = sp.compartment_name
+                    comp_name = sp_sub.compartment_name
+
+                    unew = self.u[pcomp_name]['u'].vector()[idx]
+
+                    data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
+                    print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
+
 
 
 
