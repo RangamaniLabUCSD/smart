@@ -618,6 +618,15 @@ class Reaction(_ObjectInstance):
                 rxnSymStr += '*' + sp_name
             self.eqn_r = parse_expr(rxnSymStr)
 
+        if self.reaction_type == 'hillI':
+            rxnSymStr = parse_expr('k * u**n / (u**n + km)')
+            rxnSymStr = rxnSymStr.subs(self.paramDict)
+            rxnSymStr = rxnSymStr.subs(self.speciesDict)
+            if self.LHS:
+                self.eqn_f = rxnSymStr
+            if self.RHS:
+                self.eqn_r = rxnSymStr
+
 
 
     def get_involved_species_and_compartments(self, SD=None):
@@ -696,24 +705,25 @@ class FluxContainer(_ObjectContainer):
 
             involved_species += [new_species_name] # add the flux species
             parent_species = [SD.Dict[x].parent_species for x in involved_species if SD.Dict[x].parent_species]
-            if f.species_name not in parent_species:
+        #if f.species_name not in parent_species:
 
-                print("symEqn")
-                print(f.symEqn)
-                print("free symbols = ")
-                print([str(x) for x in f.symEqn.free_symbols])
-                print("involved species = ")
-                print(involved_species)
-                spDict = {}
-                for sp_name in involved_species:
-                    spDict.update({sp_name: SD.Dict[sp_name]})
+            print("symEqn")
+            print(f.symEqn)
+            print("free symbols = ")
+            print([str(x) for x in f.symEqn.free_symbols])
+            print("involved species = ")
+            print(involved_species)
+            spDict = {}
+            for sp_name in involved_species:
+                spDict.update({sp_name: SD.Dict[sp_name]})
 
-                new_flux = Flux(new_flux_name, f.species_name, f.symEqn, f.sign, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
-                new_flux.get_additional_flux_properties(CD, config)
+            new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.sign, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
+            new_flux.get_additional_flux_properties(CD, config)
         
-                new_flux_list.append((new_flux_name, new_flux))
-            else:
-                print("species name, source compartment: %s, %s" % (f.species_name, f.source_compartment))
+            new_flux_list.append((new_flux_name, new_flux))
+            #else:
+            #    new_species_name = 
+            #    print("species name, source compartment: %s, %s" % (f.species_name, f.source_compartment))
 
         for flux_rm in fluxes_to_remove:
             print('removing flux %s' %  flux_rm.flux_name)
@@ -1141,8 +1151,12 @@ class Model(object):
                 print('%f assigned to time-dependent parameter %s' % (newValue, param.parameter_name))
 
     def strang_RDR_step_forward(self):
+        self.idx += 1
+        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+
+        nsubsteps = int(self.config.solver['reaction_substeps'])
         # first reaction step (half time step) t=[t,t+dt/2]
-        for i in range(10):
+        for i in range(nsubsteps):
             self.boundary_reactions_forward()
         print("finished first reaction step")
 
@@ -1160,9 +1174,11 @@ class Model(object):
         self.update_solution_volume_to_boundary()
         # second reaction step (half time step) t=[t+dt/2,t+dt]
         self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
-        for i in range(10):
+        for i in range(nsubsteps):
             self.boundary_reactions_forward()
         print("finished second reaction step")
+
+        print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
 
 
     def establish_mappings(self):
@@ -1234,15 +1250,19 @@ class Model(object):
 
 
     def boundary_reactions_forward(self):
+        nsubsteps = int(self.config.solver['reaction_substeps'])
         # first reaction step
-        self.forward_time_step(factor=1/20)
+        self.forward_time_step(factor=1/(nsubsteps*2))
         self.updateTimeDependentParameters()
-        d.solve(self.a['pm']==self.L['pm'], self.u['pm']['u'])
-        self.u['pm']['n'].assign(self.u['pm']['u'])
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.parent_species:
+                comp_name = sp.compartment_name
+                d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'])
+                self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
     def diffusion_forward(self):
         self.forward_time_step()
-        self.updateTimeDependentParameters
+        self.updateTimeDependentParameters()
         d.solve(self.a['cyto']==self.L['cyto'], self.u['cyto']['u'])
         self.u['cyto']['n'].assign(self.u['cyto']['u'])
 
@@ -1257,8 +1277,25 @@ class Model(object):
             self.a[comp.name] = d.lhs(sum(split_forms[comp.name]))
             self.L[comp.name] = d.rhs(sum(split_forms[comp.name]))
 
+#===============================================================================
+#===============================================================================
+# POST-PROCESSING
+#===============================================================================
+#===============================================================================
+    def init_solver_and_plots(self):
+        self.data.initVTK(self.SD)
+        self.data.storeVTK(self.u, self.t)
+        self.data.computeStatistics(self.u, self.t, self.V, self.SD)
+        self.data.initPlot()
 
+    def update_solution(self):
+        for key in self.u.keys():
+            self.u[key]['n'].assign(self.u[key]['u'])
 
+    def plot_solution(self):
+        self.data.storeVTK(self.u, self.t)
+        self.data.computeStatistics(self.u,self.t,self.V,self.SD)
+        self.data.plotSolutions(self.config.plot)
 
 #     def init_solver(self):
 

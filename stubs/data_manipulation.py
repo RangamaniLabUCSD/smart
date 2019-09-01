@@ -49,7 +49,7 @@ class Data(object):
 
     def computeStatistics(self, u, t, V, SD):
         #for sp_name in speciesList:
-        for sp_name in SD.keys():
+        for sp_name in SD.Dict.keys():
             comp_name = self.solutions[sp_name]['comp_name']
             comp_idx = self.solutions[sp_name]['comp_idx']
 
@@ -88,28 +88,28 @@ class Data(object):
             self.plots['solutions'].add_subplot(subplotRows,subplotCols,idx+1)
 
 
-    def plotSolutions(self):
+    def plotSolutions(self, plot_settings):
         for idx, key in enumerate(self.solutions.keys()):
             soln =  self.solutions[key]
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.clear()
-            subplot.plot(soln['tvec'], soln['min'], linewidth=lwsmall, color='k')
-            subplot.plot(soln['tvec'], soln['mean'], linewidth=lwmed, color='k')
-            subplot.plot(soln['tvec'], soln['max'], linewidth=lwsmall, color='k')
+            subplot.plot(soln['tvec'], soln['min'], linewidth=plot_settings['linewidth_small'], color='k')
+            subplot.plot(soln['tvec'], soln['mean'], linewidth=plot_settings['linewidth_med'], color='k')
+            subplot.plot(soln['tvec'], soln['max'], linewidth=plot_settings['linewidth_small'], color='k')
 
             unitStr = '{:P}'.format(self.solutions[key]['concentration_units'].units)
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.title.set_text(key)# + ' [' + unitStr + ']')
-            subplot.title.set_fontsize(fsmed)
+            subplot.title.set_fontsize(plot_settings['fontsize_med'])
             #self.plots['solutions'].canvas.draw()
             #self.plots['solutions'].show()
 
         #self.plots['solutions'].tight_layout()
         for ax in self.plots['solutions'].axes:
             ax.ticklabel_format(useOffset=False)
-            plt.setp(ax.get_xticklabels(), fontsize=fssmall)
-            plt.setp(ax.get_yticklabels(), fontsize=fssmall)
-        self.plots['solutions'].savefig(self.model_parameters['figName'],dpi=300,bbox_inches='tight')
+            plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
+            plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
+        self.plots['solutions'].savefig(plot_settings['figname'],dpi=300,bbox_inches='tight')
 
     def outputPickle(self):
         saveKeys = ['tvec','min','mean','max','std']

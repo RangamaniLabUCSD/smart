@@ -53,6 +53,14 @@ class Config(object):
 
                 line = file.readline()
 
+            if 'directory' in self.model.keys():
+                model_dir = self.model['directory']
+                print("Assuming file names, loading from directory %s" % model_dir)
+                self.model['parameters'] = model_dir + 'parameters.json'
+                self.model['compartments'] = model_dir + 'compartments.json'
+                self.model['species'] = model_dir + 'species.json'
+                self.model['reactions'] = model_dir + 'reactions.json'
+
         if (all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]) 
             and self.mesh.keys()):
             print("Parameters, species, compartments, reactions, and a mesh were imported succesfully!")
