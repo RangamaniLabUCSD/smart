@@ -619,13 +619,22 @@ class Reaction(_ObjectInstance):
             self.eqn_r = parse_expr(rxnSymStr)
 
         if self.reaction_type == 'hillI':
-            rxnSymStr = parse_expr('k * u**n / (u**n + km)')
-            rxnSymStr = rxnSymStr.subs(self.paramDict)
-            rxnSymStr = rxnSymStr.subs(self.speciesDict)
-            if self.LHS:
-                self.eqn_f = rxnSymStr
-            if self.RHS:
-                self.eqn_r = rxnSymStr
+            self.custom_reaction('k * u**n / (u**n + km)')
+
+        if self.reaction_type == 'dhdt':
+            self.custom_reaction("(K1-(Ca+K1)*h)*K2")
+
+    def custom_reaction(self, symStr):
+        rxnExpr = parse_expr(symStr)
+        rxnExpr = rxnExpr.subs(self.paramDict)
+        rxnExpr = rxnExpr.subs(self.speciesDict)
+        if self.LHS:
+            self.eqn_f = rxnExpr
+        if self.RHS:
+            self.eqn_r = rxnExpr
+
+
+
 
 
 
@@ -685,9 +694,9 @@ class FluxContainer(_ObjectContainer):
                     print("flux %s tagged for removal" % flux_name)
                     #for sub_sp_name in sp.sub_species.keys():
                     for sub_sp in sp.sub_species.values():
-                        sub_sp_name = sub_sp.name
-                        f.symEqn = f.symEqn.subs({sp_name: sub_sp_name})
-                        print("subbed %s for %s" % (sp_name, sub_sp_name))
+                        if sub_sp.compartment_name in f.involved_compartments:
+                            f.symEqn = f.symEqn.subs({sp_name: sub_sp.name})
+                            print("subbed %s for %s" % (sp_name, sub_sp.name))
 
             if tagged_for_removal:
                 fluxes_to_remove.append(f)
@@ -704,7 +713,7 @@ class FluxContainer(_ObjectContainer):
                 new_species_name = SD.Dict[f.species_name].sub_species[f.source_compartment].name
 
             involved_species += [new_species_name] # add the flux species
-            parent_species = [SD.Dict[x].parent_species for x in involved_species if SD.Dict[x].parent_species]
+            species_w_parent = [SD.Dict[x] for x in involved_species if SD.Dict[x].parent_species]
         #if f.species_name not in parent_species:
 
             print("symEqn")
@@ -719,6 +728,15 @@ class FluxContainer(_ObjectContainer):
 
             new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.sign, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
             new_flux.get_additional_flux_properties(CD, config)
+
+            # get length scale factor
+            comp1 = SD.Dict[species_w_parent[0].parent_species].compartment
+            comp2 = species_w_parent[0].compartment_name
+            print(comp1.name)
+            #print(comp2)
+            length_scale_factor = comp1.scale_to[comp2]
+            print("computed length_scale_factor")
+            setattr(new_flux, 'length_scale_factor', length_scale_factor)
         
             new_flux_list.append((new_flux_name, new_flux))
             #else:
@@ -918,9 +936,43 @@ class Flux(_ObjectInstance):
         raise Exception("If you made it to this far in get_ukey() I missed some logic...") 
 
 
+    # def flux_to_dolfin(self):
+    #     value_dict = {}
+    #     unit_dict = {}
+
+    #     for var_name in [str(x) for x in self.symList]:
+    #         if var_name in self.paramDict.keys():
+    #             var = self.paramDict[var_name]
+    #             if var.is_time_dependent:
+    #                 value_dict[var_name] = var.dolfinConstant.get()
+    #             else:
+    #                 value_dict[var_name] = var.value_unit.magnitude
+    #             unit_dict[var_name] = var.value_unit.units * 1 # turns unit into "Quantity" class
+    #         elif var_name in self.spDict.keys():
+    #             var = self.spDict[var_name]
+    #             ukey = self.ukeys[var_name]
+    #             if ukey[0] == 'b':
+    #                 if not var.parent_species:
+    #                     sub_species = var.sub_species[self.destination_compartment]
+    #                     value_dict[var_name] = sub_species.u[ukey[1]]
+    #                     print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
+    #                 else:
+    #                     value_dict[var_name] = var.u[ukey[1]]
+    #             else:
+    #                 value_dict[var_name] = var.u[ukey]
+
+    #             unit_dict[var_name] = var.concentration_units * 1
+
+    #     prod = self.lambdaEqn(**value_dict)
+    #     unit_prod = self.lambdaEqn(**unit_dict)
+    #     unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
+
+    #     self.prod = prod
+    #     self.unit_prod = unit_prod
+
+
     def flux_to_dolfin(self):
         value_dict = {}
-        unit_dict = {}
 
         for var_name in [str(x) for x in self.symList]:
             if var_name in self.paramDict.keys():
@@ -928,8 +980,7 @@ class Flux(_ObjectInstance):
                 if var.is_time_dependent:
                     value_dict[var_name] = var.dolfinConstant.get()
                 else:
-                    value_dict[var_name] = var.value_unit.magnitude
-                unit_dict[var_name] = var.value_unit.units * 1 # turns unit into "Quantity" class
+                    value_dict[var_name] = var.value_unit
             elif var_name in self.spDict.keys():
                 var = self.spDict[var_name]
                 ukey = self.ukeys[var_name]
@@ -943,16 +994,16 @@ class Flux(_ObjectInstance):
                 else:
                     value_dict[var_name] = var.u[ukey]
 
-                unit_dict[var_name] = var.concentration_units * 1
+                value_dict[var_name] = var.concentration_units * 1
 
-        prod = self.lambdaEqn(**value_dict)
-        unit_prod = self.lambdaEqn(**unit_dict)
-        unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
+        eqn_eval = self.lambdaEqn(**value_dict)
+        prod = eqn_eval.magnitude
+        unit_prod = 1 * (1*eqn_eval.units).units
+        #unit_prod = self.lambdaEqn(**unit_dict)
+        #unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
 
         self.prod = prod
         self.unit_prod = unit_prod
-
-
 
 
 
@@ -1010,9 +1061,13 @@ class Model(object):
                 print(j.flux_units)
                 print(j.name)
                 print(j.species_name)
-                print('Adjusting flux between compartments %s and %s by length scale factor to ensure consistency' \
-                      % tuple(j.involved_compartments.keys()))
-                length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
+                if hasattr(j, 'length_scale_factor'):
+                    print("Adjusting flux by given length scale factor.")
+                    length_scale_factor = getattr(j, 'length_scale_factor')
+                else:
+                    print('Adjusting flux between compartments %s and %s by length scale factor to ensure consistency' \
+                          % tuple(j.involved_compartments.keys()))
+                    length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
                 if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
                     print('Debug marker 1')
                     prod *= length_scale_factor.magnitude
