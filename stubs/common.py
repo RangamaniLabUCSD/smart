@@ -42,8 +42,11 @@ def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, submesh_species_index=0
     https://fenicsproject.org/qa/6810/vertex-mapping-from-submesh-boundarymesh-back-actual-mesh/
     """
     idx = submesh_dof_to_vertex(Vsubmesh, submesh_species_index, index)
+    print(max(idx))
     idx = submesh_to_bmesh(submesh, idx)
+    print(max(idx))
     idx = bmesh_to_parent(bmesh, idx)
+    print(max(idx))
     idx = mesh_vertex_to_dof(V, mesh_species_index, idx)
     return idx
 
@@ -68,6 +71,7 @@ def submesh_to_bmesh(submesh, index):
     return submesh_to_bmesh_vertex[index]
 
 def bmesh_to_parent(bmesh, index):
+    print('bmesh max: %d' % max(bmesh.entity_map(0).array()))
     return bmesh.entity_map(0).array()[index]
 
 def mesh_vertex_to_dof(V, species_index, index):
@@ -79,5 +83,16 @@ def mesh_vertex_to_dof(V, species_index, index):
     mapping = mapping[range(species_index, len(mapping), num_species)]
 
     #return mapping[index]
+    for x in index:
+        if x>10000000:
+            print('idx = %d' % x)
+
+    f = open('test1.txt', 'a')
+    f.write('\n>>>\n')
+    for x in index:
+        f.write(str(x) + ', ')
+    f.write('\n<<<\n')
+    f.close()
+
     return [mapping[x] for x in index]
    

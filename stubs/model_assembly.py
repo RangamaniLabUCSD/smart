@@ -4,8 +4,11 @@ from collections import defaultdict as ddict
 from termcolor import colored
 import pandas as pd
 import dolfin as d
+
 import sympy
 from sympy.parsing.sympy_parser import parse_expr
+from sympy import Heaviside
+
 import pint
 from pprint import pprint
 from tabulate import tabulate
@@ -295,7 +298,7 @@ class Parameter(_ObjectInstance):
 class SpeciesContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Species, df, Dict)
-        self.propertyList = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'sub_species', 'group']
+        self.propertyList = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
     def assemble_compartment_indices(self, RD, CD):
         """
@@ -446,6 +449,7 @@ class CompartmentContainer(_ObjectContainer):
                 obj.mesh = submesh
                 if save_to_file:
                     save_str = 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml'
+                    save_str = 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.pvd'
                     d.File(save_str) << submesh
             # integration measures
             if obj.dimensionality==main_mesh.dimensionality:
@@ -495,7 +499,8 @@ class Compartment(_ObjectInstance):
 class ReactionContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Reaction, df, Dict)
-        self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
+        #self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
+        self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'reaction_type']
 
     def get_species_compartment_counts(self, SD, CD):
         self.doToAll('get_involved_species_and_compartments', {"SD": SD})
@@ -613,10 +618,17 @@ class Reaction(_ObjectInstance):
                 rxnSymStr += '*' + sp_name
             self.eqn_f = parse_expr(rxnSymStr)
 
+            print(self.name)
             rxnSymStr = self.paramDict['off']
             for sp_name in self.RHS:
                 rxnSymStr += '*' + sp_name
             self.eqn_r = parse_expr(rxnSymStr)
+
+        if self.reaction_type == 'mass_action_forward':
+            rxnSymStr = self.paramDict['on']
+            for sp_name in self.LHS:
+                rxnSymStr += '*' + sp_name
+            self.eqn_f = parse_expr(rxnSymStr)
 
         if self.reaction_type == 'hillI':
             self.custom_reaction('k * u**n / (u**n + km)')
@@ -679,10 +691,12 @@ class Reaction(_ObjectInstance):
 class FluxContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Flux, df, Dict)
-        self.propertyList = ['species_name', 'symEqn', 'sign', 'involved_species',
-                             'involved_parameters', 'source_compartment', 
-                             'destination_compartment', 'ukeys', 'group']
+        # self.propertyList = ['species_name', 'symEqn', 'sign', 'involved_species',
+        #                      'involved_parameters', 'source_compartment', 
+        #                      'destination_compartment', 'ukeys', 'group']
 
+        self.propertyList = ['species_name', 'symEqn', 'sign', 'source_compartment',
+                             'destination_compartment', 'ukeys']
     def check_and_replace_sub_species(self, SD, CD, config):
         fluxes_to_remove = []
         for flux_name, f in self.Dict.items():
@@ -765,7 +779,7 @@ class Flux(_ObjectInstance):
         self.explicit_restriction_to_domain = explicit_restriction_to_domain
 
         self.symList = [str(x) for x in symEqn.free_symbols]
-        self.lambdaEqn = sympy.lambdify(self.symList, self.symEqn)
+        self.lambdaEqn = sympy.lambdify(self.symList, self.symEqn, modules=['sympy'])
         self.involved_species = list(spDict.keys())
         self.involved_parameters = list(paramDict.keys())
 
@@ -978,7 +992,9 @@ class Flux(_ObjectInstance):
             if var_name in self.paramDict.keys():
                 var = self.paramDict[var_name]
                 if var.is_time_dependent:
-                    value_dict[var_name] = var.dolfinConstant.get()
+                    print(var.unit)
+                    print(type(var.unit))
+                    value_dict[var_name] = var.dolfinConstant * var.unit
                 else:
                     value_dict[var_name] = var.value_unit
             elif var_name in self.spDict.keys():
@@ -994,7 +1010,7 @@ class Flux(_ObjectInstance):
                 else:
                     value_dict[var_name] = var.u[ukey]
 
-                value_dict[var_name] = var.concentration_units * 1
+                value_dict[var_name] *= var.concentration_units * 1
 
         eqn_eval = self.lambdaEqn(**value_dict)
         prod = eqn_eval.magnitude
@@ -1065,6 +1081,12 @@ class Model(object):
                     print("Adjusting flux by given length scale factor.")
                     length_scale_factor = getattr(j, 'length_scale_factor')
                 else:
+                    if len(j.involved_compartments.keys()) < 2:
+                        print("Units of flux: %s" % unit_prod)
+                        print("Desired units: %s" % j.flux_units)
+                        raise Exception("Flux %s seems to be a boundary flux (or has inconsistent units) but only has one compartment, %s." 
+                            % (j.name, j.destination_compartment))
+
                     print('Adjusting flux between compartments %s and %s by length scale factor to ensure consistency' \
                           % tuple(j.involved_compartments.keys()))
                     length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
@@ -1177,7 +1199,7 @@ class Model(object):
         self.t = float(self.t+self.dt*factor)
         self.T.assign(self.t)
 
-        print("t: %f , dt: %f" % (self.t, self.dt*factor))
+        #print("t: %f , dt: %f" % (self.t, self.dt*factor))
 
     def stopwatch(self, key, stop=False):
         if key not in self.timers.keys():
@@ -1202,8 +1224,8 @@ class Model(object):
         for param_name, param in self.PD.Dict.items():
             if param.is_time_dependent:
                 newValue = param.symExpr.subs({'t': t}).evalf()
-                param.dolfinConstant.get().assign(newValue)
-                print('%f assigned to time-dependent parameter %s' % (newValue, param.parameter_name))
+                param.dolfinConstant.assign(newValue)
+                print('%f assigned to time-dependent parameter %s' % (newValue, param.name))
 
     def strang_RDR_step_forward(self):
         self.idx += 1
@@ -1211,27 +1233,26 @@ class Model(object):
 
         nsubsteps = int(self.config.solver['reaction_substeps'])
         # first reaction step (half time step) t=[t,t+dt/2]
-        for i in range(nsubsteps):
-            self.boundary_reactions_forward()
-        print("finished first reaction step")
+        self.boundary_reactions_forward()
+        print("finished first reaction step: t = %f, dt = %f" % (self.t, self.dt))
 
         # diffusion step (full time step) t=[t,t+dt]
         self.set_time(self.t-self.dt/2, self.dt) # reset time back to t
-        self.updateTimeDependentParameters
-
+        self.updateTimeDependentParameters()
         # transfer values of solution onto volumetric field
         self.update_solution_boundary_to_volume()
 
         self.diffusion_forward() 
         #self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
-        print("finished diffusion step")
+        print("finished diffusion step: t = %f, dt = %f" % (self.t, self.dt))
 
-        self.update_solution_volume_to_boundary()
         # second reaction step (half time step) t=[t+dt/2,t+dt]
         self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
-        for i in range(nsubsteps):
-            self.boundary_reactions_forward()
-        print("finished second reaction step")
+
+        self.update_solution_volume_to_boundary()
+        self.boundary_reactions_forward()
+        self.update_solution_boundary_to_volume()
+        print("finished second reaction step: t = %f, dt = %f" % (self.t, self.dt))
 
         print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
 
@@ -1245,6 +1266,15 @@ class Model(object):
                 V = self.V[sp_parent.compartment_name]
                 submesh_species_index = sp.compartment_index
                 mesh_species_index = sp_parent.compartment_index
+
+                #debugging
+                print(sp_parent.name)
+                print(Vsub)
+                print(submesh)
+                print(V)
+                print(submesh_species_index)
+                print(mesh_species_index)
+
 
                 idx = common.submesh_dof_to_mesh_dof(Vsub, submesh, self.CD.bmesh, V,
                                                      submesh_species_index=submesh_species_index,
@@ -1307,19 +1337,50 @@ class Model(object):
     def boundary_reactions_forward(self):
         nsubsteps = int(self.config.solver['reaction_substeps'])
         # first reaction step
-        self.forward_time_step(factor=1/(nsubsteps*2))
-        self.updateTimeDependentParameters()
-        for sp_name, sp in self.SD.Dict.items():
-            if sp.parent_species:
-                comp_name = sp.compartment_name
-                d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'])
-                self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#        for sp_name, sp in self.SD.Dict.items():
+#            if sp.parent_species:
+#                comp_name = sp.compartment_name
+#                d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'])
+#                self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#                TODO: add picard iterations here?
+        for n in range(nsubsteps):
+            self.forward_time_step(factor=1/(nsubsteps*2))
+            self.updateTimeDependentParameters()
+            for comp_name, comp in self.CD.Dict.items():
+                if comp.dimensionality < self.CD.max_dim:
+                    self.picard_loop(comp_name)
+                    d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear)
+                    self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
 
     def diffusion_forward(self):
         self.forward_time_step()
         self.updateTimeDependentParameters()
-        d.solve(self.a['cyto']==self.L['cyto'], self.u['cyto']['u'])
+        self.picard_loop('cyto')
+        d.solve(self.a['cyto']==self.L['cyto'], self.u['cyto']['u'], solver_parameters=self.config.dolfin_linear)
         self.u['cyto']['n'].assign(self.u['cyto']['u'])
+
+    def picard_loop(self, comp_name):
+        exit_loop = False
+        pidx = 0
+        while True:
+            pidx += 1
+        #while pidx<=self.config.solver['max_picard']:
+            d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear)
+            self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+            self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+
+
+            #print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf'][-1]))
+            if self.data.errors[comp_name]['Linf'][-1] < self.config.solver['linear_abstol']:
+                #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
+                 #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
+                break
+
+            if pidx > self.config.solver['max_picard']:
+                print("Max number of picard iterations reached, exiting picard loop.")
+                break
+
 
 
     def get_lhs_rhs(self):
@@ -1327,10 +1388,15 @@ class Model(object):
         comp_list = [self.CD.Dict[key] for key in self.u.keys()]
         split_forms = {}
 
-        for comp in comp_list:
-            split_forms[comp.name] = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-            self.a[comp.name] = d.lhs(sum(split_forms[comp.name]))
-            self.L[comp.name] = d.rhs(sum(split_forms[comp.name]))
+        if self.config.solver['nonlinear'] == 'picard':
+            print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+            for comp in comp_list:
+                split_forms[comp.name] = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.a[comp.name] = d.lhs(sum(split_forms[comp.name]))
+                self.L[comp.name] = d.rhs(sum(split_forms[comp.name]))
+        elif self.config.solver['nonlinear'] == 'newton':
+            print("Formulating problem as F(u;v) == 0 for newton iterations")
+            self.F[comp.name] = sum(split_forms[comp.name])
 
 #===============================================================================
 #===============================================================================

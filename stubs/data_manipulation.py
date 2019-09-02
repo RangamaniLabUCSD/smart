@@ -67,17 +67,18 @@ class Data(object):
             else:
                 self.solutions[sp_name]['tvec'].append(t)
 
-    def computeError(self, u, comp_name, errorNormKeys):
+    def computeError(self, u, comp_name, errorNormKey):
         errorNormDict = {'L2': 2, 'Linf': np.Inf}
         if comp_name not in self.errors.keys():
             self.errors[comp_name] = {}
-        for key in errorNormKeys:
-            if key not in self.errors[comp_name].keys():
-                self.errors[comp_name][key] = [np.linalg.norm(u[comp_name]['u'].vector().get_local()
-                                        - u[comp_name]['k'].vector().get_local(), ord=errorNormDict[key])]
-            else:
-                self.errors[comp_name][key].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
-                                        - u[comp_name]['k'].vector().get_local(), ord=errorNormDict[key]))
+        #for key in errorNormKeys:
+        error_norm = errorNormDict[errorNormKey]
+        if errorNormKey not in self.errors[comp_name].keys():
+            self.errors[comp_name][errorNormKey] = [np.linalg.norm(u[comp_name]['u'].vector().get_local()
+                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm)]
+        else:
+            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
+                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
     def initPlot(self):
         # NOTE: for now plots are individual; add an option to group species into subplots by category

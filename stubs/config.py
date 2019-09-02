@@ -19,11 +19,17 @@ class Config(object):
         self.model = {}
         self.settings = {}
         self.solver = {}
+        self.dolfin_linear = {}
         self.mesh = {}
         self.directory = {}
         self.plot = {}
 
         self._parse_file()
+
+        if 'linear_solver' in self.solver.keys():
+            self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
+        if 'preconditioner' in self.solver.keys():
+            self.dolfin_linear['preconditioner'] = self.solver['preconditioner']
 
     def _parse_line(self,line):
         for key, regex in self._regex_dict.items():
@@ -77,6 +83,7 @@ class Config(object):
         RD = self._json_to_ObjectContainer(self.model['reactions'], 'reactions')
 
         # parameter/unit assembly
+        PD.doToAll('assemble_units', {'unit_name': 'unit'})
         PD.doToAll('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
         PD.doToAll('assembleTimeDependentParameters')
         SD.doToAll('assemble_units', {'unit_name': 'concentration_units'})
@@ -112,7 +119,7 @@ class Config(object):
         SD.assign_initial_conditions()
 
         RD.reaction_to_fluxes()
-        RD.doToAll('reaction_to_fluxes')
+        #RD.doToAll('reaction_to_fluxes')
         FD = RD.get_flux_container()
         FD.doToAll('get_additional_flux_properties', {"CD": CD, "config": self})
         FD.check_and_replace_sub_species(SD, CD, self)
