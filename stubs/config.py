@@ -12,17 +12,20 @@ class Config(object):
         self.config_file = config_file
         self._regex_dict = {
             'comment': re.compile(r'\#.*\n'),
-            'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|\/]\S*)'),
-            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>\d\S*)')
+            #'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|\/]\S*)'),
+            'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|()\/]\S*)'),
+            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e-]\S*)')
             }
 
         self.model = {}
         self.settings = {}
         self.solver = {}
         self.dolfin_linear = {}
+        self.dolfin_linear_coarse = {}
         self.mesh = {}
         self.directory = {}
         self.plot = {}
+        self.reaction_database = {}
 
         self._parse_file()
 
@@ -30,6 +33,12 @@ class Config(object):
             self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
         if 'preconditioner' in self.solver.keys():
             self.dolfin_linear['preconditioner'] = self.solver['preconditioner']
+        if 'coarse_linear_solver' in self.solver.keys():
+            self.dolfin_linear_coarse['linear_solver'] = self.solver['coarse_linear_solver']
+        if 'coarse_preconditioner' in self.solver.keys():
+            self.dolfin_linear_coarse['preconditioner'] = self.solver['coarse_preconditioner']
+
+        self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
 
     def _parse_line(self,line):
         for key, regex in self._regex_dict.items():
@@ -89,7 +98,8 @@ class Config(object):
         SD.doToAll('assemble_units', {'unit_name': 'concentration_units'})
         SD.doToAll('assemble_units', {'unit_name': 'D_units'})
         CD.doToAll('assemble_units', {'unit_name':'compartment_units'})
-        RD.doToAll('initialize_flux_equations_for_known_reactions')
+        RD.doToAll('initialize_flux_equations_for_known_reactions', {"reaction_database": self.reaction_database})
+
 
         # linking containers with one another
         RD.link_object(PD,'paramDict','name','paramDictValues', value_is_key=True)

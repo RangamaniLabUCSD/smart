@@ -33,7 +33,7 @@ def nan_to_none(df):
 
 
 
-def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, submesh_species_index=0, mesh_species_index=0, index=None):
+def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh_emap_0, V, submesh_species_index=0, mesh_species_index=0, index=None):
     """
     Takes dof indices (single index or a list) on a submesh of a boundarymesh of a mesh and returns
     the dof indices of the original mesh.
@@ -42,11 +42,8 @@ def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh, V, submesh_species_index=0
     https://fenicsproject.org/qa/6810/vertex-mapping-from-submesh-boundarymesh-back-actual-mesh/
     """
     idx = submesh_dof_to_vertex(Vsubmesh, submesh_species_index, index)
-    print(max(idx))
     idx = submesh_to_bmesh(submesh, idx)
-    print(max(idx))
-    idx = bmesh_to_parent(bmesh, idx)
-    print(max(idx))
+    idx = bmesh_to_parent(bmesh_emap_0, idx)
     idx = mesh_vertex_to_dof(V, mesh_species_index, idx)
     return idx
 
@@ -70,9 +67,10 @@ def submesh_to_bmesh(submesh, index):
     submesh_to_bmesh_vertex = submesh.data().array("parent_vertex_indices", 0)
     return submesh_to_bmesh_vertex[index]
 
-def bmesh_to_parent(bmesh, index):
-    print('bmesh max: %d' % max(bmesh.entity_map(0).array()))
-    return bmesh.entity_map(0).array()[index]
+def bmesh_to_parent(bmesh_emap_0, index):
+    if bmesh_emap_0.max() > 1e9: # unless the mesh has 1e9 vertices this is a sign of an error
+        raise Exception("Error in bmesh_emap.")
+    return bmesh_emap_0[index]
 
 def mesh_vertex_to_dof(V, species_index, index):
     num_species = V.num_sub_spaces()
@@ -81,18 +79,6 @@ def mesh_vertex_to_dof(V, species_index, index):
     mapping = d.vertex_to_dof_map(V)
 
     mapping = mapping[range(species_index, len(mapping), num_species)]
-
-    #return mapping[index]
-    for x in index:
-        if x>10000000:
-            print('idx = %d' % x)
-
-    f = open('test1.txt', 'a')
-    f.write('\n>>>\n')
-    for x in index:
-        f.write(str(x) + ', ')
-    f.write('\n<<<\n')
-    f.close()
 
     return [mapping[x] for x in index]
    
