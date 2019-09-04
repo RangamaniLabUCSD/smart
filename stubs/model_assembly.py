@@ -1273,7 +1273,7 @@ class Model(object):
         self.stopwatch('diffusion_fullstep')
         self.diffusion_forward(bcs = bcs) 
         #self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
-        print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        print("finished diffusion step: t = %f, dt = %f" % (self.t, self.dt))
         self.stopwatch('diffusion_fullstep', stop=True)
 
         # second reaction step (half time step) t=[t+dt/2,t+dt]
@@ -1296,12 +1296,12 @@ class Model(object):
         #print("finished second reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
         print("finished second reaction step: t = %f, dt = %f" % (self.t, self.dt))
 
-        if self.pidx >= self.config.solver['max_picard']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
-            print("Decreasing step size")
-        if self.pidx < self.config.solver['min_picard']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
-            print("Increasing step size")
+        #if self.pidx >= self.config.solver['max_picard']:
+        #    self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+        #    print("Decreasing step size")
+        #if self.pidx < self.config.solver['min_picard']:
+        #    self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+        #    print("Increasing step size")
 
         print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
 
@@ -1602,7 +1602,7 @@ class Model(object):
                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
                 p = self.nonlinear_solver[comp.name].parameters
-                p['newton_solver'].update(self.config.dolfin_linear)
+                p['newton_solver'].update(self.config.dolfin_linear_coarse)
 
 #===============================================================================
 #===============================================================================
