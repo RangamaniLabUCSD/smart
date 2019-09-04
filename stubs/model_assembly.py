@@ -1251,8 +1251,12 @@ class Model(object):
 
         # first reaction step (half time step) t=[t,t+dt/2]
         self.stopwatch('reaction_halfstep_1')
-        self.boundary_reactions_forward(factor=0.5)
-        print("finished first reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        #self.boundary_reactions_forward(factor=0.5)
+        self.boundary_reactions_forward_scipy('pm', factor=0.5)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
+        #print("finished first reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        print("finished first reaction step: t = %f, dt = %f" % (self.t, self.dt))
         self.stopwatch('reaction_halfstep_1', stop=True)
 
         # diffusion step (full time step) t=[t,t+dt]
@@ -1278,12 +1282,19 @@ class Model(object):
         self.stopwatch('vol_to_boundary_interp')
         self.update_solution_volume_to_boundary()
         self.stopwatch('vol_to_boundary_interp', stop=True)
-        self.boundary_reactions_forward(factor=0.5)
+        #self.boundary_reactions_forward(factor=0.5)
+        self.stopwatch('reaction_halfstep_1')
+        self.boundary_reactions_forward_scipy('pm', factor=0.5)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
+        print("finished second reaction step: t = %f, dt = %f" % (self.t, self.dt))
+        self.stopwatch('reaction_halfstep_2', stop=True)
         #self.update_solution_boundary_to_volume()
         #bcs = self.update_solution_boundary_to_volume_dirichlet()
 
 
-        print("finished second reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        #print("finished second reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        print("finished second reaction step: t = %f, dt = %f" % (self.t, self.dt))
 
         if self.pidx >= self.config.solver['max_picard']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
@@ -1384,7 +1395,7 @@ class Model(object):
 
                     unew = self.u[pcomp_name]['u'].vector()[idx]
 
-                    #data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
+                    data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
                     data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['n'], unew, self.V[comp_name], submesh_species_index)
                     print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
 
@@ -1442,14 +1453,35 @@ class Model(object):
                         self.newton_iter(comp_name)
                     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
-    TODO
-#    def boundary_reactions_forward_scipy(self, factor=1):
-#        self.forward_time_step(factor=factor)
-#        self.
-#
-#        comp_name = 'pm'
-#        self.u
-#
+
+    def boundary_reactions_forward_scipy(self, comp_name, factor=1, all_dofs=False):
+        #self.forward_time_step(factor=factor)
+        #self.
+        point = (0,0,0)
+
+        lode, ptuple, tparam = self.flux_to_scipy(comp_name)
+        if all_dofs:
+            nspecies = self.CD.Dict[comp_name].num_species
+            for idx in range(self.CD.meshes[comp_name].num_vertices()):
+                dof_idx_0 = common.mesh_vertex_to_dof(self.V[comp_name], 0, [idx])[0]
+                idx_range = range(dof_idx_0,dof_idx_0+nspecies)
+                init_val = self.u[comp_name]['u'].vector()[idx_range]
+                sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], init_val, method='BDF')
+
+                # assign solution
+                self.u[comp_name]['u'].vector()[idx_range] = sol.y[:,-1]
+
+        else:
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
+            for idx, val in enumerate(sol.y[:,-1]):
+                data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, self.V[comp_name], idx) 
+        
+
+        self.forward_time_step(factor=factor)
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        print("finished boundary_reactions_forward_scipy")
+
+
 
     def diffusion_forward(self, factor=1, bcs=[]):
         self.forward_time_step(factor=factor)
@@ -1496,6 +1528,7 @@ class Model(object):
     def flux_to_scipy(self, comp_name):
         dudt = []
         param_list = []
+        time_param_list = []
         species_list = list(self.SD.Dict.values())
         species_list = [s for s in species_list if s.compartment_name==comp_name]
         species_list.sort(key = lambda s: s.compartment_index)
@@ -1508,24 +1541,36 @@ class Model(object):
         for idx in range(num_species):
             sp_fluxes = [f.total_scaling*f.sign*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
             total_flux = sum(sp_fluxes)
-
             dudt.append(total_flux)
-            param_list.extend([str(x) for x in total_flux.free_symbols if str(x) in self.PD.Dict.keys()])
-            param_list = list(set(param_list))
+
+            if total_flux:
+                for psym in total_flux.free_symbols:
+                    pname = str(psym)
+                    if pname in self.PD.Dict.keys():
+                        p = self.PD.Dict[pname]
+                        if p.is_time_dependent:
+                            time_param_list.append(p)
+                        else:
+                            param_list.append(pname)
+        
+        param_list = list(set(param_list))
+        time_param_list = list(set(time_param_list))
 
         ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
+        time_param_lambda = [lambdify('t', p.symExpr) for p in time_param_list]
+        time_param_name_list = [p.name for p in time_param_list]
         #Params = namedtuple('Params', param_list)
 
-        dudt_lambda = [lambdify(flatten(spname_list+param_list), total_flux) for total_flux in dudt]
+        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list), total_flux) for total_flux in dudt]
 
 
-        def lambdified_odes(t, u, p):
-            inp = flatten([u,p])
+        def lambdified_odes(t, u, p, time_p):
+            time_p_eval = [f(t) for f in time_p]
+            inp = flatten([u,p,time_p_eval])
             return [f(*inp) for f in dudt_lambda]
 
-        return lambdified_odes, ptuple
+        return lambdified_odes, ptuple, time_param_lambda
 
-#solve_ivp(lambda t,y: lambdified_odes(t,y,p), [0,1], np.zeros(17))
 
 
 
