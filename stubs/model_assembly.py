@@ -1192,13 +1192,15 @@ class Model(object):
 #===============================================================================
     def set_time(self, t, dt=None):
         if not dt:
-            self.dt = dt
-            self.dT.assign(dt) 
+            dt = self.dt
+        else:
+            print("dt changed from %f to %f" % (self.dt, dt))
         self.t = t
         self.T.assign(t)
+        self.dt = dt
+        self.dT.assign(dt) 
 
         print("New time: %f" % self.t)
-        print("New dt: %f" % self.dt)
 
     def forward_time_step(self, factor=1):
         self.dT.assign(float(self.dt*factor))
@@ -1214,8 +1216,9 @@ class Model(object):
             self.timers[key].start()
         else:
             elapsed_time = self.timers[key].elapsed()[0]
+            print("%s finished in %f seconds" % (key,elapsed_time))
             self.timers[key].stop()
-            self.timings[key].append()
+            self.timings[key].append(elapsed_time)
             return elapsed_time
 
 #    def solver_step_forward(self):
@@ -1238,36 +1241,46 @@ class Model(object):
         print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
+        self.stopwatch('reaction_halfstep_1')
         self.boundary_reactions_forward(factor=0.5)
         print("finished first reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        self.stopwatch('reaction_halfstep_1', stop=True)
 
         # diffusion step (full time step) t=[t,t+dt]
-        self.set_time(self.t-self.dt/2, self.dt) # reset time back to t
+        self.stopwatch('boundary_to_vol_interp')
+        self.set_time(self.t-self.dt/2) # reset time back to t
         self.updateTimeDependentParameters()
 #        # transfer values of solution onto volumetric field
 #        self.update_solution_boundary_to_volume()
-        bcs = self.update_solution_boundary_to_volume_dirichlet()
+        #bcs = self.update_solution_boundary_to_volume_dirichlet()
+        self.update_solution_boundary_to_volume()
+        bcs = []
+        self.stopwatch('boundary_to_vol_interp', stop=True)
 
+        self.stopwatch('diffusion_fullstep')
         self.diffusion_forward(bcs = bcs) 
         #self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
         print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        self.stopwatch('diffusion_fullstep', stop=True)
 
         # second reaction step (half time step) t=[t+dt/2,t+dt]
-        self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
 
+        self.stopwatch('vol_to_boundary_interp')
         self.update_solution_volume_to_boundary()
+        self.stopwatch('vol_to_boundary_interp', stop=True)
         self.boundary_reactions_forward(factor=0.5)
         #self.update_solution_boundary_to_volume()
-        bcs = self.update_solution_boundary_to_volume_dirichlet()
+        #bcs = self.update_solution_boundary_to_volume_dirichlet()
 
 
         print("finished second reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
 
         if self.pidx >= self.config.solver['max_picard']:
-            self.set_time(self.t, self.dt*self.config.solver['dt_decrease_factor'])
-            print("Decrease step size")
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+            print("Decreasing step size")
         if self.pidx < self.config.solver['min_picard']:
-            self.set_time(self.t, self.dt*self.config.solver['dt_increase_factor'])
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
             print("Increasing step size")
 
         print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
@@ -1288,10 +1301,10 @@ class Model(object):
         self.update_solution_volume_to_boundary()
 
         if self.pidx >= self.config.solver['max_picard']:
-            self.set_time(self.t, self.dt*self.config.solver['dt_decrease_factor'])
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
             print("Decrease step size")
         if self.pidx < self.config.solver['min_picard']:
-            self.set_time(self.t, self.dt*self.config.solver['dt_increase_factor'])
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
             print("Increasing step size")
 
         print("\n Finished step %d of RD with final time: %f" % (self.idx, self.t))
@@ -1345,7 +1358,7 @@ class Model(object):
                 pcomp_name = sp_parent.compartment_name
                 comp_name = sp.compartment_name
 
-                self.u[pcomp_name]['u'].vector()[idx] = \
+                self.u[pcomp_name]['n'].vector()[idx] = \
                     data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
 
                 print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
@@ -1362,7 +1375,8 @@ class Model(object):
 
                     unew = self.u[pcomp_name]['u'].vector()[idx]
 
-                    data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
+                    #data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
+                    data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['n'], unew, self.V[comp_name], submesh_species_index)
                     print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
 
     def update_solution_boundary_to_volume_dirichlet(self):
@@ -1376,13 +1390,23 @@ class Model(object):
                 pcomp_name = sp_parent.compartment_name
                 comp_name = sp.compartment_name
 
+                self.stopwatch("split")
                 ub = self.u[comp_name]['u'].split()[submesh_species_index]
+                self.stopwatch("split", stop=True)
+                self.stopwatch("extrapolate")
                 ub.set_allow_extrapolation(True)
+                self.stopwatch("extrapolate", stop=True)
+                self.stopwatch("Vs")
                 Vs = self.V[pcomp_name].sub(parent_species_index)
+                self.stopwatch("Vs", stop=True)
                 print('pcomp_name %s, parent_species_index %d' % (pcomp_name, parent_species_index))
+                self.stopwatch("interpolate")
                 u_dirichlet = d.interpolate(ub, Vs.collapse())
+                self.stopwatch("interpolate",stop=True)
 
+                self.stopwatch("DirichletBC")
                 bcs.append(d.DirichletBC(Vs, u_dirichlet, self.CD.vmf, sp.compartment.cell_marker))
+                self.stopwatch("DirichletBC", stop=True)
 
                 print("Assigned values from %s (%s) to %s (%s) [DirichletBC]" % (sp_name, comp_name, sp_parent.name, pcomp_name))
         self.bcs=bcs
@@ -1450,19 +1474,25 @@ class Model(object):
                 linear_solver_settings = self.config.dolfin_linear
             
             d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+            #print('u (%s) mean: %f' % (comp_name, self.u[comp_name]['u'].compute_vertex_values().mean()))
             self.data.computeError(self.u, comp_name, self.config.solver['norm'])
             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
 
-            #print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf'][-1]))
-            if self.data.errors[comp_name]['Linf'][-1] < self.config.solver['linear_abstol']:
+
+            print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['linear_abstol']:
                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
                 break
+#            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
+#                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
+#                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
+#                break
 
             if self.pidx > self.config.solver['max_picard']:
                 print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
-                    (comp_name, self.data.errors[comp_name]['Linf'][-1]))
+                    (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
                 break
 
     def newton_iter(self, comp_name):

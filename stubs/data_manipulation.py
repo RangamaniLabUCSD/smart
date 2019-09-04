@@ -73,12 +73,26 @@ class Data(object):
             self.errors[comp_name] = {}
         #for key in errorNormKeys:
         error_norm = errorNormDict[errorNormKey]
+        u_u = u[comp_name]['u'].vector().get_local()
+        u_k = u[comp_name]['k'].vector().get_local()
+        u_n = u[comp_name]['n'].vector().get_local()
+        abs_err = np.linalg.norm(u_u - u_k, ord=error_norm)
+        #rel_err = np.linalg.norm((u_u - u_k)/u_n, ord=error_norm)
+        rel_err = 1.0
+       
         if errorNormKey not in self.errors[comp_name].keys():
-            self.errors[comp_name][errorNormKey] = [np.linalg.norm(u[comp_name]['u'].vector().get_local()
-                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm)]
-        else:
-            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
-                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
+            self.errors[comp_name][errorNormKey] = {'rel': [], 'abs': []}
+        #     self.errors[comp_name][errorNormKey]['abs'] = [abs_err]
+        #     self.errors[comp_name][errorNormKey]['rel'] = [rel_err]
+        # else:
+        #     self.errors[comp_name][errorNormKey]['abs'].append(abs_err)
+        #     self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
+
+        self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
+        self.errors[comp_name][errorNormKey]['abs'].append(abs_err)
+
+#            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
+#                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
     def initPlot(self):
         # NOTE: for now plots are individual; add an option to group species into subplots by category
@@ -110,7 +124,7 @@ class Data(object):
             ax.ticklabel_format(useOffset=False)
             plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
             plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
-        self.plots['solutions'].savefig(plot_settings['figname'],dpi=300,bbox_inches='tight')
+        self.plots['solutions'].savefig(plot_settings['figname'], figsize=(24,24),dpi=300,bbox_inches='tight')
 
     def outputPickle(self):
         saveKeys = ['tvec','min','mean','max','std']
