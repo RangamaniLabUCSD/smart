@@ -7,7 +7,10 @@ import dolfin as d
 
 import sympy
 from sympy.parsing.sympy_parser import parse_expr
-from sympy import Heaviside
+from sympy import Heaviside, lambdify
+from sympy.utilities.iterables import flatten
+
+from scipy.integrate import solve_ivp
 
 import pint
 from pprint import pprint
@@ -1071,6 +1074,7 @@ class Model(object):
         Creates the actual dolfin objects for each flux. Checks units for consistency
         """
         for j in self.FD.Dict.values():
+            total_scaling = 1.0 # all adjustments needed to get congruent units
             sp = j.spDict[j.species_name]
             prod = j.prod
             unit_prod = j.unit_prod
@@ -1099,11 +1103,13 @@ class Model(object):
                 if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
                     print('Debug marker 1')
                     prod *= length_scale_factor.magnitude
+                    total_scaling *= length_scale_factor.magnitude
                     unit_prod *= length_scale_factor.units*1
                     setattr(j, 'length_scale_factor', length_scale_factor)
                 elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
                     print('Debug marker 2')
                     prod /= length_scale_factor.magnitude
+                    total_scaling /= length_scale_factor.magnitude
                     unit_prod /= length_scale_factor.units*1
                     setattr(j, 'length_scale_factor', 1/length_scale_factor)
                 else:
@@ -1114,11 +1120,14 @@ class Model(object):
                 print(('\nThe flux, %s, has units '%j.flux_name + colored(unit_prod, "red") +
                     "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
                 unit_scaling = unit_prod.to(j.flux_units).magnitude
+                total_scaling *= unit_scaling
                 prod *= unit_scaling
                 print('Adjusted value of flux by ' + colored("%f"%unit_scaling, "cyan") + ' to match units.\n')
                 setattr(j, 'unit_scaling', unit_scaling)
             else:
                 setattr(j, 'unit_scaling', 1)
+
+            setattr(j, 'total_scaling', total_scaling)
 
             # adjust sign if necessary
             prod *= j.sign
@@ -1413,26 +1422,6 @@ class Model(object):
         return bcs
 
 
-
-# for i in range(10):
-#     model.boundary_reactions_forward()
-
-# print("finished first reaction step")
-
-# # diffusion step (full time step) t=[t,t+dt]
-# model.set_time(model.t-model.dt/2, model.dt) # reset time back to t
-# model.updateTimeDependentParameters
-# model.diffusion_forward() 
-# model.SD.Dict['A_sub_pm'].u['u'].interpolate(model.u['cyto']['u'])
-# print("finished diffusion step")
-
-# # second reaction step (half time step) t=[t+dt/2,t+dt]
-# self.set_time(self.t-self.dt/2, self.dt) # reset time back to t+dt/2
-# for i in range(10):
-#     self.boundary_reactions_forward()
-# print("finished second reaction step")
-
-
     def boundary_reactions_forward(self, factor=1, bcs=[]):
         nsubsteps = int(self.config.solver['reaction_substeps'])
         # first reaction step
@@ -1453,6 +1442,14 @@ class Model(object):
                         self.newton_iter(comp_name)
                     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
+    TODO
+#    def boundary_reactions_forward_scipy(self, factor=1):
+#        self.forward_time_step(factor=factor)
+#        self.
+#
+#        comp_name = 'pm'
+#        self.u
+#
 
     def diffusion_forward(self, factor=1, bcs=[]):
         self.forward_time_step(factor=factor)
@@ -1494,6 +1491,46 @@ class Model(object):
                 print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
                     (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
                 break
+
+    # TODO
+    def flux_to_scipy(self, comp_name):
+        dudt = []
+        param_list = []
+        species_list = list(self.SD.Dict.values())
+        species_list = [s for s in species_list if s.compartment_name==comp_name]
+        species_list.sort(key = lambda s: s.compartment_index)
+        spname_list = [s.name for s in species_list]
+        num_species = len(species_list)
+
+        flux_list = list(self.FD.Dict.values())
+        flux_list = [f for f in flux_list if f.species_name in spname_list]
+
+        for idx in range(num_species):
+            sp_fluxes = [f.total_scaling*f.sign*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
+            total_flux = sum(sp_fluxes)
+
+            dudt.append(total_flux)
+            param_list.extend([str(x) for x in total_flux.free_symbols if str(x) in self.PD.Dict.keys()])
+            param_list = list(set(param_list))
+
+        ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
+        #Params = namedtuple('Params', param_list)
+
+        dudt_lambda = [lambdify(flatten(spname_list+param_list), total_flux) for total_flux in dudt]
+
+
+        def lambdified_odes(t, u, p):
+            inp = flatten([u,p])
+            return [f(*inp) for f in dudt_lambda]
+
+        return lambdified_odes, ptuple
+
+#solve_ivp(lambda t,y: lambdified_odes(t,y,p), [0,1], np.zeros(17))
+
+
+
+
+
 
     def newton_iter(self, comp_name):
         #d.solve(self.F[comp_name] == 0, self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear)
