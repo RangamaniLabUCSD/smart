@@ -16,6 +16,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
+sys.path.append('/home/justin/anaconda3/envs/fenicsproject/lib/python/3.7/site-packages')
 
 import stubs
 
