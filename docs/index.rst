@@ -1,6 +1,6 @@
 Welcome to stubs's documentation!
 =================================
-.. automodule:: ../stubs/model_assembly.py
+.. automodule:: model_assembly.py
     :members:
 
 .. toctree::
