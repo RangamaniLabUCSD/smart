@@ -135,6 +135,7 @@ class _ObjectContainer(object):
                 for key, value in obj1_value.items():
                     objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
+                        print(objList)
                         raise Exception('Either none or more than one objects match this condition')
                     if value_is_key:
                         newDict.update({value: objList[0]})
@@ -155,6 +156,11 @@ class _ObjectContainer(object):
                 for value in obj1_value:
                     objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
+                        print(objList)
+                        print(property_name2)
+                        print(value)
+                        print(obj1.print())
+                        #ObjectContainer2.vprint()
                         raise Exception('Either none or more than one objects match this condition')
                     newDict.update({value: objList[0]})
                 setattr(obj1, linked_name, newDict)
@@ -162,6 +168,7 @@ class _ObjectContainer(object):
             else: 
                 objList = ObjectContainer2.where_equals(property_name2, obj1_value)
                 if len(objList) != 1:
+                    print(objList)
                     raise Exception('Either none or more than one objects match this condition')
                 setattr(obj1, linked_name, objList[0])
 
@@ -306,11 +313,11 @@ class SpeciesContainer(_ObjectContainer):
         super().__init__(Species, df, Dict)
         self.propertyList = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
-    def assemble_compartment_indices(self, RD, CD):
+    def assemble_compartment_indices(self, RD, CD, settings):
         """
         Adds a column to the species dataframe which indicates the index of a species relative to its compartment
         """
-        num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
+        num_species_per_compartment = RD.get_species_compartment_counts(self, CD, settings)
         for compartment, num_species in num_species_per_compartment.items():
             idx = 0
             comp_species = [sp for sp in self.Dict.values() if sp.compartment_name==compartment]
@@ -322,7 +329,7 @@ class SpeciesContainer(_ObjectContainer):
                     print('Warning: species %s is not used in any reactions!' % sp.name)
 
 
-    def assemble_dolfin_functions(self, RD, CD):
+    def assemble_dolfin_functions(self, RD, CD, settings):
         """
         define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
         IMPORTANT: this function will create additional species on boundaries in order to use operator-splitting later on
@@ -332,9 +339,9 @@ class SpeciesContainer(_ObjectContainer):
         """
 
         # functions to run beforehand as we need their results
-        num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
+        num_species_per_compartment = RD.get_species_compartment_counts(self, CD, settings)
         CD.get_min_max_dim()
-        self.assemble_compartment_indices(RD, CD)
+        self.assemble_compartment_indices(RD, CD, settings)
         CD.add_property_to_all('is_in_a_reaction', False)
         CD.add_property_to_all('V', None)
 
@@ -357,19 +364,20 @@ class SpeciesContainer(_ObjectContainer):
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunctions(V[compartment_name])
 
-        # # now we create boundary functions, which are defined on the function spaces of the surrounding mesh
-        # V['boundary'] = {}
-        # for compartment_name, num_species in num_species_per_compartment.items():
-        #     compartmentDim = CD.Dict[compartment_name].dimensionality
-        #     if compartmentDim == CD.max_dim: # mesh may have boundaries
-        #         for boundary_name, boundary_mesh in CD.meshes.items():
-        #             if compartment_name != boundary_name:
-        #                 if num_species == 1:
-        #                     boundaryV = d.FunctionSpace(CD.meshes[boundary_name], 'P', 1)
-        #                 else:
-        #                     boundaryV = d.VectorFunctionSpace(CD.meshes[boundary_name], 'P', 1, dim=num_species)
-        #                 V['boundary'].update({compartment_name: {boundary_name: boundaryV}})
-        #                 u[compartment_name].update({'b': d.Function(boundaryV)})
+        if not settings['add_boundary_species']: # if the setting is true sub_species will be added 
+            # now we create boundary functions, which are defined on the function spaces of the surrounding mesh
+            V['boundary'] = {}
+            for compartment_name, num_species in num_species_per_compartment.items():
+                compartmentDim = CD.Dict[compartment_name].dimensionality
+                if compartmentDim == CD.max_dim: # mesh may have boundaries
+                    for boundary_name, boundary_mesh in CD.meshes.items():
+                        if compartment_name != boundary_name:
+                            if num_species == 1:
+                                boundaryV = d.FunctionSpace(CD.meshes[boundary_name], 'P', 1)
+                            else:
+                                boundaryV = d.VectorFunctionSpace(CD.meshes[boundary_name], 'P', 1, dim=num_species)
+                            V['boundary'].update({compartment_name: {boundary_name: boundaryV}})
+                            u[compartment_name].update({'b': d.Function(boundaryV)})
 
         # associate indexed functions with dataframe
         for key, sp in self.Dict.items():
@@ -518,8 +526,8 @@ class ReactionContainer(_ObjectContainer):
         #self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'reaction_type']
 
-    def get_species_compartment_counts(self, SD, CD):
-        self.doToAll('get_involved_species_and_compartments', {"SD": SD})
+    def get_species_compartment_counts(self, SD, CD, settings):
+        self.doToAll('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
         all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.Dict.values()] for sp in species_set])
         for sp_name, sp in SD.Dict.items():
             if sp in all_involved_species:
@@ -527,41 +535,43 @@ class ReactionContainer(_ObjectContainer):
 
         compartment_counts = [sp.compartment_name for sp in all_involved_species]
 
-        ### additional boundary functions
-        # get volumetric species which should also be defined on their boundaries
-        sub_species_to_add = []
-        for rxn in self.Dict.values():
-            involved_compartments = [CD.Dict[comp_name] for comp_name in rxn.involved_compartments]
-            rxn_min_dim = min([comp.dimensionality for comp in involved_compartments])
-            rxn_max_dim = min([comp.dimensionality for comp in involved_compartments])
-            for sp_name in rxn.involved_species:
-                sp = SD.Dict[sp_name]
-                if sp.dimensionality > rxn_min_dim: # species is involved in a boundary reaction
-                    for comp in involved_compartments:
-                        if comp.name != sp.compartment_name:
-                            sub_species_to_add.append((sp_name, comp.name))
-                            #sp.sub_species.update({comp.name: None})
 
-        # Create a new species on boundaries
-        sub_sp_list = []
-        for sp_name, comp_name in set(sub_species_to_add):
-            sub_sp_name = sp_name+'_sub_'+comp_name
-            compartment_counts.append(comp_name)
-            if sub_sp_name not in SD.Dict.keys():
-                print((colored('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
-                    % (sp_name, comp_name, sub_sp_name))))
+        if settings['add_boundary_species']:
+            ### additional boundary functions
+            # get volumetric species which should also be defined on their boundaries
+            sub_species_to_add = []
+            for rxn in self.Dict.values():
+                involved_compartments = [CD.Dict[comp_name] for comp_name in rxn.involved_compartments]
+                rxn_min_dim = min([comp.dimensionality for comp in involved_compartments])
+                rxn_max_dim = min([comp.dimensionality for comp in involved_compartments])
+                for sp_name in rxn.involved_species:
+                    sp = SD.Dict[sp_name]
+                    if sp.dimensionality > rxn_min_dim: # species is involved in a boundary reaction
+                        for comp in involved_compartments:
+                            if comp.name != sp.compartment_name:
+                                sub_species_to_add.append((sp_name, comp.name))
+                                #sp.sub_species.update({comp.name: None})
 
-                sub_sp = copy(SD.Dict[sp_name])
-                sub_sp.is_an_added_species = True
-                sub_sp.name = sub_sp_name
-                sub_sp.compartment_name = comp_name
-                sub_sp.compartment = CD.Dict[comp_name]
-                sub_sp.is_in_a_reaction = True
-                sub_sp.sub_species = {}
-                sub_sp.parent_species = sp_name
-                sub_sp_list.append(sub_sp)
+            # Create a new species on boundaries
+            sub_sp_list = []
+            for sp_name, comp_name in set(sub_species_to_add):
+                sub_sp_name = sp_name+'_sub_'+comp_name
+                compartment_counts.append(comp_name)
+                if sub_sp_name not in SD.Dict.keys():
+                    print((colored('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
+                        % (sp_name, comp_name, sub_sp_name))))
 
-        if sub_sp_name not in SD.Dict.keys():
+                    sub_sp = copy(SD.Dict[sp_name])
+                    sub_sp.is_an_added_species = True
+                    sub_sp.name = sub_sp_name
+                    sub_sp.compartment_name = comp_name
+                    sub_sp.compartment = CD.Dict[comp_name]
+                    sub_sp.is_in_a_reaction = True
+                    sub_sp.sub_species = {}
+                    sub_sp.parent_species = sp_name
+                    sub_sp_list.append(sub_sp)
+
+            #if sub_sp_name not in SD.Dict.keys():
             for sub_sp in sub_sp_list:
                 SD.Dict[sub_sp.name] = sub_sp
                 SD.Dict[sub_sp.parent_species].sub_species.update({sub_sp.compartment_name: sub_sp})
@@ -615,13 +625,14 @@ class ReactionContainer(_ObjectContainer):
 
 
 class Reaction(_ObjectInstance):
-    def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None):
+    def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None, explicit_restriction_to_domain=False):
         if eqn_f_str:
             print(eqn_f_str)
             self.eqn_f = parse_expr(eqn_f_str)
         if eqn_r_str:
             print(eqn_r_str)
             self.eqn_r = parse_expr(eqn_r_str)
+        self.explicit_restriction_to_domain = explicit_restriction_to_domain
         super().__init__(name, Dict)
 
     def initialize_flux_equations_for_known_reactions(self, reaction_database={}):
@@ -659,25 +670,21 @@ class Reaction(_ObjectInstance):
         rxnExpr = rxnExpr.subs(self.speciesDict)
         self.eqn_f = rxnExpr
 
-    def get_involved_species_and_compartments(self, SD=None):
+    def get_involved_species_and_compartments(self, SD=None, CD=None):
         # used to get number of active species in each compartment
         self.involved_species = set(self.LHS + self.RHS)
-        self.involved_compartments = set([SD.Dict[sp_name].compartment_name for sp_name in self.involved_species])
-        if hasattr(self, 'eqn_f'):
-            varSet = {str(x) for x in self.eqn_f.free_symbols}
-            spSet = varSet.intersection(SD.Dict.keys())
-            compSet = set([SD.Dict[sp_name].compartment_name for sp_name in spSet])
-            for sp in spSet: self.involved_species.add(sp)
-            for comp in compSet: self.involved_compartments.add(comp)
-        if hasattr(self, 'eqn_r'):
-            varSet = {str(x) for x in self.eqn_r.free_symbols}
-            spSet = varSet.intersection(SD.Dict.keys())
-            compSet = set([SD.Dict[sp_name].compartment_name for sp_name in spSet])
-            for sp in spSet: self.involved_species.add(sp)
-            for comp in compSet: self.involved_compartments.add(comp)
+        for eqn in ['eqn_r', 'eqn_f']:
+            if hasattr(self, eqn):
+                varSet = {str(x) for x in self.eqn_f.free_symbols}
+                spSet = varSet.intersection(SD.Dict.keys())
+                self.involved_species = self.involved_species.union(spSet)
 
-        # determine if species is in additional compartments beyond its primary compartment
+        self.involved_compartments = dict(set([(SD.Dict[sp_name].compartment_name, SD.Dict[sp_name].compartment) for sp_name in self.involved_species]))
+        if self.explicit_restriction_to_domain:
+            self.involved_compartments.update({self.explicit_restriction_to_domain: CD.Dict[self.explicit_restriction_to_domain]})
 
+        if len(self.involved_compartments) not in (1,2):
+            raise Exception("Number of compartments involved in a flux must be either one or two!")
 
     def reaction_to_fluxes(self):
         self.fluxList = []
@@ -803,7 +810,7 @@ class Flux(_ObjectInstance):
         self.get_is_linear_comp()
         self.get_ukeys(config)
         self.get_integration_measure(CD, config)
-        self.flux_to_dolfin()
+        self.flux_to_dolfin(config)
 
     def get_involved_species_parameters_compartment(self, CD):
         symStrList = {str(x) for x in self.symList}
@@ -938,17 +945,20 @@ class Flux(_ObjectInstance):
         if sp.name == var.parent_species:
             print('Debug 1')
             return 'u'
-        
-        if config.solver['nonlinear'] == 'picard':
+
+        if config.solver['nonlinear'] == 'picard' or 'IMEX':
             # volume -> surface
-            if var.dimensionality > sp.dimensionality:
+            if var.dimensionality > sp.dimensionality and config.settings['add_boundary_species']:
                 if self.is_linear_wrt_comp[var.compartment_name]:
                     return 'bt'
                 else:
                     return 'bk'
 
+            elif var.dimensionality > sp.dimensionality:
+                return 'b'
+
             # volumetric fluxes
-            if var.compartment_name == self.destination_compartment:
+            elif var.compartment_name == self.destination_compartment:
                 if self.is_linear_wrt_comp[var.compartment_name]:
                     return 't'
                 else:
@@ -995,7 +1005,7 @@ class Flux(_ObjectInstance):
     #     self.unit_prod = unit_prod
 
 
-    def flux_to_dolfin(self):
+    def flux_to_dolfin(self, config):
         value_dict = {}
 
         for var_name in [str(x) for x in self.symList]:
@@ -1010,8 +1020,8 @@ class Flux(_ObjectInstance):
             elif var_name in self.spDict.keys():
                 var = self.spDict[var_name]
                 ukey = self.ukeys[var_name]
-                if ukey[0] == 'b':
-                    if not var.parent_species:
+                if ukey[0] == 'b' and config.settings['add_boundary_species']:
+                    if not var.parent_species and config.settings['add_boundary_species']:
                         sub_species = var.sub_species[self.destination_compartment]
                         value_dict[var_name] = sub_species.u[ukey[1]]
                         print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
@@ -1100,8 +1110,10 @@ class Model(object):
                         raise Exception("Flux %s seems to be a boundary flux (or has inconsistent units) but only has one compartment, %s." 
                             % (j.name, j.destination_compartment))
 
-                    print('Adjusting flux between compartments %s and %s by length scale factor to ensure consistency' \
-                          % tuple(j.involved_compartments.keys()))
+                    print(j.name)
+                    print(j.involved_compartments.keys())
+                    print('Adjusting flux %s from compartment %s to %s by length scale factor to ensure consistency' \
+                          % (j.name, j.source_compartment, j.destination_compartment))
                     length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
                 if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
                     print('Debug marker 1')
@@ -1155,7 +1167,7 @@ class Model(object):
 
         for sp_name, sp in self.SD.Dict.items():
             if sp.is_in_a_reaction:
-                if self.config.solver['nonlinear'] == 'picard':
+                if self.config.solver['nonlinear'] == 'picard' or 'IMEX':
                     u = sp.u['t']
                 elif self.config.solver['nonlinear'] == 'newton':
                     u = sp.u['u']
@@ -1184,8 +1196,12 @@ class Model(object):
                 #    dx = sp.compartment.dP
 
                 # time derivative
-                Mform = (u-un)/dT * v * dx
-                self.Forms.add(Form(Mform, sp, 'M'))
+                #Mform = (u-un)/dT * v * dx
+                #self.Forms.add(Form(Mform, sp, 'M'))
+                Mform_u = u/dT * v * dx
+                Mform_un = -un/dT * v * dx
+                self.Forms.add(Form(Mform_u, sp, "Mu"))
+                self.Forms.add(Form(Mform_un, sp, "Mun"))
 
             else:
                 print("Species %s is not in a reaction?" %  sp_name)
@@ -1332,6 +1348,13 @@ class Model(object):
 
         print("\n Finished step %d of RD with final time: %f" % (self.idx, self.t))
 
+    def IMEX_2SBDF(self):
+        self.idx += 1
+        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+
+
+
+
 #    def strang_DR_step_forward(self):
 #        self.idx += 1
 #        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
@@ -1462,19 +1485,21 @@ class Model(object):
         #self.
         point = (0,0,0)
 
-        lode, ptuple, tparam = self.flux_to_scipy(comp_name)
         if all_dofs:
             nspecies = self.CD.Dict[comp_name].num_species
-            for idx in range(self.CD.meshes[comp_name].num_vertices()):
-                dof_idx_0 = common.mesh_vertex_to_dof(self.V[comp_name], 0, [idx])[0]
-                idx_range = range(dof_idx_0,dof_idx_0+nspecies)
-                init_val = self.u[comp_name]['u'].vector()[idx_range]
-                sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], init_val, method='BDF')
+            num_vertices = self.CD.Dict[comp_name].num_vertices
+            mult = int(num_vertices/nspecies)
+            lode, ptuple, tparam = self.flux_to_scipy(comp_name, mult=mult)
 
-                # assign solution
-                self.u[comp_name]['u'].vector()[idx_range] = sol.y[:,-1]
+            mapping = d.vertex_to_dof_map(self.V[comp_name]) # [u0(x0), u1(x0), u2(x0), u0(x1), u1(x1), u2(x1), etc.]
+
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector()[mapping], method='BDF')
+
+            # assign solution
+            self.u[comp_name]['u'].vector()[mapping] = sol.y[:,-1]
 
         else:
+            lode, ptuple, tparam = self.flux_to_scipy(comp_name)
             sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
             for idx, val in enumerate(sol.y[:,-1]):
                 data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, self.V[comp_name], idx) 
@@ -1528,7 +1553,13 @@ class Model(object):
                 break
 
     # TODO
-    def flux_to_scipy(self, comp_name):
+    def flux_to_scipy(self, comp_name, mult=1):
+        """
+        mult allows us to artificially make an ODE repeat e.g. 
+        dy = [dy_1, dy_2, dy_3] -> (mult=2) dy=[dy_1, dy_2, dy_3, dy_1, dy_2, dy_3]
+        Useful when we want to solve a distributed ODE on some domain so that
+        scipy can work its vector optimization magic
+        """
         dudt = []
         param_list = []
         time_param_list = []
@@ -1568,15 +1599,17 @@ class Model(object):
 
 
         def lambdified_odes(t, u, p, time_p):
+            if int(mult*num_species) != len(u):
+                raise Exception("mult*num_species must match the length of the input vector!")
             time_p_eval = [f(t) for f in time_p]
-            inp = flatten([u,p,time_p_eval])
-            return [f(*inp) for f in dudt_lambda]
+            dudt_list = []
+            for idx in range(mult):
+                idx0 = idx*num_species
+                inp = flatten([u[idx0 : idx0+num_species], p, time_p_eval])
+                dudt_list.append([f(*inp) for f in dudt_lambda])
+            return dudt_list
 
         return lambdified_odes, ptuple, time_param_lambda
-
-
-
-
 
 
 
@@ -1585,27 +1618,38 @@ class Model(object):
         self.nonlinear_solver[comp_name].solve()
 
 
-    def get_lhs_rhs(self):
+    def sort_forms(self):
         # solve the lower dimensional problem first (usually stiffer)
         comp_list = [self.CD.Dict[key] for key in self.u.keys()]
-        split_forms = {}
+        self.split_forms = ddict(dict)
+        form_types = set([f.form_type for f in self.Forms.form_list])
 
         if self.config.solver['nonlinear'] == 'picard':
             print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
             for comp in comp_list:
-                split_forms[comp.name] = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.a[comp.name] = d.lhs(sum(split_forms[comp.name]))
-                self.L[comp.name] = d.rhs(sum(split_forms[comp.name]))
+                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.a[comp.name] = d.lhs(sum(comp_forms))
+                self.L[comp.name] = d.rhs(sum(comp_forms))
         elif self.config.solver['nonlinear'] == 'newton':
             print("Formulating problem as F(u;v) == 0 for newton iterations")
             for comp in comp_list:
-                split_forms[comp.name] = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.F[comp.name] = sum(split_forms[comp.name])
+                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.F[comp.name] = sum(comp_forms)
                 J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
                 p = self.nonlinear_solver[comp.name].parameters
                 p['newton_solver'].update(self.config.dolfin_linear_coarse)
+
+        elif self.config.solver['nonlinear'] == 'IMEX':
+            print("Keeping forms separated by component and form_type for IMEX scheme.")
+            for comp in comp_list:
+                comp_forms = [f for f in self.Forms.select_by('compartment_name', comp.name)]
+                for form_type in form_types:
+                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
+
+            # 2nd order semi-implicit BDF
+
 
 #===============================================================================
 #===============================================================================

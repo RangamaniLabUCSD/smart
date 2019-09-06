@@ -39,6 +39,7 @@ class Config(object):
             self.dolfin_linear_coarse['preconditioner'] = self.solver['coarse_preconditioner']
 
         self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
+        self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
 
     def _parse_line(self,line):
         for key, regex in self._regex_dict.items():
@@ -105,7 +106,7 @@ class Config(object):
         RD.link_object(PD,'paramDict','name','paramDictValues', value_is_key=True)
         SD.link_object(CD,'compartment_name','name','compartment')
         SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        RD.doToAll('get_involved_species_and_compartments', {"SD": SD})
+        RD.doToAll('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
         RD.link_object(SD,'involved_species','name','involved_species_link')
         #RD.doToAll('combineDicts', {'dict1': 'paramDictValues', 'dict2': 'involved_species_link', 'new_dict_name': 'varDict'})
 
@@ -115,9 +116,9 @@ class Config(object):
         CD.extract_submeshes('cyto', True)
         CD.compute_scaling_factors()
 
-        num_species_per_compartment = RD.get_species_compartment_counts(SD, CD)
+        num_species_per_compartment = RD.get_species_compartment_counts(SD, CD, self.settings)
         CD.get_min_max_dim()
-        SD.assemble_compartment_indices(RD, CD)
+        SD.assemble_compartment_indices(RD, CD, self.settings)
         CD.add_property_to_all('is_in_a_reaction', False)
         CD.add_property_to_all('V', None)
 
@@ -125,7 +126,7 @@ class Config(object):
 
 
         # dolfin
-        SD.assemble_dolfin_functions(RD, CD)
+        SD.assemble_dolfin_functions(RD, CD, self.settings)
         SD.assign_initial_conditions()
 
         RD.reaction_to_fluxes()
