@@ -18,9 +18,12 @@ from tabulate import tabulate
 from copy import copy, deepcopy
 
 import stubs.common as common
+#import common
+#import unit as ureg
+#import data_manipulation
 from stubs import unit as ureg
 import stubs.data_manipulation as data_manipulation
-#import stubs.flux_assembly as flux_assembly
+import stubs.flux_assembly as flux_assembly
 
 
 
