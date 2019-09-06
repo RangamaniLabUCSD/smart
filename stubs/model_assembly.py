@@ -10,6 +10,7 @@ from sympy.parsing.sympy_parser import parse_expr
 from sympy import Heaviside, lambdify
 from sympy.utilities.iterables import flatten
 
+import numpy as np
 from scipy.integrate import solve_ivp
 
 import pint
@@ -370,14 +371,16 @@ class SpeciesContainer(_ObjectContainer):
             for compartment_name, num_species in num_species_per_compartment.items():
                 compartmentDim = CD.Dict[compartment_name].dimensionality
                 if compartmentDim == CD.max_dim: # mesh may have boundaries
+                    V['boundary'][compartment_name] = {}
                     for boundary_name, boundary_mesh in CD.meshes.items():
                         if compartment_name != boundary_name:
                             if num_species == 1:
                                 boundaryV = d.FunctionSpace(CD.meshes[boundary_name], 'P', 1)
                             else:
                                 boundaryV = d.VectorFunctionSpace(CD.meshes[boundary_name], 'P', 1, dim=num_species)
-                            V['boundary'].update({compartment_name: {boundary_name: boundaryV}})
-                            u[compartment_name].update({'b': d.Function(boundaryV)})
+                            print("*** %s" % boundary_name)
+                            V['boundary'][compartment_name].update({boundary_name: boundaryV})
+                            u[compartment_name]['b'+boundary_name] = d.Function(boundaryV)
 
         # associate indexed functions with dataframe
         for key, sp in self.Dict.items():
@@ -415,8 +418,9 @@ class SpeciesContainer(_ObjectContainer):
 
         # add boundary values
         for comp_name in self.u.keys():
-            if 'b' in self.u[comp_name].keys():
-                self.u[comp_name]['b'].interpolate(self.u[comp_name]['u'])
+            for ukey in self.u[comp_name].keys():
+                if 'b' in key[0]:
+                    self.u[comp_name][ukey].interpolate(self.u[comp_name]['u'])
 
 
 
@@ -955,7 +959,7 @@ class Flux(_ObjectInstance):
                     return 'bk'
 
             elif var.dimensionality > sp.dimensionality:
-                return 'b'
+                return 'b'+sp.compartment_name
 
             # volumetric fluxes
             elif var.compartment_name == self.destination_compartment:
@@ -1078,6 +1082,7 @@ class Model(object):
         self.L = {}
         self.F = {}
         self.nonlinear_solver = {}
+        self.scipy_odes = {}
 
         self.data = data_manipulation.Data(config)
 
@@ -1489,14 +1494,27 @@ class Model(object):
             nspecies = self.CD.Dict[comp_name].num_species
             num_vertices = self.CD.Dict[comp_name].num_vertices
             mult = int(num_vertices/nspecies)
-            lode, ptuple, tparam = self.flux_to_scipy(comp_name, mult=mult)
+            if comp_name not in self.scipy_odes.keys():
+                self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=mult)
+            lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
 
-            mapping = d.vertex_to_dof_map(self.V[comp_name]) # [u0(x0), u1(x0), u2(x0), u0(x1), u1(x1), u2(x1), etc.]
+            if boundary_species:
+                nbspecies = len(boundary_species)
+                ub = np.full(nbspecies * num_vertices, np.nan)
+                for spidx, sp in enumerate(boundary_species):
+                    pcomp_name = self.SD.Dict[sp].compartment_name
+                    pcomp_idx = self.SD.Dict[sp].compartment_index
+                    pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
+                    if pcomp_nspecies==0: pcomp_nspecies=1
+                    ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
 
-            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector()[mapping], method='BDF')
+                sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
+
+            else:
+                sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
 
             # assign solution
-            self.u[comp_name]['u'].vector()[mapping] = sol.y[:,-1]
+            self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
 
         else:
             lode, ptuple, tparam = self.flux_to_scipy(comp_name)
@@ -1593,23 +1611,86 @@ class Model(object):
         ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
         time_param_lambda = [lambdify('t', p.symExpr) for p in time_param_list]
         time_param_name_list = [p.name for p in time_param_list]
+
+        boundary_species = [str(sp) for sp in total_flux.free_symbols if str(sp) not in spname_list+param_list+time_param_name_list]
+        num_boundary_species = len(boundary_species)
+        if boundary_species:
+            print("Adding species %s to flux_to_scipy" % boundary_species)
         #Params = namedtuple('Params', param_list)
 
-        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list), total_flux) for total_flux in dudt]
+        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list+boundary_species), total_flux) for total_flux in dudt]
 
 
-        def lambdified_odes(t, u, p, time_p):
+        def lambdified_odes(t, u, p, time_p, ub=[]):
             if int(mult*num_species) != len(u):
                 raise Exception("mult*num_species must match the length of the input vector!")
             time_p_eval = [f(t) for f in time_p]
             dudt_list = []
             for idx in range(mult):
                 idx0 = idx*num_species
-                inp = flatten([u[idx0 : idx0+num_species], p, time_p_eval])
-                dudt_list.append([f(*inp) for f in dudt_lambda])
+                idx0b = idx*num_boundary_species
+                inp = flatten([u[idx0 : idx0+num_species], p, time_p_eval, ub[idx0b : idx0b+num_boundary_species]])
+                dudt_list.extend([f(*inp) for f in dudt_lambda])
             return dudt_list
 
-        return lambdified_odes, ptuple, time_param_lambda
+        return (lambdified_odes, ptuple, time_param_lambda, boundary_species)
+
+#        # TODO
+#        def flux_to_scipy(self, comp_name):
+#            dudt = []
+#            param_list = []
+#            time_param_list = []
+#            species_list = list(self.SD.Dict.values())
+#            species_list = [s for s in species_list if s.compartment_name==comp_name]
+#            species_list.sort(key = lambda s: s.compartment_index)
+#            spname_list = [s.name for s in species_list]
+#            num_species = len(species_list)
+#
+#            flux_list = list(self.FD.Dict.values())
+#            flux_list = [f for f in flux_list if f.species_name in spname_list]
+#
+#            for idx in range(num_species):
+#                sp_fluxes = [f.total_scaling*f.sign*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
+#                total_flux = sum(sp_fluxes)
+#                dudt.append(total_flux)
+#
+#                if total_flux:
+#                    for psym in total_flux.free_symbols:
+#                        pname = str(psym)
+#                        if pname in self.PD.Dict.keys():
+#                            p = self.PD.Dict[pname]
+#                            if p.is_time_dependent:
+#                                time_param_list.append(p)
+#                            else:
+#                                param_list.append(pname)
+#            
+#            param_list = list(set(param_list))
+#            time_param_list = list(set(time_param_list))
+#
+#            ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
+#            time_param_lambda = [lambdify('t', p.symExpr) for p in time_param_list]
+#            time_param_name_list = [p.name for p in time_param_list]
+#            #Params = namedtuple('Params', param_list)
+#
+#            dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list), total_flux) for total_flux in dudt]
+#
+#
+#            def lambdified_odes(t, u, p, time_p):
+#                time_p_eval = [f(t) for f in time_p]
+#                inp = flatten([u,p,time_p_eval])
+#                return [f(*inp) for f in dudt_lambda]
+#
+#            return lambdified_odes, ptuple, time_param_lambda
+
+
+
+
+
+
+
+
+
+
 
 
 
