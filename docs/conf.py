@@ -37,9 +37,9 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx.ext.intersphinx',
-    'sphinx.ext.extlinks'#,
-    #'termcolor'
-]
+    'sphinx.ext.extlinks']#,
+#    'termcolor'
+#]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
