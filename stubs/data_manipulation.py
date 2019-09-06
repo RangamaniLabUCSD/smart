@@ -6,7 +6,7 @@ import pickle
 
 
 from stubs import unit
-import stubs.model_assembly as model_assembly
+#import stubs.model_assembly as model_assembly
 
 # # matplotlib settings
 # lwsmall = 1.5

@@ -1,7 +1,13 @@
 Welcome to stubs's documentation!
 =================================
-.. automodule:: stubs.model_assembly
-    :members:
+.. rubric:: Modules
+
+.. autosummary::
+    :toctree: _pythonapi
+
+    stubs.model_assembly
+    stubs.data_manipulation
+    stubs.common
 
 .. toctree::
    :maxdepth: 2

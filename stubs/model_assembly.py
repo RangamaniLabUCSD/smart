@@ -1,3 +1,9 @@
+""" Example docstring
+stuff
+
+"""
+
+
 from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
@@ -23,8 +29,8 @@ import stubs.common as common
 #import unit as ureg
 #import data_manipulation
 from stubs import unit as ureg
-import stubs.data_manipulation as data_manipulation
-import stubs.flux_assembly as flux_assembly
+#import stubs.data_manipulation as data_manipulation
+#import stubs.flux_assembly as flux_assembly
 
 
 
@@ -34,6 +40,9 @@ import stubs.flux_assembly as flux_assembly
 # ====================================================
 # ====================================================
 class _ObjectContainer(object):
+    """
+    This is a class
+    """
     def __init__(self, ObjectClass, df=None, Dict=None):
         self.Dict = odict()
         self.dtypes = {}

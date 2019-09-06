@@ -9,6 +9,16 @@ dependencies:
   - pytest
   - pytest-cov
   - codecov
+  - pint
+  - tabulate
+  - sympy
+  - dolfin
+  - pandas
+  - matplotlib
+  - termcolor
+  - numpy
+  - pprint
+  - scipy
 
     # Pip-only installs
   #- pip:

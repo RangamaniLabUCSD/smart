@@ -14,17 +14,17 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 
-#master_doc = 'index'
+master_doc = 'index'
 
 
 # -- Mock modules ------------------------------------------------------------
-import mock
-
-MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'scipy', 'termcolor', 'pint',
-                'tabulate', 'sympy', 'pandas', 'pprint', 'dolfin', 'sympy.parsing.sympy_parser',
-                'sympy.utilities.iterables', 'scipy.integrate', 'stubs']
-for mod_name in MOCK_MODULES:
-        sys.modules[mod_name] = mock.Mock()
+#import mock
+#
+#MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'scipy', 'termcolor', 'pint',
+#                'tabulate', 'sympy', 'pandas', 'pprint', 'dolfin', 'sympy.parsing.sympy_parser',
+#                'sympy.utilities.iterables', 'scipy.integrate']
+#for mod_name in MOCK_MODULES:
+#        sys.modules[mod_name] = mock.Mock()
 
 # -- Project information -----------------------------------------------------
 
@@ -34,6 +34,7 @@ author = 'Justin Laughlin'
 
 # The full version, including alpha/beta/rc tags
 release = '0.10'
+
 
 
 # -- General configuration ---------------------------------------------------
@@ -51,6 +52,21 @@ extensions = [
     'sphinx.ext.extlinks']#,
 #    'termcolor'
 #]
+
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = True
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = False
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = True
+napoleon_use_param = True
+napoleon_use_rtype = True
+
+
+autosummary_generate = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
