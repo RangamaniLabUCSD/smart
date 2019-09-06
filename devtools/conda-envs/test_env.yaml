@@ -13,7 +13,7 @@ dependencies:
   - pint
   - tabulate
   - sympy
-  - dolfin
+  - fenics
   - pandas
   - matplotlib
   - termcolor
