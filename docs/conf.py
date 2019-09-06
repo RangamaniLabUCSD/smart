@@ -14,6 +14,14 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 
+# -- Mock modules ------------------------------------------------------------
+import mock
+
+MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'scipy', 'termcolor', 'pint',
+                'tabulate', 'sympy', 'pandas', 'pprint', 'dolfin', 'sympy.parsing.sympy_parser',
+                'sympy.utilities.iterables', 'scipy.integrate', 'stubs']
+for mod_name in MOCK_MODULES:
+        sys.modules[mod_name] = mock.Mock()
 
 # -- Project information -----------------------------------------------------
 
