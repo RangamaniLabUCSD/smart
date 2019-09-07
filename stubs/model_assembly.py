@@ -25,6 +25,7 @@ from tabulate import tabulate
 from copy import copy, deepcopy
 
 import stubs.common as common
+import stubs
 #import common
 #import unit as ureg
 #import data_manipulation
@@ -420,7 +421,7 @@ class SpeciesContainer(_ObjectContainer):
         for sp in self.Dict.values():
             comp_name = sp.compartment_name
             for key in keys:
-                data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
+                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
                                                           self.V[comp_name], sp.compartment_index)
             self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
             print("Assigned initial condition for species %s" % sp.name)
@@ -959,7 +960,7 @@ class Flux(_ObjectInstance):
             print('Debug 1')
             return 'u'
 
-        if config.solver['nonlinear'] == 'picard' or 'IMEX':
+        if config.solver['nonlinear'] == 'picard':# or 'IMEX':
             # volume -> surface
             if var.dimensionality > sp.dimensionality and config.settings['add_boundary_species']:
                 if self.is_linear_wrt_comp[var.compartment_name]:
@@ -979,6 +980,22 @@ class Flux(_ObjectInstance):
 
         elif config.solver['nonlinear'] == 'newton':
             return 'u'
+
+        elif config.solver['nonlinear'] == 'IMEX':
+            if sp.dimensionality == 3: #TODO fix this
+                return 'k'
+            # volume -> surface
+            elif var.dimensionality > sp.dimensionality:
+                return 'b'+sp.compartment_name
+            else:
+                if self.is_linear_wrt_comp[var.compartment_name]:
+                    return 't'
+                else:
+                    return 'k'
+
+        # elif config.solver['nonlinear'] == 'IMEX':
+        #     if 
+        #     return 'n'
 
         raise Exception("If you made it to this far in get_ukey() I missed some logic...") 
 
@@ -1093,7 +1110,7 @@ class Model(object):
         self.nonlinear_solver = {}
         self.scipy_odes = {}
 
-        self.data = data_manipulation.Data(config)
+        self.data = stubs.data_manipulation.Data(config)
 
 
     def assemble_reactive_fluxes(self):
@@ -1366,6 +1383,74 @@ class Model(object):
         self.idx += 1
         print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
 
+    def IMEX_1BDF_RK45(self):
+        self.idx += 1
+        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        self.stopwatch('First reaction step')
+        self.boundary_reactions_forward_scipy('pm', factor=0.5)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
+        self.stopwatch('First reaction step', stop=True)
+
+        self.update_solution_boundary_to_volume()
+       
+
+        self.stopwatch('Diffusion step')
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.IMEX_diffusion_forward('cyto', factor=1)
+        self.update_solution_volume_to_boundary()
+        self.stopwatch('Diffusion step', stop=True)
+
+        self.stopwatch('Second reaction step')
+        self.boundary_reactions_forward_scipy('pm', factor=0.5)
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
+        self.stopwatch('Second reaction step', stop=True)
+
+
+
+
+    def IMEX_diffusion_forward(self, comp_name, factor=1):
+        self.forward_time_step(factor=factor)
+        self.updateTimeDependentParameters()
+
+        forms = self.split_forms[comp_name]
+
+        if self.idx <= 1:
+            self.stopwatch('A assembly')
+            self.A = d.assemble(forms['Mu'] + forms['D'])
+            self.stopwatch('A assembly', stop=True)
+            self.solver = d.KrylovSolver('cg','ilu')
+            self.solver.parameters['nonzero_initial_guess'] = True
+        self.stopwatch('b assembly')
+        #rxn = -forms['Mun'] - forms['B'] - forms['R'] 
+        rxn_Mun = d.assemble(-forms['Mun'], form_compiler_parameters={'quadrature_degree': 2})
+        rxn_B = d.assemble(-forms['B'], form_compiler_parameters={'quadrature_degree': 2})
+        rxn_R = d.assemble(-forms['R'], form_compiler_parameters={'quadrature_degree': 2})
+        print('Mun max: %f, B max: %f, R max: %f' % (rxn_Mun.max(), rxn_B.max(), rxn_R.max()))
+        b = rxn_Mun+rxn_B+rxn_R
+        self.stopwatch('b assembly')
+        #b = d.assemble(rxn, form_compiler_parameters={'quadrature_degree': 2})
+        U = self.u['cyto']['u'].vector()
+        d.solve(self.A, U, b, 'cg', 'ilu')
+#            self.F[comp_name] = total_eqn
+#            J = d.derivative(self.F[comp_name], self.u[comp_name]['u'])
+#            problem = d.NonlinearVariationalProblem(self.F[comp_name], self.u[comp_name]['u'], [], J)
+#            self.nonlinear_solver[comp_name] = d.NonlinearVariationalSolver(problem)
+#            p = self.nonlinear_solver[comp_name].parameters
+#            p['newton_solver'].update(self.config.dolfin_linear_coarse)
+
+#            self.a[comp_name] = d.lhs(total_eqn)
+#            self.L[comp_name] = d.rhs(total_eqn)
+
+        #d.solve(self.a[comp_name] == self.L[comp_name], self.u[comp_name]['u'])
+
+        #self.nonlinear_solver[comp_name].solve()
+
+        self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+
 
 
 
@@ -1419,7 +1504,7 @@ class Model(object):
                 comp_name = sp.compartment_name
 
                 self.u[pcomp_name]['n'].vector()[idx] = \
-                    data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
+                    stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
 
                 print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
 
@@ -1435,8 +1520,8 @@ class Model(object):
 
                     unew = self.u[pcomp_name]['u'].vector()[idx]
 
-                    data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
-                    data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['n'], unew, self.V[comp_name], submesh_species_index)
+                    stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
+                    stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['n'], unew, self.V[comp_name], submesh_species_index)
                     print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
 
     def update_solution_boundary_to_volume_dirichlet(self):
@@ -1494,47 +1579,129 @@ class Model(object):
                     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
 
-    def boundary_reactions_forward_scipy(self, comp_name, factor=1, all_dofs=False):
-        #self.forward_time_step(factor=factor)
-        #self.
-        point = (0,0,0)
+    def boundary_reactions_forward_scipy(self, comp_name, factor=1, all_dofs=False, method='RK45'):
 
         if all_dofs:
-            nspecies = self.CD.Dict[comp_name].num_species
             num_vertices = self.CD.Dict[comp_name].num_vertices
-            mult = int(num_vertices/nspecies)
-            if comp_name not in self.scipy_odes.keys():
-                self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=mult)
-            lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
+        else:
+            x,y,z = (0,0,0) # point to evaluate
+            num_vertices = 1
+        if comp_name not in self.scipy_odes.keys():
+            self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=num_vertices)
+        lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
 
-            if boundary_species:
-                nbspecies = len(boundary_species)
-                ub = np.full(nbspecies * num_vertices, np.nan)
-                for spidx, sp in enumerate(boundary_species):
-                    pcomp_name = self.SD.Dict[sp].compartment_name
-                    pcomp_idx = self.SD.Dict[sp].compartment_index
-                    pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
-                    if pcomp_nspecies==0: pcomp_nspecies=1
-                    ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
-
-                sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
-
+        nbspecies = len(boundary_species)
+        ub = np.full(nbspecies * num_vertices, np.nan)
+        for spidx, sp in enumerate(boundary_species):
+            pcomp_name = self.SD.Dict[sp].compartment_name
+            pcomp_idx = self.SD.Dict[sp].compartment_index
+            pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
+            if pcomp_nspecies==0: pcomp_nspecies=1
+            if all_dofs:
+                ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
             else:
-                sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
+                ub[spidx] = self.u[pcomp_name]['b'+comp_name](x,y,z)[pcomp_idx]
+                
 
+        if all_dofs:
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method=method)
             # assign solution
             self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
-
         else:
-            lode, ptuple, tparam = self.flux_to_scipy(comp_name)
-            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](x,y,z), method=method)
             for idx, val in enumerate(sol.y[:,-1]):
-                data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, self.V[comp_name], idx) 
-        
+                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, self.V[comp_name], idx) 
 
-        self.forward_time_step(factor=factor)
+
+        self.forward_time_step(factor=factor) # increment time afterwards
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
         print("finished boundary_reactions_forward_scipy")
+
+
+
+
+        # if all_dofs:
+        #     nspecies = self.CD.Dict[comp_name].num_species
+        #     num_vertices = self.CD.Dict[comp_name].num_vertices
+        #     mult = int(num_vertices)
+        #     if comp_name not in self.scipy_odes.keys():
+        #         self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=mult)
+        #     lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
+
+        #     if boundary_species:
+        #         nbspecies = len(boundary_species)
+        #         ub = np.full(nbspecies * num_vertices, np.nan)
+        #         for spidx, sp in enumerate(boundary_species):
+        #             pcomp_name = self.SD.Dict[sp].compartment_name
+        #             pcomp_idx = self.SD.Dict[sp].compartment_index
+        #             pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
+        #             if pcomp_nspecies==0: pcomp_nspecies=1
+        #             ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
+
+        #         sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
+
+        #     # else:
+        #         # sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
+
+        #     # assign solution
+        #     self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
+
+        # else:
+        #     lode, ptuple, tparam, boundary_species = self.flux_to_scipy(comp_name)
+        #     if boundary_species:
+        #     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
+        #     # else:
+        #     #     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
+        #     for idx, val in enumerate(sol.y[:,-1]):
+        #         stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, self.V[comp_name], idx) 
+        
+
+        # self.forward_time_step(factor=factor) # increment time afterwards
+        # self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        # print("finished boundary_reactions_forward_scipy")
+
+
+
+
+
+# comp_name = 'pm'
+# all_dofs = True
+
+
+# num_vertices = model.CD.Dict[comp_name].num_vertices
+# mult = int(num_vertices)
+# if comp_name not in model.scipy_odes.keys():
+#     model.scipy_odes[comp_name] = model.flux_to_scipy(comp_name, mult=mult)
+
+
+# lode, ptuple, tparam, boundary_species = model.scipy_odes[comp_name]
+
+# if boundary_species:
+#     nbspecies = len(boundary_species)
+#     ub = np.full(nbspecies * num_vertices, np.nan)
+#     for spidx, sp in enumerate(boundary_species):
+#         pcomp_name = model.SD.Dict[sp].compartment_name
+#         pcomp_idx = model.SD.Dict[sp].compartment_index
+#         pcomp_nspecies = model.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
+#         if pcomp_nspecies==0: pcomp_nspecies=1
+#         ub[spidx::nbspecies] = model.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
+
+#     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [model.t, model.t+model.dt*factor], model.u[comp_name]['n'].vector(), method='RK45')
+
+# else:
+#     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [model.t, model.t+model.dt*factor], model.u[comp_name]['n'].vector(), method='RK45')
+
+# # assign solution
+# model.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
+
+
+
+
+# model.forward_time_step(factor=factor)
+# model.u[comp_name]['n'].assign(model.u[comp_name]['u'])
+# print("finished boundary_reactions_forward_scipy")
+
+
 
 
 
@@ -1613,6 +1780,7 @@ class Model(object):
                             time_param_list.append(p)
                         else:
                             param_list.append(pname)
+
         
         param_list = list(set(param_list))
         time_param_list = list(set(time_param_list))
@@ -1621,7 +1789,9 @@ class Model(object):
         time_param_lambda = [lambdify('t', p.symExpr) for p in time_param_list]
         time_param_name_list = [p.name for p in time_param_list]
 
-        boundary_species = [str(sp) for sp in total_flux.free_symbols if str(sp) not in spname_list+param_list+time_param_name_list]
+        free_symbols = list(set([str(x) for total_flux in dudt for x in total_flux.free_symbols]))
+
+        boundary_species = [str(sp) for sp in free_symbols if str(sp) not in spname_list+param_list+time_param_name_list]
         num_boundary_species = len(boundary_species)
         if boundary_species:
             print("Adding species %s to flux_to_scipy" % boundary_species)
@@ -1632,7 +1802,8 @@ class Model(object):
 
         def lambdified_odes(t, u, p, time_p, ub=[]):
             if int(mult*num_species) != len(u):
-                raise Exception("mult*num_species must match the length of the input vector!")
+                raise Exception("mult*num_species [%d x %d = %d] does not match the length of the input vector [%d]!" %
+                                (mult, num_species, mult*num_species, len(u)))
             time_p_eval = [f(t) for f in time_p]
             dudt_list = []
             for idx in range(mult):
@@ -1724,15 +1895,16 @@ class Model(object):
             print("Formulating problem as F(u;v) == 0 for newton iterations")
             for comp in comp_list:
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.F[comp.name] = sum(comp_forms)
-                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
-                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
-                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
-                p = self.nonlinear_solver[comp.name].parameters
-                p['newton_solver'].update(self.config.dolfin_linear_coarse)
+                #self.F[comp.name] = sum(comp_forms)
+                for idx, form in enumerate(comp_forms):
+                    J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
+                    problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
+                    self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
+                    p = self.nonlinear_solver[comp.name].parameters
+                    p['newton_solver'].update(self.config.dolfin_linear_coarse)
 
         elif self.config.solver['nonlinear'] == 'IMEX':
-            print("Keeping forms separated by component and form_type for IMEX scheme.")
+            print("Keeping forms separated by compartment and form_type for IMEX scheme.")
             for comp in comp_list:
                 comp_forms = [f for f in self.Forms.select_by('compartment_name', comp.name)]
                 for form_type in form_types:
