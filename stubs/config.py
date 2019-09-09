@@ -111,9 +111,10 @@ class Config(object):
         #RD.doToAll('combineDicts', {'dict1': 'paramDictValues', 'dict2': 'involved_species_link', 'new_dict_name': 'varDict'})
 
         # meshes
-        #CD.add_property('meshes', self.mesh)
+        CD.add_property('meshes', self.mesh)
         CD.load_mesh('cyto', self.mesh['cyto'])
-        CD.extract_submeshes('cyto', True)
+        print("mesh loaded")
+        CD.extract_submeshes('cyto', False)
         CD.compute_scaling_factors()
 
         num_species_per_compartment = RD.get_species_compartment_counts(SD, CD, self.settings)
@@ -123,16 +124,21 @@ class Config(object):
         CD.add_property_to_all('V', None)
 
         #RD.replace_sub_species_in_reactions(SD)
+        #CD.print()
 
-
-        # dolfin
+        # # # dolfin
         SD.assemble_dolfin_functions(RD, CD, self.settings)
         SD.assign_initial_conditions()
 
         RD.reaction_to_fluxes()
-        #RD.doToAll('reaction_to_fluxes')
+        RD.doToAll('reaction_to_fluxes')
         FD = RD.get_flux_container()
         FD.doToAll('get_additional_flux_properties', {"CD": CD, "config": self})
+
+        # # opportunity to make custom changes
+
+
+        FD.doToAll('flux_to_dolfin', {"config": self})
         FD.check_and_replace_sub_species(SD, CD, self)
 
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)

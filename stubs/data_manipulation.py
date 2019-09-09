@@ -191,6 +191,9 @@ def dolfinGetFunctionValues(u,V,idx):
     dofmap = dolfinGetDOFmap(V,idx)
     return u.vector().get_local()[dofmap]
 
+
+TODO: paralell version (use u.sub() instead of dofmap)
+
 def dolfinGetFunctionValuesAtPoint(u,idx,coord):
     return u(coord)[idx]
 
@@ -198,6 +201,15 @@ def dolfinSetFunctionValues(u,unew,V,idx):
     # unew can be a scalar (all dofs will be set to that value), a numpy array, or a list
     dofmap = dolfinGetDOFmap(V,idx)
     u.vector()[dofmap] = unew
+
+def dolfinSetFunctionValuesParallel(u, unew, V, idx):
+    if type(unew) != float:
+        raise Exception("unew must be a float")
+    if V.num_sub_spaces() == 0:
+        d.assign(u, d.interpolate(d.Constant(unew), V))
+    else:
+        Vsub = V.sub(idx).collapse()
+        d.assign(u.sub(idx), d.interpolate(d.Constant(unew), Vsub))
 
 def dolfinGetFunctionStats(u,V,idx):
     uvalues = dolfinGetFunctionValues(u,V,idx)

@@ -407,8 +407,10 @@ class SpeciesContainer(_ObjectContainer):
                         sp.u.update({key: u[sp.compartment_name][key][sp.compartment_index]})
                         sp.v = v[sp.compartment_name][sp.compartment_index]
 
-        # associate function spaces with dataframe
+        # # associate function spaces with dataframe
         for key, comp in CD.Dict.items():
+            print('test')
+            print(comp.name)
             if comp.is_in_a_reaction:
                 comp.V = V[comp.name]
 
@@ -417,13 +419,15 @@ class SpeciesContainer(_ObjectContainer):
         self.V = V
 
     def assign_initial_conditions(self):
-        keys = ['k', 'n']
+        keys = ['k', 'n', 'u']
         for sp in self.Dict.values():
             comp_name = sp.compartment_name
             for key in keys:
-                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
+                # stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
+                #                                           self.V[comp_name], sp.compartment_index)
+                stubs.data_manipulation.dolfinSetFunctionValuesParallel(self.u[comp_name][key], sp.initial_condition,
                                                           self.V[comp_name], sp.compartment_index)
-            self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
+            #self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
             print("Assigned initial condition for species %s" % sp.name)
 
         # add boundary values
@@ -454,6 +458,9 @@ class CompartmentContainer(_ObjectContainer):
     def load_mesh(self, mesh_key, mesh_str):
         self.meshes[mesh_key] = d.Mesh(mesh_str)
     def extract_submeshes(self, main_mesh_str, save_to_file):
+        my_rank = d.MPI.comm_world.rank
+        nprocs = d.MPI.comm_world.size
+        print("MYRANK %d" % my_rank)
         main_mesh = self.Dict[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
 
@@ -479,14 +486,19 @@ class CompartmentContainer(_ObjectContainer):
 
         for key, obj in self.Dict.items():
             if key!=main_mesh_str and obj.dimensionality==surfaceDim:
-                submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)                
-                self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
-                self.meshes[key] = submesh
-                obj.mesh = submesh
-                if save_to_file:
-                    save_str = 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml'
-                    save_str = 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.pvd'
-                    d.File(save_str) << submesh
+                if nprocs > 1:
+                    print("Loading submesh from file")
+                    submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml')
+                    self.meshes[key] = submesh
+                    obj.mesh = submesh
+                else:
+                    submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)                
+                    self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
+                    self.meshes[key] = submesh
+                    obj.mesh = submesh
+                    if save_to_file:
+                        save_str = 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml'
+                        d.File(save_str) << submesh
             # integration measures
             if obj.dimensionality==main_mesh.dimensionality:
                 obj.ds = d.Measure('ds', domain=obj.mesh, subdomain_data=vmf)
@@ -824,7 +836,6 @@ class Flux(_ObjectInstance):
         self.get_is_linear_comp()
         self.get_ukeys(config)
         self.get_integration_measure(CD, config)
-        self.flux_to_dolfin(config)
 
     def get_involved_species_parameters_compartment(self, CD):
         symStrList = {str(x) for x in self.symList}
@@ -982,16 +993,44 @@ class Flux(_ObjectInstance):
             return 'u'
 
         elif config.solver['nonlinear'] == 'IMEX':
-            if sp.dimensionality == 3: #TODO fix this
-                return 'k'
-            # volume -> surface
-            elif var.dimensionality > sp.dimensionality:
-                return 'b'+sp.compartment_name
-            else:
-                if self.is_linear_wrt_comp[var.compartment_name]:
+            ## same compartment
+            # dynamic LHS
+            # if var.name == sp.name:
+            #     if self.is_linear_wrt[sp.name]:
+            #         return 't'
+            #     else:
+            #         return 'n'
+            # static LHS
+            if var.compartment_name == sp.compartment_name:
+                if self.is_linear_wrt_comp[sp.compartment_name]:
                     return 't'
                 else:
-                    return 'k'
+                    return 'n'
+            ## different compartments
+            # volume -> surface
+            if var.dimensionality > sp.dimensionality:
+                return 'b'+sp.compartment_name
+            # surface -> volume is covered by first if statement in get_ukey()
+
+
+
+
+            # if sp.dimensionality == 3: #TODO fix this
+            #     if var.compartment_name == sp.compartment_name and self.is_linear_wrt_comp[var.compartment_name]:
+            #         return 't'
+            #     else:
+            #         if var.name == sp.name and self.is_linear_wrt[sp.name]:
+            #             return 't'
+            #         else:
+            #             return 'k'
+            # # volume -> surface
+            # elif var.dimensionality > sp.dimensionality:
+            #     return 'b'+sp.compartment_name
+            # else:
+            #     if self.is_linear_wrt_comp[var.compartment_name]:
+            #         return 't'
+            #     else:
+            #         return 'k'
 
         # elif config.solver['nonlinear'] == 'IMEX':
         #     if 
@@ -1383,13 +1422,13 @@ class Model(object):
         self.idx += 1
         print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
 
-    def IMEX_1BDF_RK45(self):
+    def IMEX_1BDF(self, method='RK45'):
         self.idx += 1
         print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
         self.stopwatch('First reaction step')
-        self.boundary_reactions_forward_scipy('pm', factor=0.5)
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method)
         self.set_time(self.t-self.dt/2) # reset time back to t
-        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method=method)
         self.stopwatch('First reaction step', stop=True)
 
         self.update_solution_boundary_to_volume()
@@ -1402,11 +1441,14 @@ class Model(object):
         self.stopwatch('Diffusion step', stop=True)
 
         self.stopwatch('Second reaction step')
-        self.boundary_reactions_forward_scipy('pm', factor=0.5)
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method)
         self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
-        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method=method)
         self.stopwatch('Second reaction step', stop=True)
 
+        self.update_solution_boundary_to_volume()
+
+        #self.u['cyto']['n'].assign(self.u['cyto']['u'])
 
 
 
@@ -1418,21 +1460,25 @@ class Model(object):
 
         if self.idx <= 1:
             self.stopwatch('A assembly')
-            self.A = d.assemble(forms['Mu'] + forms['D'])
+            self.A = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 2})
             self.stopwatch('A assembly', stop=True)
             self.solver = d.KrylovSolver('cg','ilu')
             self.solver.parameters['nonzero_initial_guess'] = True
         self.stopwatch('b assembly')
-        #rxn = -forms['Mun'] - forms['B'] - forms['R'] 
-        rxn_Mun = d.assemble(-forms['Mun'], form_compiler_parameters={'quadrature_degree': 2})
-        rxn_B = d.assemble(-forms['B'], form_compiler_parameters={'quadrature_degree': 2})
-        rxn_R = d.assemble(-forms['R'], form_compiler_parameters={'quadrature_degree': 2})
-        print('Mun max: %f, B max: %f, R max: %f' % (rxn_Mun.max(), rxn_B.max(), rxn_R.max()))
-        b = rxn_Mun+rxn_B+rxn_R
-        self.stopwatch('b assembly')
+        d.parameters['form_compiler']['optimize'] = True
+        d.parameters['form_compiler']['cpp_optimize'] = True
+        rxn = -forms['Mun'] - d.rhs(forms['B']) - d.rhs(forms['R']) 
+        b=d.assemble(rxn, form_compiler_parameters={'quadrature_degree': 2})
+#        rxn_Mun = d.assemble(-forms['Mun'], form_compiler_parameters={'quadrature_degree': 2})
+#        rxn_B = d.assemble(-forms['B'], form_compiler_parameters={'quadrature_degree': 2})
+#        rxn_R = d.assemble(-forms['R'], form_compiler_parameters={'quadrature_degree': 2})
+        #print('Mun max: %f, B max: %f, R max: %f' % (rxn_Mun.max(), rxn_B.max(), rxn_R.max()))
+        #b = rxn_Mun+rxn_B+rxn_R
+        self.stopwatch('b assembly', stop=True)
         #b = d.assemble(rxn, form_compiler_parameters={'quadrature_degree': 2})
         U = self.u['cyto']['u'].vector()
-        d.solve(self.A, U, b, 'cg', 'ilu')
+        #d.solve(self.A, U, b, 'cg', 'ilu')
+        self.solver.solve(self.A, U, b)
 #            self.F[comp_name] = total_eqn
 #            J = d.derivative(self.F[comp_name], self.u[comp_name]['u'])
 #            problem = d.NonlinearVariationalProblem(self.F[comp_name], self.u[comp_name]['u'], [], J)
@@ -1447,7 +1493,7 @@ class Model(object):
 
         #self.nonlinear_solver[comp_name].solve()
 
-        self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+        #self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
 
@@ -1504,6 +1550,9 @@ class Model(object):
                 comp_name = sp.compartment_name
 
                 self.u[pcomp_name]['n'].vector()[idx] = \
+                    stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
+
+                self.u[pcomp_name]['u'].vector()[idx] = \
                     stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
 
                 print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
