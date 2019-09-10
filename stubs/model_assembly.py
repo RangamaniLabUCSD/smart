@@ -10,6 +10,7 @@ from collections import defaultdict as ddict
 from termcolor import colored
 import pandas as pd
 import dolfin as d
+import mpi4py.MPI as pyMPI
 
 import sympy
 from sympy.parsing.sympy_parser import parse_expr
@@ -33,6 +34,10 @@ from stubs import unit as ureg
 #import stubs.data_manipulation as data_manipulation
 #import stubs.flux_assembly as flux_assembly
 
+comm = d.MPI.comm_world
+rank = comm.rank
+size = comm.size
+root = 0
 
 
 # ====================================================
@@ -146,7 +151,6 @@ class _ObjectContainer(object):
                 for key, value in obj1_value.items():
                     objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
-                        print(objList)
                         raise Exception('Either none or more than one objects match this condition')
                     if value_is_key:
                         newDict.update({value: objList[0]})
@@ -167,11 +171,6 @@ class _ObjectContainer(object):
                 for value in obj1_value:
                     objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
-                        print(objList)
-                        print(property_name2)
-                        print(value)
-                        print(obj1.print())
-                        #ObjectContainer2.vprint()
                         raise Exception('Either none or more than one objects match this condition')
                     newDict.update({value: objList[0]})
                 setattr(obj1, linked_name, newDict)
@@ -179,7 +178,6 @@ class _ObjectContainer(object):
             else: 
                 objList = ObjectContainer2.where_equals(property_name2, obj1_value)
                 if len(objList) != 1:
-                    print(objList)
                     raise Exception('Either none or more than one objects match this condition')
                 setattr(obj1, linked_name, objList[0])
 
@@ -218,16 +216,19 @@ class _ObjectContainer(object):
         return list(self.Dict.values())[idx]
 
     def print(self, tablefmt='fancy_grid', propertyList=[]):
-        if propertyList:
-            if type(propertyList) != list: propertyList=[propertyList]
-        elif hasattr(self, 'propertyList'):
-            propertyList = self.propertyList
-        df = self.get_pandas_dataframe(propertyList=propertyList)
-        if propertyList:
-            df = df[propertyList]
-
-        print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
-               #headers='keys', tablefmt=tablefmt), width=120)
+        if rank == root:
+            if propertyList:
+                if type(propertyList) != list: propertyList=[propertyList]
+            elif hasattr(self, 'propertyList'):
+                propertyList = self.propertyList
+            df = self.get_pandas_dataframe(propertyList=propertyList)
+            if propertyList:
+                df = df[propertyList]
+    
+            print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
+                   #headers='keys', tablefmt=tablefmt), width=120)
+        else: 
+            pass
 
     def __str__(self):
         df = self.get_pandas_dataframe(propertyList=self.propertyList)
@@ -239,21 +240,24 @@ class _ObjectContainer(object):
 
     def vprint(self, keyList=None, propertyList=[], print_all=False):
         # in order of priority: kwarg, container object property, else print all keys
-        if keyList:
-            if type(keyList) != list: keyList=[keyList]
-        elif hasattr(self, 'keyList'):
-            keyList = self.keyList
+        if rank == root:
+            if keyList:
+                if type(keyList) != list: keyList=[keyList]
+            elif hasattr(self, 'keyList'):
+                keyList = self.keyList
+            else:
+                keyList = list(self.Dict.keys())
+
+            if propertyList:
+                if type(propertyList) != list: propertyList=[propertyList]
+            elif hasattr(self, 'propertyList'):
+                propertyList = self.propertyList
+
+            if print_all: propertyList = []
+            for key in keyList:
+                self.Dict[key].print(propertyList=propertyList)
         else:
-            keyList = list(self.Dict.keys())
-
-        if propertyList:
-            if type(propertyList) != list: propertyList=[propertyList]
-        elif hasattr(self, 'propertyList'):
-            propertyList = self.propertyList
-
-        if print_all: propertyList = []
-        for key in keyList:
-            self.Dict[key].print(propertyList=propertyList)
+            pass
 
 
 class _ObjectInstance(object):
@@ -288,13 +292,16 @@ class _ObjectInstance(object):
             dict_to_convert = self.__dict__
         return pd.Series(dict_to_convert, name=self.name)
     def print(self, propertyList=[]):
-        print("Name: " + self.name)
-        # if a custom list of properties to print is provided, only use those
-        if propertyList:
-            dict_to_print = dict([(key,val) for (key,val) in self.__dict__.items() if key in propertyList])
+        if rank==root:
+            print("Name: " + self.name)
+            # if a custom list of properties to print is provided, only use those
+            if propertyList:
+                dict_to_print = dict([(key,val) for (key,val) in self.__dict__.items() if key in propertyList])
+            else:
+                dict_to_print = self.__dict__
+            pprint(dict_to_print, width=240)
         else:
-            dict_to_print = self.__dict__
-        pprint(dict_to_print, width=240)
+            pass
 
 
 # ==============================================================================
@@ -315,7 +322,7 @@ class Parameter(_ObjectInstance):
     def assembleTimeDependentParameters(self): 
         if self.is_time_dependent:
             self.symExpr = parse_expr(self.symExpr)
-            print("Creating dolfin object for time-dependent parameter %s" % self.name)
+            if rank==root: print("Creating dolfin object for time-dependent parameter %s" % self.name)
             self.dolfinConstant = d.Constant(self.value)
 
 
@@ -360,8 +367,9 @@ class SpeciesContainer(_ObjectContainer):
         for compartment_name, num_species in num_species_per_compartment.items():
             compartmentDim = CD.Dict[compartment_name].dimensionality
             CD.Dict[compartment_name].num_species = num_species
-            print('Compartment %s (dimension: %d) has %d species associated with it' %
-                  (compartment_name, compartmentDim, num_species))
+            if rank==root:
+                print('Compartment %s (dimension: %d) has %d species associated with it' %
+                      (compartment_name, compartmentDim, num_species))
         
             # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
             if num_species == 1:
@@ -388,7 +396,6 @@ class SpeciesContainer(_ObjectContainer):
                                 boundaryV = d.FunctionSpace(CD.meshes[boundary_name], 'P', 1)
                             else:
                                 boundaryV = d.VectorFunctionSpace(CD.meshes[boundary_name], 'P', 1, dim=num_species)
-                            print("*** %s" % boundary_name)
                             V['boundary'][compartment_name].update({boundary_name: boundaryV})
                             u[compartment_name]['b'+boundary_name] = d.Function(boundaryV)
 
@@ -409,8 +416,6 @@ class SpeciesContainer(_ObjectContainer):
 
         # # associate function spaces with dataframe
         for key, comp in CD.Dict.items():
-            print('test')
-            print(comp.name)
             if comp.is_in_a_reaction:
                 comp.V = V[comp.name]
 
@@ -425,10 +430,10 @@ class SpeciesContainer(_ObjectContainer):
             for key in keys:
                 # stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
                 #                                           self.V[comp_name], sp.compartment_index)
-                stubs.data_manipulation.dolfinSetFunctionValuesParallel(self.u[comp_name][key], sp.initial_condition,
-                                                          self.V[comp_name], sp.compartment_index)
+                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
+                                                                sp.compartment_index)
             #self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
-            print("Assigned initial condition for species %s" % sp.name)
+            if rank==root: print("Assigned initial condition for species %s" % sp.name)
 
         # add boundary values
         for comp_name in self.u.keys():
@@ -458,9 +463,6 @@ class CompartmentContainer(_ObjectContainer):
     def load_mesh(self, mesh_key, mesh_str):
         self.meshes[mesh_key] = d.Mesh(mesh_str)
     def extract_submeshes(self, main_mesh_str, save_to_file):
-        my_rank = d.MPI.comm_world.rank
-        nprocs = d.MPI.comm_world.size
-        print("MYRANK %d" % my_rank)
         main_mesh = self.Dict[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
 
@@ -486,8 +488,8 @@ class CompartmentContainer(_ObjectContainer):
 
         for key, obj in self.Dict.items():
             if key!=main_mesh_str and obj.dimensionality==surfaceDim:
-                if nprocs > 1:
-                    print("Loading submesh from file")
+                if size > 1:
+                    print("CPU %d: Loading submesh for %s from file" % (rank, key))
                     submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml')
                     self.meshes[key] = submesh
                     obj.mesh = submesh
@@ -513,7 +515,7 @@ class CompartmentContainer(_ObjectContainer):
         # Get # of vertices
         for key, mesh in self.meshes.items():        
             num_vertices = mesh.num_vertices()
-            print('Mesh %s has %d vertices' % (key, num_vertices))
+            print('CPU %d: My partition of mesh %s has %d vertices' % (rank, key, num_vertices))
             self.Dict[key].num_vertices = num_vertices
 
         self.vmf = vmf
@@ -584,8 +586,9 @@ class ReactionContainer(_ObjectContainer):
                 sub_sp_name = sp_name+'_sub_'+comp_name
                 compartment_counts.append(comp_name)
                 if sub_sp_name not in SD.Dict.keys():
-                    print((colored('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
-                        % (sp_name, comp_name, sub_sp_name))))
+                    if rank==root:
+                        print((colored('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
+                            % (sp_name, comp_name, sub_sp_name))))
 
                     sub_sp = copy(SD.Dict[sp_name])
                     sub_sp.is_an_added_species = True
@@ -653,10 +656,10 @@ class ReactionContainer(_ObjectContainer):
 class Reaction(_ObjectInstance):
     def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None, explicit_restriction_to_domain=False):
         if eqn_f_str:
-            print(eqn_f_str)
+            print("Reaction %s: using the specified equation for the forward flux: %s" % (name, eqn_f_str))
             self.eqn_f = parse_expr(eqn_f_str)
         if eqn_r_str:
-            print(eqn_r_str)
+            print("Reaction %s: using the specified equation for the reverse flux: %s" % (name, eqn_r_str))
             self.eqn_r = parse_expr(eqn_r_str)
         self.explicit_restriction_to_domain = explicit_restriction_to_domain
         super().__init__(name, Dict)
@@ -671,7 +674,6 @@ class Reaction(_ObjectInstance):
                 rxnSymStr += '*' + sp_name
             self.eqn_f = parse_expr(rxnSymStr)
 
-            print(self.name)
             rxnSymStr = self.paramDict['off']
             for sp_name in self.RHS:
                 rxnSymStr += '*' + sp_name
@@ -968,7 +970,6 @@ class Flux(_ObjectInstance):
             return 'u' # always true if operator splitting to decouple compartments
 
         if sp.name == var.parent_species:
-            print('Debug 1')
             return 'u'
 
         if config.solver['nonlinear'] == 'picard':# or 'IMEX':
@@ -1081,8 +1082,6 @@ class Flux(_ObjectInstance):
             if var_name in self.paramDict.keys():
                 var = self.paramDict[var_name]
                 if var.is_time_dependent:
-                    print(var.unit)
-                    print(type(var.unit))
                     value_dict[var_name] = var.dolfinConstant * var.unit
                 else:
                     value_dict[var_name] = var.value_unit
@@ -1166,33 +1165,31 @@ class Model(object):
                 setattr(j, 'scale_factor', 1*ureg.dimensionless)
                 pass
             else:
-                print(unit_prod)
-                print(j.flux_units)
-                print(j.name)
-                print(j.species_name)
                 if hasattr(j, 'length_scale_factor'):
-                    print("Adjusting flux by given length scale factor.")
+                    if rank==root:
+                        print("Adjusting flux for %s by the provided length scale factor." % (j.name, j.length_scale_factor))
                     length_scale_factor = getattr(j, 'length_scale_factor')
                 else:
                     if len(j.involved_compartments.keys()) < 2:
-                        print("Units of flux: %s" % unit_prod)
-                        print("Desired units: %s" % j.flux_units)
+                        if rank==root: print("Units of flux: %s" % unit_prod)
+                        if rank==root: print("Desired units: %s" % j.flux_units)
                         raise Exception("Flux %s seems to be a boundary flux (or has inconsistent units) but only has one compartment, %s." 
                             % (j.name, j.destination_compartment))
-
-                    print(j.name)
-                    print(j.involved_compartments.keys())
-                    print('Adjusting flux %s from compartment %s to %s by length scale factor to ensure consistency' \
-                          % (j.name, j.source_compartment, j.destination_compartment))
                     length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
+
+                if rank==root:
+                    print(('\nThe flux, %s, from compartment %s to %s, has units ' %
+                           (j.flux_name, j.source_compartment, j.destination_compartment) + colored(unit_prod, "red") +
+                           "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
+                    print('Adjusted flux with the length scale factor ' + 
+                          colored("%f [%s]"%(length_scale_factor.magnitude,str(length_scale_factor.units)), "cyan") + ' to match units.\n') 
+
                 if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
-                    print('Debug marker 1')
                     prod *= length_scale_factor.magnitude
                     total_scaling *= length_scale_factor.magnitude
                     unit_prod *= length_scale_factor.units*1
                     setattr(j, 'length_scale_factor', length_scale_factor)
                 elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
-                    print('Debug marker 2')
                     prod /= length_scale_factor.magnitude
                     total_scaling /= length_scale_factor.magnitude
                     unit_prod /= length_scale_factor.units*1
@@ -1200,14 +1197,17 @@ class Model(object):
                 else:
                     raise Exception("Inconsitent units!")
 
+                                
+
             # if units are consistent in dimensionality but not magnitude, adjust values
             if j.flux_units != unit_prod:
-                print(('\nThe flux, %s, has units '%j.flux_name + colored(unit_prod, "red") +
-                    "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
                 unit_scaling = unit_prod.to(j.flux_units).magnitude
                 total_scaling *= unit_scaling
                 prod *= unit_scaling
-                print('Adjusted value of flux by ' + colored("%f"%unit_scaling, "cyan") + ' to match units.\n')
+                if rank==root:
+                    print(('\nThe flux, %s, has units '%j.flux_name + colored(unit_prod, "red") +
+                        "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
+                    print('Adjusted value of flux by ' + colored("%f"%unit_scaling, "cyan") + ' to match units.\n')
                 setattr(j, 'unit_scaling', unit_scaling)
             else:
                 setattr(j, 'unit_scaling', 1)
@@ -1274,7 +1274,7 @@ class Model(object):
                 self.Forms.add(Form(Mform_un, sp, "Mun"))
 
             else:
-                print("Species %s is not in a reaction?" %  sp_name)
+                if rank==root: print("Species %s is not in a reaction?" %  sp_name)
 
     def set_allow_extrapolation(self):
         for comp_name in self.u.keys():
@@ -1292,13 +1292,13 @@ class Model(object):
         if not dt:
             dt = self.dt
         else:
-            print("dt changed from %f to %f" % (self.dt, dt))
+            if rank==root: print("dt changed from %f to %f" % (self.dt, dt))
         self.t = t
         self.T.assign(t)
         self.dt = dt
         self.dT.assign(dt) 
 
-        print("New time: %f" % self.t)
+        if rank==root: print("New time: %f" % self.t)
 
     def forward_time_step(self, factor=1):
         self.dT.assign(float(self.dt*factor))
@@ -1314,7 +1314,7 @@ class Model(object):
             self.timers[key].start()
         else:
             elapsed_time = self.timers[key].elapsed()[0]
-            print("%s finished in %f seconds" % (key,elapsed_time))
+            if rank==root: print("%s finished in %f seconds" % (key,elapsed_time))
             self.timers[key].stop()
             self.timings[key].append(elapsed_time)
             return elapsed_time
@@ -1332,11 +1332,11 @@ class Model(object):
             if param.is_time_dependent:
                 newValue = param.symExpr.subs({'t': t}).evalf()
                 param.dolfinConstant.assign(newValue)
-                print('%f assigned to time-dependent parameter %s' % (newValue, param.name))
+                if rank==root: print('%f assigned to time-dependent parameter %s' % (newValue, param.name))
 
     def strang_RDR_step_forward(self):
         self.idx += 1
-        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        if rank==root: print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
         self.stopwatch('reaction_halfstep_1')
@@ -1345,7 +1345,7 @@ class Model(object):
         self.set_time(self.t-self.dt/2) # reset time back to t
         self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
         #print("finished first reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
-        print("finished first reaction step: t = %f, dt = %f" % (self.t, self.dt))
+        if rank==root: print("finished first reaction step: t = %f, dt = %f" % (self.t, self.dt))
         self.stopwatch('reaction_halfstep_1', stop=True)
 
         # diffusion step (full time step) t=[t,t+dt]
@@ -1362,7 +1362,7 @@ class Model(object):
         self.stopwatch('diffusion_fullstep')
         self.diffusion_forward(bcs = bcs) 
         #self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
-        print("finished diffusion step: t = %f, dt = %f" % (self.t, self.dt))
+        if rank==root: print("finished diffusion step: t = %f, dt = %f" % (self.t, self.dt))
         self.stopwatch('diffusion_fullstep', stop=True)
 
         # second reaction step (half time step) t=[t+dt/2,t+dt]
@@ -1376,7 +1376,7 @@ class Model(object):
         self.boundary_reactions_forward_scipy('pm', factor=0.5)
         self.set_time(self.t-self.dt/2) # reset time back to t
         self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True)
-        print("finished second reaction step: t = %f, dt = %f" % (self.t, self.dt))
+        if rank==root: print("finished second reaction step: t = %f, dt = %f" % (self.t, self.dt))
         self.stopwatch('reaction_halfstep_2', stop=True)
         #self.update_solution_boundary_to_volume()
         #bcs = self.update_solution_boundary_to_volume_dirichlet()
@@ -1392,39 +1392,39 @@ class Model(object):
         #    self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
         #    print("Increasing step size")
 
-        print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
+        if rank==root: print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
 
 
     def strang_RD_step_forward(self):
         self.idx += 1
-        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        if rank==root: print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
         self.boundary_reactions_forward(factor=0.5)
-        print("finished reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        if rank==root: print("finished reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
         # transfer values of solution onto volumetric field
         self.update_solution_boundary_to_volume()
 
         self.diffusion_forward(factor=0.5) 
-        print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        if rank==root: print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
         self.update_solution_volume_to_boundary()
 
         if self.pidx >= self.config.solver['max_picard']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
-            print("Decrease step size")
+            if rank==root: print("Decrease step size")
         if self.pidx < self.config.solver['min_picard']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
-            print("Increasing step size")
+            if rank==root: print("Increasing step size")
 
-        print("\n Finished step %d of RD with final time: %f" % (self.idx, self.t))
+        if rank==root: print("\n Finished step %d of RD with final time: %f" % (self.idx, self.t))
 
     def IMEX_2SBDF(self):
         self.idx += 1
-        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        if rank==root: print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
 
     def IMEX_1BDF(self, method='RK45'):
         self.idx += 1
-        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        if rank==root: print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
         self.stopwatch('First reaction step')
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method)
         self.set_time(self.t-self.dt/2) # reset time back to t
@@ -1555,7 +1555,7 @@ class Model(object):
                 self.u[pcomp_name]['u'].vector()[idx] = \
                     stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
 
-                print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
+                if rank==root: print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
 
     def update_solution_volume_to_boundary(self):
         for sp_name, sp in self.SD.Dict.items():
@@ -1571,7 +1571,7 @@ class Model(object):
 
                     stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
                     stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['n'], unew, self.V[comp_name], submesh_species_index)
-                    print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
+                    if rank==root: print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
 
     def update_solution_boundary_to_volume_dirichlet(self):
         bcs = []
@@ -1593,7 +1593,7 @@ class Model(object):
                 self.stopwatch("Vs")
                 Vs = self.V[pcomp_name].sub(parent_species_index)
                 self.stopwatch("Vs", stop=True)
-                print('pcomp_name %s, parent_species_index %d' % (pcomp_name, parent_species_index))
+                if rank==root: print('pcomp_name %s, parent_species_index %d' % (pcomp_name, parent_species_index))
                 self.stopwatch("interpolate")
                 u_dirichlet = d.interpolate(ub, Vs.collapse())
                 self.stopwatch("interpolate",stop=True)
@@ -1602,7 +1602,7 @@ class Model(object):
                 bcs.append(d.DirichletBC(Vs, u_dirichlet, self.CD.vmf, sp.compartment.cell_marker))
                 self.stopwatch("DirichletBC", stop=True)
 
-                print("Assigned values from %s (%s) to %s (%s) [DirichletBC]" % (sp_name, comp_name, sp_parent.name, pcomp_name))
+                if rank==root: print("Assigned values from %s (%s) to %s (%s) [DirichletBC]" % (sp_name, comp_name, sp_parent.name, pcomp_name))
         self.bcs=bcs
         return bcs
 
@@ -1664,7 +1664,7 @@ class Model(object):
 
         self.forward_time_step(factor=factor) # increment time afterwards
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-        print("finished boundary_reactions_forward_scipy")
+        if rank==root: print("finished boundary_reactions_forward_scipy")
 
 
 
@@ -1780,7 +1780,7 @@ class Model(object):
 
 
 
-            print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+            if rank==root: print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
             if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['linear_abstol']:
                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
@@ -1791,7 +1791,8 @@ class Model(object):
 #                break
 
             if self.pidx > self.config.solver['max_picard']:
-                print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
+                if rank==root:
+                    print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
                     (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
                 break
 
@@ -1843,7 +1844,7 @@ class Model(object):
         boundary_species = [str(sp) for sp in free_symbols if str(sp) not in spname_list+param_list+time_param_name_list]
         num_boundary_species = len(boundary_species)
         if boundary_species:
-            print("Adding species %s to flux_to_scipy" % boundary_species)
+            if rank==root: print("Adding species %s to flux_to_scipy" % boundary_species)
         #Params = namedtuple('Params', param_list)
 
         dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list+boundary_species), total_flux) for total_flux in dudt]
@@ -1935,13 +1936,13 @@ class Model(object):
         form_types = set([f.form_type for f in self.Forms.form_list])
 
         if self.config.solver['nonlinear'] == 'picard':
-            print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+            if rank==root: print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
             for comp in comp_list:
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
                 self.a[comp.name] = d.lhs(sum(comp_forms))
                 self.L[comp.name] = d.rhs(sum(comp_forms))
         elif self.config.solver['nonlinear'] == 'newton':
-            print("Formulating problem as F(u;v) == 0 for newton iterations")
+            if rank==root: print("Formulating problem as F(u;v) == 0 for newton iterations")
             for comp in comp_list:
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
                 #self.F[comp.name] = sum(comp_forms)
@@ -1953,7 +1954,7 @@ class Model(object):
                     p['newton_solver'].update(self.config.dolfin_linear_coarse)
 
         elif self.config.solver['nonlinear'] == 'IMEX':
-            print("Keeping forms separated by compartment and form_type for IMEX scheme.")
+            if rank==root: print("Keeping forms separated by compartment and form_type for IMEX scheme.")
             for comp in comp_list:
                 comp_forms = [f for f in self.Forms.select_by('compartment_name', comp.name)]
                 for form_type in form_types:
@@ -1970,7 +1971,7 @@ class Model(object):
     def init_solver_and_plots(self):
         self.data.initVTK(self.SD)
         self.data.storeVTK(self.u, self.t)
-        self.data.computeStatistics(self.u, self.t, self.V, self.SD)
+        self.data.computeStatistics(self.u, self.t, self.SD)
         self.data.initPlot()
 
     def update_solution(self):
@@ -1998,12 +1999,13 @@ class FormContainer(object):
             form_list = self.form_list
 
         for index, form in enumerate(form_list):
-            print("Form with index %d from form_list..." % index)
-            if form.flux_name:
-                print("Flux name: %s" % form.flux_name)
-            print("Species name: %s" % form.species_name)
-            print("Form type: %s" % form.form_type)
-            form.inspect()
+            if rank==root:
+                print("Form with index %d from form_list..." % index)
+                if form.flux_name:
+                    print("Flux name: %s" % form.flux_name)
+                print("Species name: %s" % form.species_name)
+                print("Form type: %s" % form.form_type)
+                form.inspect()
 
 
 class Form(object):
@@ -2024,4 +2026,4 @@ class Form(object):
     def inspect(self):
         integrals = self.dolfin_form.integrals()
         for index, integral in enumerate(integrals):
-            print(str(integral) + "\n")
+            if rank==root: print(str(integral) + "\n")

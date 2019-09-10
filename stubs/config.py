@@ -5,7 +5,12 @@ import dolfin as d
 from stubs.common import nan_to_none
 from stubs import model_assembly
 
+import mpi4py.MPI as pyMPI
 
+comm = d.MPI.comm_world
+rank = comm.rank
+size = comm.size
+root = 0
 
 class Config(object):
     def __init__(self, config_file):
@@ -71,7 +76,7 @@ class Config(object):
 
             if 'directory' in self.model.keys():
                 model_dir = self.model['directory']
-                print("Assuming file names, loading from directory %s" % model_dir)
+                if rank==root: print("Assuming file names, loading from directory %s" % model_dir)
                 self.model['parameters'] = model_dir + 'parameters.json'
                 self.model['compartments'] = model_dir + 'compartments.json'
                 self.model['species'] = model_dir + 'species.json'
@@ -113,7 +118,6 @@ class Config(object):
         # meshes
         CD.add_property('meshes', self.mesh)
         CD.load_mesh('cyto', self.mesh['cyto'])
-        print("mesh loaded")
         CD.extract_submeshes('cyto', False)
         CD.compute_scaling_factors()
 
@@ -143,12 +147,13 @@ class Config(object):
 
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)
 
-        print("Model created succesfully! :)")
-        model.PD.print()
-        model.SD.print()
-        model.CD.print()
-        model.RD.print()
-        model.FD.print()
+        if rank==root:
+            print("Model created succesfully! :)")
+            model.PD.print()
+            model.SD.print()
+            model.CD.print()
+            model.RD.print()
+            model.FD.print()
 
         return model
 
