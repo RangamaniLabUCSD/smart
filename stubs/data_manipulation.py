@@ -4,6 +4,11 @@ import mpi4py.MPI as pyMPI
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+from numbers import Number
+import os
+import petsc4py.PETSc as PETSc
+Print = PETSc.Sys.Print
+
 
 comm = d.MPI.comm_world
 size = comm.size
@@ -32,7 +37,7 @@ class Data(object):
         self.plots = {'solutions': plt.figure()}
         self.timer = d.Timer()
 
-    def initVTK(self, SD):
+    def initSolutionFiles(self, SD, write_type='vtk'):
         for sp_name, sp in SD.Dict.items():
             self.solutions[sp_name] = {}
 
@@ -41,17 +46,40 @@ class Data(object):
             self.solutions[sp_name]['comp_idx'] = int(sp.compartment_index)
             self.solutions[sp_name]['concentration_units'] = sp.concentration_units
 
-            file_str = self.config.directory['solutions'] + '/' + sp_name + '.pvd'
-            self.solutions[sp_name]['vtk'] = d.File(file_str)
+            if write_type=='vtk':
+                file_str = self.config.directory['solutions'] + '/' + sp_name + '.pvd'
+                self.solutions[sp_name][write_type] = d.File(file_str)
+            elif write_type=='xdmf':
+                pass
+#                file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+#                self.solutions[sp_name][write_type] = d.XDMFFile(file_str)
 
-    def storeVTK(self, u, t):
+
+    def storeSolutionFiles(self, u, t, write_type='vtk'):
         for sp_name in self.solutions.keys():
             comp_name = self.solutions[sp_name]['comp_name']
             comp_idx = self.solutions[sp_name]['comp_idx']
-            if self.solutions[sp_name]['num_species'] == 1:
-                self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
-            else:
-                self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
+            #print("spname: %s" % sp_name)
+
+            if comp_name == 'cyto':
+                if self.solutions[sp_name]['num_species'] == 1:
+                    if write_type=='vtk':
+                        self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
+                    elif write_type=='xdmf':
+                        file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                        with d.XDMFFile(file_str) as xdmf:
+                            xdmf.write(u[comp_name]['u'], t)
+                        #self.solutions[sp_name]['xdmf'].close()
+                else:
+                    if write_type=='vtk':
+                        self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
+                    elif write_type=='xdmf':
+                        file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                        with d.XDMFFile(file_str) as xdmf:
+                            xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
+                        #self.solutions[sp_name]['xdmf'].close()
+
+
 
     def computeStatistics(self, u, t, SD):
         #for sp_name in speciesList:
@@ -100,23 +128,29 @@ class Data(object):
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
-    def initPlot(self):
+    def initPlot(self, config):
+        if rank==root:
+            if not os.path.exists(config.directory['plot']):
+                os.mkdir(config.directory['plot'])
+        Print("Created directory %s to store plots" % config.directory['plot'])
         # NOTE: for now plots are individual; add an option to group species into subplots by category
         numPlots = len(self.solutions.keys())
-        subplotCols = 3
+        subplotCols = 5
         subplotRows = int(np.ceil(numPlots/subplotCols))
         for idx, key in enumerate(self.solutions.keys()):
             self.plots['solutions'].add_subplot(subplotRows,subplotCols,idx+1)
 
 
-    def plotSolutions(self, plot_settings):
+    def plotSolutions(self, config, figsize=(80,80)):
+        plot_settings = config.plot
+        dir_settings = config.directory
         for idx, key in enumerate(self.solutions.keys()):
             soln =  self.solutions[key]
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.clear()
-            subplot.plot(soln['tvec'], soln['min'], linewidth=plot_settings['linewidth_small'], color='k')
-            subplot.plot(soln['tvec'], soln['mean'], linewidth=plot_settings['linewidth_med'], color='k')
-            subplot.plot(soln['tvec'], soln['max'], linewidth=plot_settings['linewidth_small'], color='k')
+            subplot.plot(soln['tvec'], soln['min'], linewidth=plot_settings['linewidth_small'], color='b')
+            subplot.plot(soln['tvec'], soln['mean'], linewidth=plot_settings['linewidth_med'], color='b')
+            subplot.plot(soln['tvec'], soln['max'], linewidth=plot_settings['linewidth_small'], color='b')
 
             unitStr = '{:P}'.format(self.solutions[key]['concentration_units'].units)
             subplot = self.plots['solutions'].get_axes()[idx]
@@ -130,9 +164,15 @@ class Data(object):
             ax.ticklabel_format(useOffset=False)
             plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
             plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
-        self.plots['solutions'].savefig(plot_settings['figname'], figsize=(24,24),dpi=300,bbox_inches='tight')
+            ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
 
-    def outputPickle(self):
+        #self.plots['solutions'].tight_layout()
+        plt.tight_layout()
+        self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
+        self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
+
+
+    def outputPickle(self, config):
         saveKeys = ['tvec','min','mean','max','std']
         newDict = {}
         for sp_name in self.solutions.keys():
@@ -141,8 +181,10 @@ class Data(object):
                 newDict[sp_name][key] = self.solutions[sp_name][key]
 
         # pickle file
-        with open('solutions_'+self.model_parameters['tag']+'.obj', 'wb') as pickle_file:
-            pickle.dump(newDict, pickle_file) 
+        with open(config.directory['solutions']+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
+            pickle.dump(newDict, pickle_file)
+
+        Print('Solutions dumped into pickle.')
 
 
 
@@ -217,8 +259,6 @@ def reduceVector(u):
 
     comm.Gatherv(sendbuf=u, recvbuf=(recvbuf, sendcounts), root=root)
 
-#    if rank==root:
-#        return(recvbuf)
     return recvbuf
 
 
@@ -265,12 +305,6 @@ def dolfinSetFunctionValues(u,unew,species_idx):
     unew can either be a scalar or a vector with the same length as u
     """
     V = u.function_space()
-    if type(unew) != float:
-        assert len(u)==len(unew)
-    elif any([type(unew) == x for x in [float, int]]):
-        pass
-    else:
-        raise Exception("unew must be either a scalar or vector with the same length as u!")
 
     indices = dolfin_get_dof_indices(V, species_idx)
     uvec = u.vector()
