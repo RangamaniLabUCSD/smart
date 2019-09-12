@@ -141,7 +141,7 @@ class Data(object):
             self.plots['solutions'].add_subplot(subplotRows,subplotCols,idx+1)
 
 
-    def plotSolutions(self, config, figsize=(80,80)):
+    def plotSolutions(self, config, figsize=(120,120)):
         plot_settings = config.plot
         dir_settings = config.directory
         for idx, key in enumerate(self.solutions.keys()):

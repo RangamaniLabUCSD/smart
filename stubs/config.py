@@ -1,5 +1,6 @@
 # parse the .config file regex parser
 import re
+import os
 from pandas import read_json
 import dolfin as d
 from stubs.common import nan_to_none
@@ -42,6 +43,15 @@ class Config(object):
             self.dolfin_linear_coarse['linear_solver'] = self.solver['coarse_linear_solver']
         if 'coarse_preconditioner' in self.solver.keys():
             self.dolfin_linear_coarse['preconditioner'] = self.solver['coarse_preconditioner']
+
+        # prepend a parent directory to file paths
+        if 'parent' in self.directory.keys():
+            dirname = self.directory['parent']
+            if rank==root and not os.path.exists(dirname):
+                    os.mkdir(dirname)
+            for key, item in self.directory.items():
+                if key != 'parent':
+                    self.directory[key] = dirname + '/' + item 
 
         self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
         self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
