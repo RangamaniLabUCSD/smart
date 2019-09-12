@@ -1427,6 +1427,7 @@ class Model(object):
         self.stopwatch("Total time step")
         self.idx += 1
         Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
         self.set_time(self.t-self.dt/2) # reset time back to t
         self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
@@ -1649,6 +1650,14 @@ class Model(object):
                 Print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
 
     def update_solution_volume_to_boundary(self):
+        for comp_name in self.CD.Dict.keys():
+            for key in self.u[comp_name].keys():
+                if key[0] == 'b':
+                    self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
+                    sub_comp_name = key[1:]
+                    Print("Interpolated values from compartment %s to %s" % (comp_name, sub_comp_name))
+
+    def update_solution_volume_to_boundary_subspecies(self):
         for sp_name, sp in self.SD.Dict.items():
             if sp.sub_species:
                 for comp_name, sp_sub in sp.sub_species.items():
