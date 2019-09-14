@@ -719,16 +719,22 @@ class Reaction(_ObjectInstance):
 
     def reaction_to_fluxes(self):
         self.fluxList = []
-        for species_name in self.LHS + self.RHS:
+        all_species = self.LHS + self.RHS
+        unique_species = set(all_species)
+        for species_name in unique_species:
+            stoich = all_species.count(species_name)
+
             if hasattr(self, 'eqn_f'):
                 flux_name = self.name + ' (f) [' + species_name + ']'
                 sign = -1 if species_name in self.LHS else 1
-                self.fluxList.append(Flux(flux_name, species_name, self.eqn_f, sign, self.involved_species_link,
+                signed_stoich = sign*stoich
+                self.fluxList.append(Flux(flux_name, species_name, self.eqn_f, signed_stoich, self.involved_species_link,
                                           self.paramDictValues, self.group, self.explicit_restriction_to_domain))
             if hasattr(self, 'eqn_r'):
                 flux_name = self.name + ' (r) [' + species_name + ']'
                 sign = 1 if species_name in self.LHS else -1
-                self.fluxList.append(Flux(flux_name, species_name, self.eqn_r, sign, self.involved_species_link,
+                signed_stoich = sign*stoich
+                self.fluxList.append(Flux(flux_name, species_name, self.eqn_r, signed_stoich, self.involved_species_link,
                                           self.paramDictValues, self.group, self.explicit_restriction_to_domain))
 
 
@@ -742,7 +748,7 @@ class FluxContainer(_ObjectContainer):
         #                      'involved_parameters', 'source_compartment', 
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.propertyList = ['species_name', 'symEqn', 'sign', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.propertyList = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
     def check_and_replace_sub_species(self, SD, CD, config):
         fluxes_to_remove = []
         for flux_name, f in self.Dict.items():
@@ -786,7 +792,7 @@ class FluxContainer(_ObjectContainer):
             for sp_name in involved_species:
                 spDict.update({sp_name: SD.Dict[sp_name]})
 
-            new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.sign, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
+            new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.signed_stoich, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
             new_flux.get_additional_flux_properties(CD, config)
 
             # get length scale factor
@@ -812,13 +818,13 @@ class FluxContainer(_ObjectContainer):
             self.Dict.update({new_flux_name: new_flux})
 
 class Flux(_ObjectInstance):
-    def __init__(self, flux_name, species_name, symEqn, sign, spDict, paramDict, group, explicit_restriction_to_domain=None):
+    def __init__(self, flux_name, species_name, symEqn, signed_stoich, spDict, paramDict, group, explicit_restriction_to_domain=None):
         super().__init__(flux_name)
 
         self.flux_name = flux_name
         self.species_name = species_name
         self.symEqn = symEqn
-        self.sign = sign
+        self.signed_stoich = signed_stoich
         self.spDict = spDict
         self.paramDict = paramDict
         self.group = group
@@ -1219,8 +1225,8 @@ class Model(object):
 
             setattr(j, 'total_scaling', total_scaling)
 
-            # adjust sign if necessary
-            prod *= j.sign
+            # adjust sign+stoich if necessary
+            prod *= j.signed_stoich
 
             # multiply by appropriate integration measure and test function
             if j.flux_dimensionality[0] < j.flux_dimensionality[1]:
@@ -1459,41 +1465,43 @@ class Model(object):
         self.stopwatch("Diffusion step")
         self.forward_time_step(factor=factor)
         self.updateTimeDependentParameters()
-
-        forms = self.split_forms[comp_name]
-
-        if self.idx <= 1:
-            # terms which will not change across time-steps
-            self.stopwatch('A assembly')
-            self.A = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
-            self.solver = d.KrylovSolver('cg','hypre_amg')
-            self.solver.parameters['nonzero_initial_guess'] = True
-
-            self.stopwatch('A assembly', stop=True)
-
-        # if the time step size changed we need to reassemble the LHS matrix...
-        if self.idx > 1 and (self.linear_iterations >= self.config.solver['linear_maxiter'] or
-           self.linear_iterations < self.config.solver['linear_miniter']):
-            self.stopwatch('A assembly')
-            self.A = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
-            self.stopwatch('A assembly', stop=True)
-            self.linear_iterations = 0
-            Print("Reassembling A because of change in time-step")
-
-        # sanity check to make sure A is not changing
-        if self.idx == 2:
-            Anew = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
-            Print("Ainit linf norm = %f" % self.A.norm('linf'))
-            Print("Anew linf norm = %f" % Anew.norm('linf'))
-            assert np.abs(self.A.norm('linf') - Anew.norm('linf')) < 1e-10
-
-        self.stopwatch('b assembly')
         d.parameters['form_compiler']['optimize'] = True
         d.parameters['form_compiler']['cpp_optimize'] = True
 
-        b = d.assemble(-forms['Mun'] + d.rhs(forms['R']) + d.rhs(forms['B']), form_compiler_parameters={'quadrature_degree': 3})
+        forms = self.split_forms[comp_name]
 
+        self.stopwatch('A assembly')
+        if self.idx <= 1:
+            # terms which will not change across time-steps
+            self.Abase = d.assemble(forms['Mu'] + forms['D'], form_compiler_parameters={'quadrature_degree': 4}) # +d.lhs(forms["R"])
+            self.solver = d.KrylovSolver('cg','hypre_amg')
+            self.solver.parameters['nonzero_initial_guess'] = True
+
+
+#        # if the time step size changed we need to reassemble the LHS matrix...
+#        if self.idx > 1 and (self.linear_iterations >= self.config.solver['linear_maxiter'] or
+#           self.linear_iterations < self.config.solver['linear_miniter']):
+#            self.stopwatch('A assembly')
+#            self.A = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+#            self.stopwatch('A assembly', stop=True)
+#            self.linear_iterations = 0
+#            Print("Reassembling A because of change in time-step")
+#
+#        # sanity check to make sure A is not changing
+#        if self.idx == 2:
+#            Anew = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+#            Print("Ainit linf norm = %f" % self.A.norm('linf'))
+#            Print("Anew linf norm = %f" % Anew.norm('linf'))
+#            assert np.abs(self.A.norm('linf') - Anew.norm('linf')) < 1e-10
+
+        # full assembly in 1 step requires using previous time step value of volumetric species for boundary fluxes
+        self.A = self.Abase + d.assemble(d.lhs(forms['B'] + forms['R']), form_compiler_parameters={'quadrature_degree': 4})
+        self.stopwatch('A assembly', stop=True)
+
+        self.stopwatch('b assembly')
+        b = d.assemble(-forms['Mun'] +  d.rhs(forms['B'] + forms['R']), form_compiler_parameters={'quadrature_degree': 4})
         self.stopwatch('b assembly', stop=True)
+
         U = self.u[comp_name]['u'].vector()
         self.linear_iterations = self.solver.solve(self.A, U, b)
 
@@ -1926,7 +1934,7 @@ class Model(object):
         flux_list = [f for f in flux_list if f.species_name in spname_list]
 
         for idx in range(num_species):
-            sp_fluxes = [f.total_scaling*f.sign*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
+            sp_fluxes = [f.total_scaling*f.signed_stoich*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
             total_flux = sum(sp_fluxes)
             dudt.append(total_flux)
 
