@@ -19,22 +19,19 @@ class Config(object):
         self._regex_dict = {
             'comment': re.compile(r'\#.*\n'),
             #'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|\/]\S*)'),
+            'setting_list': re.compile(r'\$\s(?P<group>\w*).(?P<parameter>\w*)\s*=\s*\[(?P<value>.*)\]'),
             'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|()\/]\S*)'),
-            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e-]\S*)')
+            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e-]\S*)'),
+            'float': re.compile(r'[\s\'\,]*(?P<value>[\d.e-]*)[\s\'\,]*'),
+            'string': re.compile(r'[\s\'\,]*(?P<value>[A-z|()\/]*)[\s\'\,]*')
             }
-
-        self.model = {}
-        self.settings = {}
-        self.solver = {}
-        self.dolfin_linear = {}
-        self.dolfin_linear_coarse = {}
-        self.mesh = {}
-        self.directory = {}
-        self.plot = {}
-        self.reaction_database = {}
 
         self._parse_file()
 
+        self.dolfin_linear = {}
+        self.dolfin_linear_coarse = {}
+
+        # we pack this into its own dictionary so it can be input as a parameter into dolfin solve
         if 'linear_solver' in self.solver.keys():
             self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
         if 'preconditioner' in self.solver.keys():
@@ -56,6 +53,16 @@ class Config(object):
         self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
         self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
 
+    def _parse_list(self,a_list):
+        a_list = list(a_list.split())
+        for idx, item in enumerate(a_list):
+            key, match = self._parse_line(item)
+            if key == 'float':
+                a_list[idx] = float(match.group('value'))
+            elif key =='string':
+                a_list[idx] = str(match.group('value'))
+        return a_list
+
     def _parse_line(self,line):
         for key, regex in self._regex_dict.items():
             match = regex.search(line)
@@ -71,16 +78,24 @@ class Config(object):
 
                 if key == 'comment':
                     pass
+                if key in ['setting_string', 'setting_float', 'setting_list']:
+                    group = match.group('group')
+                    parameter = match.group('parameter')
+                    value = match.group('value')
+                    # initialize an empty dict
+                    if not hasattr(self,group):
+                        setattr(self, group, {})
+
                 if key == 'setting_string':
-                    group = match.group('group')
-                    parameter = match.group('parameter')
-                    value = match.group('value')
-                    getattr(self, group)[parameter] = value
+                    new_value = value
                 if key == 'setting_float':
-                    group = match.group('group')
-                    parameter = match.group('parameter')
-                    value = match.group('value')
-                    getattr(self, group)[parameter] = float(value)
+                    new_value = float(value)
+                if key == 'setting_list':
+                    new_value = self._parse_list(value)
+
+                if key in ['setting_string', 'setting_float', 'setting_list']:
+                    getattr(self,group)[parameter] = new_value
+
 
                 line = file.readline()
 

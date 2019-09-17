@@ -1461,6 +1461,22 @@ class Model(object):
 
         #self.u['cyto']['n'].assign(self.u['cyto']['u'])
 
+
+    def reset_timestep(self, comp_list=[]):
+        """
+        Resets the time back to what it was before the time-step. Optionally, input a list of compartments
+        to have their function values reset (['n'] value will be assigned to ['u'] function).
+        """
+        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_factor'])
+        Print("Resetting time-step and decreasing step size")
+        for comp_name in comp_list:
+            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+            Print("Assigning old value of u to species in compartment %s" % comp_name)
+
+#    def adaptive_solver(self):
+#
+
+
     def IMEX_order1_diffusion_forward(self, comp_name, factor=1):
         self.stopwatch("Diffusion step")
         self.forward_time_step(factor=factor)
