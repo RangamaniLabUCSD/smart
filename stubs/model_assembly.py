@@ -3,7 +3,6 @@ stuff
 
 """
 
-
 from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
@@ -722,7 +721,8 @@ class Reaction(_ObjectInstance):
         all_species = self.LHS + self.RHS
         unique_species = set(all_species)
         for species_name in unique_species:
-            stoich = all_species.count(species_name)
+            stoich = max([self.LHS.count(species_name), self.RHS.count(species_name)])
+            #all_species.count(species_name)
 
             if hasattr(self, 'eqn_f'):
                 flux_name = self.name + ' (f) [' + species_name + ']'
@@ -831,7 +831,7 @@ class Flux(_ObjectInstance):
         self.explicit_restriction_to_domain = explicit_restriction_to_domain
 
         self.symList = [str(x) for x in symEqn.free_symbols]
-        self.lambdaEqn = sympy.lambdify(self.symList, self.symEqn, modules=['sympy'])
+        self.lambdaEqn = sympy.lambdify(self.symList, self.symEqn, modules=['sympy','numpy'])
         self.involved_species = list(spDict.keys())
         self.involved_parameters = list(paramDict.keys())
 
@@ -1002,7 +1002,10 @@ class Flux(_ObjectInstance):
                     return 'k'
 
         elif config.solver['nonlinear'] == 'newton':
-            return 'u'
+            if var.dimensionality > sp.dimensionality:
+                return 'b'+sp.compartment_name
+            else:
+                return 'u'
 
         elif config.solver['nonlinear'] == 'IMEX':
             ## same compartment
@@ -1145,6 +1148,7 @@ class Model(object):
         self.params = ddict(list)
 
         self.idx = 0
+        self.NLidx = 0 # nonlinear iterations
         self.t = 0.0
         self.dt = config.solver['initial_dt']
         self.T = d.Constant(self.t)
@@ -1248,7 +1252,7 @@ class Model(object):
 
         for sp_name, sp in self.SD.Dict.items():
             if sp.is_in_a_reaction:
-                if self.config.solver['nonlinear'] == 'picard' or 'IMEX':
+                if self.config.solver['nonlinear'] in ['picard', 'IMEX']:
                     u = sp.u['t']
                 elif self.config.solver['nonlinear'] == 'newton':
                     u = sp.u['u']
@@ -1304,14 +1308,16 @@ class Model(object):
             dt = self.dt
         else:
             Print("dt changed from %f to %f" % (self.dt, dt))
+        if t != self.t:
+            Print("Time changed from %f to %f" % (self.t, t))
         self.t = t
         self.T.assign(t)
         self.dt = dt
         self.dT.assign(dt) 
 
-        Print("New time: %f" % self.t)
 
     def forward_time_step(self, factor=1):
+
         self.dT.assign(float(self.dt*factor))
         self.t = float(self.t+self.dt*factor)
         self.T.assign(self.t)
@@ -1335,16 +1341,26 @@ class Model(object):
 #        self.update_time()
 
 
-    def updateTimeDependentParameters(self, t=None): 
+    def updateTimeDependentParameters(self, t=None, t0=None): 
         if not t:
             # custom time
             t = self.t
         for param_name, param in self.PD.Dict.items():
-            if param.is_time_dependent:
+            if param.is_time_dependent and not param.is_preintegrated:
                 newValue = param.symExpr.subs({'t': t}).evalf()
                 param.dolfinConstant.assign(newValue)
                 Print('%f assigned to time-dependent parameter %s' % (newValue, param.name))
                 self.params[param_name].append((t,newValue))
+
+            if param.is_time_dependent and param.is_preintegrated:
+                if not t0:
+                    raise Exception("Must provide a time interval for pre-integrated variables.")
+                newValue = param.symExpr.subs({'t': t}).evalf() - param.symExpr.subs({'t': t0}).evalf()
+                param.dolfinConstant.assign(newValue)
+                Print('%f assigned to time-dependent [pre-integrated] parameter %s' % (newValue, param.name))
+                self.params[param_name].append((t,newValue))
+
+
 
     def strang_RDR_step_forward(self):
         self.idx += 1
@@ -1462,17 +1478,17 @@ class Model(object):
         #self.u['cyto']['n'].assign(self.u['cyto']['u'])
 
 
-    def reset_timestep(self, comp_list=[]):
-        """
-        Resets the time back to what it was before the time-step. Optionally, input a list of compartments
-        to have their function values reset (['n'] value will be assigned to ['u'] function).
-        """
-        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_factor'])
-        Print("Resetting time-step and decreasing step size")
-        for comp_name in comp_list:
-            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-            Print("Assigning old value of u to species in compartment %s" % comp_name)
-
+#    def reset_timestep(self, comp_list=[]):
+#        """
+#        Resets the time back to what it was before the time-step. Optionally, input a list of compartments
+#        to have their function values reset (['n'] value will be assigned to ['u'] function).
+#        """
+#        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_factor'])
+#        Print("Resetting time-step and decreasing step size")
+#        for comp_name in comp_list:
+#            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#            Print("Assigning old value of u to species in compartment %s" % comp_name)
+#
 #    def adaptive_solver(self):
 #
 
@@ -1588,7 +1604,7 @@ class Model(object):
         #d.solve(self.A, U, b, 'cg', 'hypre_amg')
         self.solver.solve(self.A, U, b)
         #d.parameters["form_compiler"]["quadrature_degree"] = 3
-        #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear_coarse)
+        #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear)
 
         #self.solver.solve(self.a==self.L, self.u['cyto']['u'])
 #            self.F[comp_name] = total_eqn
@@ -1596,7 +1612,7 @@ class Model(object):
 #            problem = d.NonlinearVariationalProblem(self.F[comp_name], self.u[comp_name]['u'], [], J)
 #            self.nonlinear_solver[comp_name] = d.NonlinearVariationalSolver(problem)
 #            p = self.nonlinear_solver[comp_name].parameters
-#            p['newton_solver'].update(self.config.dolfin_linear_coarse)
+#            p['newton_solver'].update(self.config.dolfin_linear)
 
 #            self.a[comp_name] = d.lhs(total_eqn)
 #            self.L[comp_name] = d.rhs(total_eqn)
@@ -1615,29 +1631,6 @@ class Model(object):
 
 
 
-
-#    def strang_DR_step_forward(self):
-#        self.idx += 1
-#        print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
-#        # diffusion step (full time step) t=[t,t+dt/2]
-#        self.diffusion_forward(factor=0.5) 
-#        print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
-#        self.update_solution_volume_to_boundary()
-#
-#        # reaction step (half time step) t=[t+dt/2,t+dt]
-#        self.boundary_reactions_forward(factor=0.5)
-#        print("finished reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
-#        self.update_solution_boundary_to_volume()
-#
-#
-#        if self.pidx >= self.config.solver['max_picard']:
-#            self.set_time(self.t, self.dt*self.config.solver['dt_decrease_factor'])
-#            print("Decrease step size")
-#        if self.pidx < self.config.solver['min_picard']:
-#            self.set_time(self.t, self.dt*self.config.solver['dt_increase_factor'])
-#            print("Increasing step size")
-#
-#        print("\n Finished step %d of DR with final time: %f" % (self.idx, self.t))
 
 
     def establish_mappings(self):
@@ -1761,6 +1754,10 @@ class Model(object):
 
         #TODO: parallelize this
 
+        # time step forward (irrelevant except for keeping track of time since solve_ivp() uses lambdas for time dependent parameters)
+        self.forward_time_step(factor=factor) # increment time 
+        #self.updateTimeDependentParameters() 
+
         if all_dofs:
             num_vertices = self.CD.Dict[comp_name].num_vertices
         else:
@@ -1784,104 +1781,19 @@ class Model(object):
                 
 
         if all_dofs:
-            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method=method, rtol=rtol, atol=atol)
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t-self.dt*factor, self.t], self.u[comp_name]['n'].vector(), method=method, rtol=rtol, atol=atol)
             # assign solution
             self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
         else:
             # all vertices have the same value
-            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](x,y,z), method=method, rtol=rtol, atol=atol)
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t-self.dt*factor, self.t], self.u[comp_name]['n'](x,y,z), method=method, rtol=rtol, atol=atol)
             for idx, val in enumerate(sol.y[:,-1]):
                 stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, idx) 
 
 
-        self.forward_time_step(factor=factor) # increment time afterwards
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
         self.stopwatch("Boundary reactions forward %s" % comp_name, stop=True)
-
-
-
-        # if all_dofs:
-        #     nspecies = self.CD.Dict[comp_name].num_species
-        #     num_vertices = self.CD.Dict[comp_name].num_vertices
-        #     mult = int(num_vertices)
-        #     if comp_name not in self.scipy_odes.keys():
-        #         self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=mult)
-        #     lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
-
-        #     if boundary_species:
-        #         nbspecies = len(boundary_species)
-        #         ub = np.full(nbspecies * num_vertices, np.nan)
-        #         for spidx, sp in enumerate(boundary_species):
-        #             pcomp_name = self.SD.Dict[sp].compartment_name
-        #             pcomp_idx = self.SD.Dict[sp].compartment_index
-        #             pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
-        #             if pcomp_nspecies==0: pcomp_nspecies=1
-        #             ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
-
-        #         sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
-
-        #     # else:
-        #         # sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'].vector(), method='RK45')
-
-        #     # assign solution
-        #     self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
-
-        # else:
-        #     lode, ptuple, tparam, boundary_species = self.flux_to_scipy(comp_name)
-        #     if boundary_species:
-        #     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
-        #     # else:
-        #     #     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [self.t, self.t+self.dt*factor], self.u[comp_name]['n'](0,0,0), method='BDF')
-        #     for idx, val in enumerate(sol.y[:,-1]):
-        #         stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, self.V[comp_name], idx) 
-        
-
-        # self.forward_time_step(factor=factor) # increment time afterwards
-        # self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-        # print("finished boundary_reactions_forward_scipy")
-
-
-
-
-
-# comp_name = 'pm'
-# all_dofs = True
-
-
-# num_vertices = model.CD.Dict[comp_name].num_vertices
-# mult = int(num_vertices)
-# if comp_name not in model.scipy_odes.keys():
-#     model.scipy_odes[comp_name] = model.flux_to_scipy(comp_name, mult=mult)
-
-
-# lode, ptuple, tparam, boundary_species = model.scipy_odes[comp_name]
-
-# if boundary_species:
-#     nbspecies = len(boundary_species)
-#     ub = np.full(nbspecies * num_vertices, np.nan)
-#     for spidx, sp in enumerate(boundary_species):
-#         pcomp_name = model.SD.Dict[sp].compartment_name
-#         pcomp_idx = model.SD.Dict[sp].compartment_index
-#         pcomp_nspecies = model.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
-#         if pcomp_nspecies==0: pcomp_nspecies=1
-#         ub[spidx::nbspecies] = model.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
-
-#     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [model.t, model.t+model.dt*factor], model.u[comp_name]['n'].vector(), method='RK45')
-
-# else:
-#     sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam), [model.t, model.t+model.dt*factor], model.u[comp_name]['n'].vector(), method='RK45')
-
-# # assign solution
-# model.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
-
-
-
-
-# model.forward_time_step(factor=factor)
-# model.u[comp_name]['n'].assign(model.u[comp_name]['u'])
-# print("finished boundary_reactions_forward_scipy")
-
 
 
 
@@ -1902,10 +1814,11 @@ class Model(object):
         self.pidx = 0
         while True:
             self.pidx += 1
-            if self.CD.Dict[comp_name].dimensionality == self.CD.max_dim:
-                linear_solver_settings = self.config.dolfin_linear_coarse
-            else:
-                linear_solver_settings = self.config.dolfin_linear
+#            if self.CD.Dict[comp_name].dimensionality == self.CD.max_dim:
+#                linear_solver_settings = self.config.dolfin_linear
+#            else:
+#                linear_solver_settings = self.config.dolfin_linear
+            linear_solver_settings = self.config.dolfin_linear
             
             d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
             #print('u (%s) mean: %f' % (comp_name, self.u[comp_name]['u'].compute_vertex_values().mean()))
@@ -1928,6 +1841,85 @@ class Model(object):
                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
                 break
+
+
+    def iterative_solver(self, bcs=[], boundary_method='RK45'):
+        self.idx += 1
+        Print('\n\n***Beginning time step %d' % self.idx)
+        self.stopwatch("Total time step")
+        exit_loop = False
+
+        # self.iidx = 0 # inner index (how many times did we iterate back and forth b/w solving boundary/volume problems)
+        # while True:
+        # self.iidx += 1
+
+        # solve boundary problem(s)
+        for comp_name, comp in self.CD.Dict.items():
+            if comp.dimensionality < self.CD.max_dim:
+                self.boundary_reactions_forward_scipy(comp_name, factor=1.0, all_dofs=True, method=boundary_method, rtol=1e-6, atol=1e-9)
+                self.set_time(self.t-self.dt) # reset time back to t
+        self.update_solution_boundary_to_volume()
+        
+        # solve volume problem(s)
+        for comp_name, comp in self.CD.Dict.items():
+            if comp.dimensionality == self.CD.max_dim:
+                self.NLidx, success = self.newton_iter(comp_name)
+        self.update_solution_volume_to_boundary()
+
+        if self.NLidx <= self.config.solver['min_newton']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+            Print("Increasing step size")
+        if self.NLidx > self.config.solver['max_newton']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+            Print("Decreasing step size")
+
+        self.stopwatch("Total time step", stop=True)
+
+#    def check_dt(self):
+#        """
+#        Checks if the current value of dt should be reduced (example: one of the times to reset dt is in [t,t+d])
+#        """
+#        # First check if dt has exceeded the maximum
+#        if self.dt > self.config.solver['max_dt']:
+#            self.dt = self.config.solver['max_dt']
+#            Print("Adjusting dt to not exceed the maximum dt specified: %f" % self.dt)
+#        # Check if the current time-step would cause us to 
+#            TODO finish this 
+#
+#
+#        self.set_time(self.t, self.dt)
+
+    def IMEX_1BDF(self, method='RK45'):
+        self.stopwatch("Total time step")
+        self.idx += 1
+        Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+        self.update_solution_boundary_to_volume()
+       
+
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.IMEX_order1_diffusion_forward('cyto', factor=1)
+        self.update_solution_volume_to_boundary()
+
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+        self.update_solution_boundary_to_volume()
+
+        if self.linear_iterations >= self.config.solver['linear_maxiter']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+            Print("Decreasing step size")
+        if self.linear_iterations < self.config.solver['linear_miniter']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+            Print("Increasing step size")
+
+        self.stopwatch("Total time step", stop=True)
+
+
 
     # TODO
     def flux_to_scipy(self, comp_name, mult=1):
@@ -1969,7 +1961,7 @@ class Model(object):
         time_param_list = list(set(time_param_list))
 
         ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
-        time_param_lambda = [lambdify('t', p.symExpr) for p in time_param_list]
+        time_param_lambda = [lambdify('t', p.symExpr, modules=['sympy','numpy']) for p in time_param_list]
         time_param_name_list = [p.name for p in time_param_list]
 
         free_symbols = list(set([str(x) for total_flux in dudt for x in total_flux.free_symbols]))
@@ -1980,7 +1972,7 @@ class Model(object):
             Print("Adding species %s to flux_to_scipy" % boundary_species)
         #Params = namedtuple('Params', param_list)
 
-        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list+boundary_species), total_flux) for total_flux in dudt]
+        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list+boundary_species), total_flux, modules=['sympy','numpy']) for total_flux in dudt]
 
 
         def lambdified_odes(t, u, p, time_p, ub=[]):
@@ -1998,68 +1990,21 @@ class Model(object):
 
         return (lambdified_odes, ptuple, time_param_lambda, boundary_species)
 
-#        # TODO
-#        def flux_to_scipy(self, comp_name):
-#            dudt = []
-#            param_list = []
-#            time_param_list = []
-#            species_list = list(self.SD.Dict.values())
-#            species_list = [s for s in species_list if s.compartment_name==comp_name]
-#            species_list.sort(key = lambda s: s.compartment_index)
-#            spname_list = [s.name for s in species_list]
-#            num_species = len(species_list)
-#
-#            flux_list = list(self.FD.Dict.values())
-#            flux_list = [f for f in flux_list if f.species_name in spname_list]
-#
-#            for idx in range(num_species):
-#                sp_fluxes = [f.total_scaling*f.sign*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
-#                total_flux = sum(sp_fluxes)
-#                dudt.append(total_flux)
-#
-#                if total_flux:
-#                    for psym in total_flux.free_symbols:
-#                        pname = str(psym)
-#                        if pname in self.PD.Dict.keys():
-#                            p = self.PD.Dict[pname]
-#                            if p.is_time_dependent:
-#                                time_param_list.append(p)
-#                            else:
-#                                param_list.append(pname)
-#            
-#            param_list = list(set(param_list))
-#            time_param_list = list(set(time_param_list))
-#
-#            ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
-#            time_param_lambda = [lambdify('t', p.symExpr) for p in time_param_list]
-#            time_param_name_list = [p.name for p in time_param_list]
-#            #Params = namedtuple('Params', param_list)
-#
-#            dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list), total_flux) for total_flux in dudt]
-#
-#
-#            def lambdified_odes(t, u, p, time_p):
-#                time_p_eval = [f(t) for f in time_p]
-#                inp = flatten([u,p,time_p_eval])
-#                return [f(*inp) for f in dudt_lambda]
-#
-#            return lambdified_odes, ptuple, time_param_lambda
 
 
 
-
-
-
-
-
-
-
-
-
+   
 
     def newton_iter(self, comp_name):
-        #d.solve(self.F[comp_name] == 0, self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear)
-        self.nonlinear_solver[comp_name].solve()
+        self.stopwatch("Newton's method [%s]" % comp_name)
+        self.forward_time_step() # increment time afterwards
+        self.updateTimeDependentParameters()
+
+        idx, success = self.nonlinear_solver[comp_name].solve()
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+        self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
+        return idx, success
 
 
     def sort_forms(self):
@@ -2078,22 +2023,29 @@ class Model(object):
             Print("Formulating problem as F(u;v) == 0 for newton iterations")
             for comp in comp_list:
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                #self.F[comp.name] = sum(comp_forms)
-                for idx, form in enumerate(comp_forms):
-                    J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
-                    problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
-                    self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
-                    p = self.nonlinear_solver[comp.name].parameters
-                    p['newton_solver'].update(self.config.dolfin_linear_coarse)
+                self.F[comp.name] = sum(comp_forms)
+                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
+                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
+                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
+                p = self.nonlinear_solver[comp.name].parameters
+                p['newton_solver'].update(self.config.dolfin_linear)
+                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # useful for time dependent problems
 
         elif self.config.solver['nonlinear'] == 'IMEX':
             Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
             for comp in comp_list:
-                comp_forms = [f for f in self.Forms.select_by('compartment_name', comp.name)]
+                comp_forms = self.Forms.select_by('compartment_name', comp.name)
                 for form_type in form_types:
                     self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
             # 2nd order semi-implicit BDF
+
+#comp_list = [model.CD.Dict[key] for key in model.u.keys()]
+#form_types = set([f.form_type for f in model.Forms.form_list])
+#for comp in comp_list:
+#    comp_forms = model.Forms.select_by('compartment_name', comp.name)
+#    for form_type in form_types:
+#        model.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
 
 #===============================================================================
@@ -2104,7 +2056,7 @@ class Model(object):
     def init_solver_and_plots(self):
         self.data.initSolutionFiles(self.SD, write_type='xdmf')
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
-        self.data.computeStatistics(self.u, self.t, self.SD)
+        self.data.computeStatistics(self.u, self.t, self.dt,self.SD,self.NLidx)
         self.data.initPlot(self.config)
 
     def update_solution(self):
@@ -2113,12 +2065,15 @@ class Model(object):
             self.u[key]['k'].assign(self.u[key]['u'])
 
     def compute_statistics(self):
-        self.data.computeStatistics(self.u,self.t,self.SD)
+        self.data.computeStatistics(self.u,self.t,self.dt,self.SD,self.NLidx)
         self.data.outputPickle(self.config)
 
     def plot_solution(self):
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
         self.data.plotSolutions(self.config)
+
+    def plot_solver_status(self):
+        self.data.plotSolverStatus(self.config)
 
 #     def init_solver(self):
 

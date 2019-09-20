@@ -28,10 +28,11 @@ class ParameterDF(object):
                                 'group': pd.Series([], dtype=str),
                                 'notes': pd.Series([], dtype=str),
                                 'is_time_dependent': pd.Series([], dtype=bool),
+                                'is_preintegrated': pd.Series([], dtype=bool),
                                 'dolfinConstant': pd.Series([], dtype=object),
                                 'symExpr': pd.Series([], dtype=object)})
 
-    def append(self, name, value, unit, group, notes='', is_time_dependent=False, dolfinConstant=None, symExpr=None):
+    def append(self, name, value, unit, group, notes='', is_time_dependent=False, is_preintegrated=False, dolfinConstant=None, symExpr=None):
         if is_time_dependent:
             if not symExpr:
                 raise Exception("A time-dependent parameter must have a sympy expression!")
@@ -39,6 +40,7 @@ class ParameterDF(object):
         self.df = self.df.append(pd.Series({"value": value, "unit": str(unit),
                                             "group": group, "notes": notes,
                                             "is_time_dependent": is_time_dependent,
+                                            "is_preintegrated": is_preintegrated,
                                             "dolfinConstant": dolfinConstant,
                                             "symExpr": symExpr}, name=name))#, ignore_index=True)
 

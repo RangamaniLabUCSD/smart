@@ -26,15 +26,21 @@ from stubs import unit
 # fsmed = 7
 # fssmall = 5
 
-
+def round_to_n(x,n):
+    return round(x, -int(np.floor(np.log10(x))) + (n - 1))
 
 class Data(object):
     def __init__(self, config):
         self.config = config
         self.solutions = {}
+        self.tvec=[]
+        self.dtvec=[]
+        self.NLidxvec=[]
         self.errors = {}
+        self.parameters = {}
         #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
-        self.plots = {'solutions': plt.figure()}
+        self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.subplots()[0]}
+
         self.timer = d.Timer()
 
     def initSolutionFiles(self, SD, write_type='vtk'):
@@ -81,7 +87,7 @@ class Data(object):
 
 
 
-    def computeStatistics(self, u, t, SD):
+    def computeStatistics(self, u, t, dt, SD, NLidx):
         #for sp_name in speciesList:
         for sp_name in SD.Dict.keys():
             comp_name = self.solutions[sp_name]['comp_name']
@@ -95,11 +101,15 @@ class Data(object):
                 else:
                     self.solutions[sp_name][key].append(value)
 
-            # append the time
-            if 'tvec' not in self.solutions[sp_name].keys():
-                self.solutions[sp_name]['tvec'] = [t]
-            else:
-                self.solutions[sp_name]['tvec'].append(t)
+        # store time dependent parameters
+        for param in PD.Dict.values():
+            if param.is_time_dependent:
+                self.parameters[param.name]
+
+        self.tvec.append(t)
+        self.dtvec.append(dt)
+        self.NLidxvec.append(NLidx)
+
 
     def computeError(self, u, comp_name, errorNormKey):
         errorNormDict = {'L2': 2, 'Linf': np.Inf}
@@ -148,9 +158,9 @@ class Data(object):
             soln =  self.solutions[key]
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.clear()
-            subplot.plot(soln['tvec'], soln['min'], linewidth=plot_settings['linewidth_small'], color='b')
-            subplot.plot(soln['tvec'], soln['mean'], linewidth=plot_settings['linewidth_med'], color='b')
-            subplot.plot(soln['tvec'], soln['max'], linewidth=plot_settings['linewidth_small'], color='b')
+            subplot.plot(self.tvec, soln['min'], linewidth=plot_settings['linewidth_small'], color='b')
+            subplot.plot(self.tvec, soln['mean'], linewidth=plot_settings['linewidth_med'], color='b')
+            subplot.plot(self.tvec, soln['max'], linewidth=plot_settings['linewidth_small'], color='b')
 
             unitStr = '{:P}'.format(self.solutions[key]['concentration_units'].units)
             subplot = self.plots['solutions'].get_axes()[idx]
@@ -169,16 +179,53 @@ class Data(object):
         #self.plots['solutions'].tight_layout()
         plt.tight_layout()
         self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
-        self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
+        #self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
+
+
+    def plotSolverStatus(self, config, figsize=(85,40)):
+        plot_settings = config.plot
+        dir_settings = config.directory
+        nticks=14
+        nround=3
+
+        if len(self.plots['solver_status'].axes) == 1:
+            ax2 = self.plots['solver_status'].axes[0].twinx()
+            ax3 = self.plots['solver_status'].axes[0].twiny()
+        axes = self.plots['solver_status'].axes
+
+        axes[0].set_ylabel('$\Delta$t [ms]', fontsize=plot_settings['fontsize_med']*2, color='blue')
+        axes[0].plot([dt*1000 for dt in self.dtvec], color='blue')
+        dt_ticks = np.geomspace(min(self.dtvec), max(self.dtvec), nticks)
+        dt_ticks = [round_to_n(dt*1000,nround) for dt in dt_ticks]
+        axes[0].set_yscale('log')
+        axes[0].set_xlabel('Solver Iteration', fontsize=plot_settings['fontsize_med']*2)
+        axes[0].set_yticks(dt_ticks)
+        axes[0].set_yticklabels([str(dt) for dt in dt_ticks], fontsize=plot_settings['fontsize_small']*2)
+        axes[1].set_ylabel('Newton iterations', fontsize=plot_settings['fontsize_med']*2, color='orange')
+        axes[1].plot(self.NLidxvec, color='orange')
+        axes[1].tick_params(labelsize=plot_settings['fontsize_small']*2)
+        axes[2].set_xlabel('Time [ms]', fontsize=plot_settings['fontsize_med']*2)
+        indices = [int(x) for x in np.linspace(0,len(self.tvec)-1,nticks)]
+        axes[0].set_xticks(indices)
+        axes[0].set_xticklabels([str(idx) for idx in indices], fontsize=plot_settings['fontsize_small']*2)
+        time_ticks = [np.around(self.tvec[idx]*1000,1) for idx in indices]
+        #axes[2].clear()
+        axes[2].set_xticks(indices)
+        axes[2].set_xticklabels([str(t) for t in time_ticks], fontsize=plot_settings['fontsize_small']*2)
+
+        plt.minorticks_off()
+        plt.tight_layout()
+        self.plots['solver_status'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_solver', figsize=figsize,dpi=300)
 
 
     def outputPickle(self, config):
-        saveKeys = ['tvec','min','mean','max','std']
+        saveKeys = ['min','mean','max','std']
         newDict = {}
         for sp_name in self.solutions.keys():
             newDict[sp_name] = {}
             for key in saveKeys:
                 newDict[sp_name][key] = self.solutions[sp_name][key]
+        newDict['tvec'] = self.tvec
 
         # pickle file
         with open(config.directory['solutions']+'/'+'pickled_solutions.obj', 'wb') as pickle_file:

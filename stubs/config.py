@@ -5,6 +5,8 @@ from pandas import read_json
 import dolfin as d
 from stubs.common import nan_to_none
 from stubs import model_assembly
+import random
+import numpy as np
 
 import mpi4py.MPI as pyMPI
 
@@ -14,44 +16,46 @@ size = comm.size
 root = 0
 
 class Config(object):
-    def __init__(self, config_file):
-        self.config_file = config_file
+    def __init__(self, config_file=None):
         self._regex_dict = {
             'comment': re.compile(r'\#.*\n'),
             #'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|\/]\S*)'),
             'setting_list': re.compile(r'\$\s(?P<group>\w*).(?P<parameter>\w*)\s*=\s*\[(?P<value>.*)\]'),
             'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|()\/]\S*)'),
-            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e-]\S*)'),
-            'float': re.compile(r'[\s\'\,]*(?P<value>[\d.e-]*)[\s\'\,]*'),
-            'string': re.compile(r'[\s\'\,]*(?P<value>[A-z|()\/]*)[\s\'\,]*')
+            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e+-]\S*)'),
+            'float': re.compile(r'[\s\'\,]*(?P<value>[\d.e+-]*)[\s\'\,]*'),
+            'string': re.compile(r'[\s\'\,]*(?P<value>[A-z|()\/]*)[\s\'\,]*'),
+            'xml_vertex': re.compile(r'.*vertex index=.*x=\"(?P<value_x>[\d.e+-]*)\" y=\"(?P<value_y>[\d.e+-]*)\" z=\"(?P<value_z>[\d.e+-]*)\".*')
             }
 
-        self._parse_file()
+        if not config_file:
+            print("No configuration file specified...")
+        else:
+            self.config_file = config_file
+            self._parse_file()
+            # we pack this into its own dictionary so it can be input as a parameter into dolfin solve
+            if 'linear_solver' in self.solver.keys():
+                self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
+            if 'preconditioner' in self.solver.keys():
+                self.dolfin_linear['preconditioner'] = self.solver['preconditioner']
+            if 'linear_maxiter' in self.solver.keys():
+                self.dolfin_linear['maximum_iterations'] = self.solver['linear_maxiter']
+
+            # prepend a parent directory to file paths
+            if 'parent' in self.directory.keys():
+                dirname = self.directory['parent']
+                if rank==root and not os.path.exists(dirname):
+                        os.mkdir(dirname)
+                for key, item in self.directory.items():
+                    if key != 'parent':
+                        self.directory[key] = dirname + '/' + item 
+
+            self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
+            self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
 
         self.dolfin_linear = {}
         self.dolfin_linear_coarse = {}
 
-        # we pack this into its own dictionary so it can be input as a parameter into dolfin solve
-        if 'linear_solver' in self.solver.keys():
-            self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
-        if 'preconditioner' in self.solver.keys():
-            self.dolfin_linear['preconditioner'] = self.solver['preconditioner']
-        if 'coarse_linear_solver' in self.solver.keys():
-            self.dolfin_linear_coarse['linear_solver'] = self.solver['coarse_linear_solver']
-        if 'coarse_preconditioner' in self.solver.keys():
-            self.dolfin_linear_coarse['preconditioner'] = self.solver['coarse_preconditioner']
-
-        # prepend a parent directory to file paths
-        if 'parent' in self.directory.keys():
-            dirname = self.directory['parent']
-            if rank==root and not os.path.exists(dirname):
-                    os.mkdir(dirname)
-            for key, item in self.directory.items():
-                if key != 'parent':
-                    self.directory[key] = dirname + '/' + item 
-
-        self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
-        self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
 
     def _parse_list(self,a_list):
         a_list = list(a_list.split())
@@ -112,6 +116,56 @@ class Config(object):
             print("Parameters, species, compartments, reactions, and a mesh were imported succesfully!")
 
         file.close()
+
+
+    def _find_mesh_midpoint(self, filename, max_num_vert=20000, frac=1):
+        """
+        Finds the (approximate) midpoint of a mesh so that we may center it around the origin
+        """
+        m = d.Mesh(filename)
+        total_num_vert = m.num_vertices()
+        sample_num_vert = min([max_num_vert, total_num_vert*frac])
+        indices = random.sample(range(total_num_vert), sample_num_vert) # choose a subset of indices
+        verts = list(d.vertices(m))
+        vsum = np.zeros(m.geometric_dimension())
+        for idx in indices:
+            vsum += verts[idx].point().array()
+        return vsum/sample_num_vert
+
+
+    def _scale_coords_xml(self, scaling_factor, filename, sig_figs=10, move_midpoint_to_origin=False):
+        """
+        Scales the coordinates a dolfin xml file by some scaling factor
+        """
+        new_file_lines = [] # we will append modified lines to here and write out as a new file
+        new_filename = 'scaled_' + filename 
+        idx = 0 
+        if move_midpoint_to_origin:
+            midpoint = self._find_mesh_midpoint(filename)
+            print("Found approximate midpoint %s" % str(midpoint))
+        with open(filename, 'r') as file:
+            line = file.readline()
+            while line:
+                match = self._regex_dict['xml_vertex'].search(line)
+
+                if match:
+                    for coord_idx, coord in enumerate(['x','y','z']):
+                        if move_midpoint_to_origin:
+                            new_value = (float(match.group('value_'+coord)) - midpoint[coord_idx]) * scaling_factor
+                        else:
+                            new_value = float(match.group('value_'+coord)) * scaling_factor
+
+                        line = line.replace(match.group('value_'+coord), str(new_value)[0:sig_figs])
+                new_file_lines.append(line)
+                line = file.readline()
+                idx += 1
+                if idx%10000==0: # every 10000 so the output is readable
+                    print('Finished parsing line %d' % idx)
+
+        # once we're done modifying we write out to a new file
+        with open(new_filename, 'w+') as file:
+            file.writelines(new_file_lines)
+
 
     def generate_model(self):
 
