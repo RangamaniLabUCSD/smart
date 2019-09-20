@@ -9,6 +9,7 @@ import os
 import petsc4py.PETSc as PETSc
 Print = PETSc.Sys.Print
 
+from stubs.common import round_to_n
 
 comm = d.MPI.comm_world
 size = comm.size
@@ -25,9 +26,6 @@ from stubs import unit
 # lineopacity = 0.6
 # fsmed = 7
 # fssmall = 5
-
-def round_to_n(x,n):
-    return round(x, -int(np.floor(np.log10(x))) + (n - 1))
 
 class Data(object):
     def __init__(self, config):

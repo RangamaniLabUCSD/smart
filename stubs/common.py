@@ -2,6 +2,7 @@
 # General python
 import pandas as pd
 import dolfin as d
+import numpy as np
 
 # pandas
 class ref:
@@ -82,3 +83,15 @@ def mesh_vertex_to_dof(V, species_index, index):
 
     return [mapping[x] for x in index]
    
+def round_to_n(x,n):
+    """
+    Rounds to n sig figs
+    """
+    if x == 0:
+        return 0
+    else:
+        sign = np.sign(x)
+        x = np.abs(x)
+        return sign*round(x, -int(np.floor(np.log10(x))) + (n - 1))
+
+

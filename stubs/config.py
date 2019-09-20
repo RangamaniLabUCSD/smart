@@ -4,6 +4,7 @@ import os
 from pandas import read_json
 import dolfin as d
 from stubs.common import nan_to_none
+from stubs.common import round_to_n
 from stubs import model_assembly
 import random
 import numpy as np
@@ -127,13 +128,20 @@ class Config(object):
         sample_num_vert = min([max_num_vert, total_num_vert*frac])
         indices = random.sample(range(total_num_vert), sample_num_vert) # choose a subset of indices
         verts = list(d.vertices(m))
-        vsum = np.zeros(m.geometric_dimension())
+
+        xmax = verts[0].point().array() # init
+        xmin = verts[0].point().array()
         for idx in indices:
-            vsum += verts[idx].point().array()
-        return vsum/sample_num_vert
+            x = verts[idx].point().array()
+            xmax = np.maximum(xmax, x)
+            xmin = np.minimum(xmin, x)
+
+        midpoint = (xmax-xmin)/2
+        print("Found approximate midpoint %s using %d points" % (str(midpoint), sample_num_vert))
+        return midpoint
 
 
-    def _scale_coords_xml(self, scaling_factor, filename, sig_figs=10, move_midpoint_to_origin=False):
+    def _scale_coords_xml(self, scaling_factor, filename, sig_figs=10, move_midpoint_to_origin=False, max_num_vert_midpoint=20000):
         """
         Scales the coordinates a dolfin xml file by some scaling factor
         """
@@ -141,8 +149,7 @@ class Config(object):
         new_filename = 'scaled_' + filename 
         idx = 0 
         if move_midpoint_to_origin:
-            midpoint = self._find_mesh_midpoint(filename)
-            print("Found approximate midpoint %s" % str(midpoint))
+            midpoint = self._find_mesh_midpoint(filename, max_num_vert=max_num_vert_midpoint)
         with open(filename, 'r') as file:
             line = file.readline()
             while line:
@@ -154,8 +161,9 @@ class Config(object):
                             new_value = (float(match.group('value_'+coord)) - midpoint[coord_idx]) * scaling_factor
                         else:
                             new_value = float(match.group('value_'+coord)) * scaling_factor
+                        new_value = round_to_n(new_value, sig_figs)
 
-                        line = line.replace(match.group('value_'+coord), str(new_value)[0:sig_figs])
+                        line = re.sub(' '+coord+r'=\"[\d.e+-]+\"', ' '+coord+'=\"'+str(new_value)+'\"', line)
                 new_file_lines.append(line)
                 line = file.readline()
                 idx += 1
@@ -165,6 +173,7 @@ class Config(object):
         # once we're done modifying we write out to a new file
         with open(new_filename, 'w+') as file:
             file.writelines(new_file_lines)
+        print("Scaled mesh is saved as %s" % new_filename)
 
 
     def generate_model(self):
