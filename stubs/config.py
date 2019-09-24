@@ -35,6 +35,7 @@ class Config(object):
             self.config_file = config_file
             self._parse_file()
             # we pack this into its own dictionary so it can be input as a parameter into dolfin solve
+            self.dolfin_linear = {}
             if 'linear_solver' in self.solver.keys():
                 self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
             if 'preconditioner' in self.solver.keys():

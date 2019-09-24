@@ -152,7 +152,8 @@ class _ObjectContainer(object):
                 for key, value in obj1_value.items():
                     objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
-                        raise Exception('Either none or more than one objects match this condition')
+                        raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
+                                        % (property_name2, value, objList))
                     if value_is_key:
                         newDict.update({value: objList[0]})
                     else:
@@ -172,14 +173,16 @@ class _ObjectContainer(object):
                 for value in obj1_value:
                     objList = ObjectContainer2.where_equals(property_name2, value)
                     if len(objList) != 1:
-                        raise Exception('Either none or more than one objects match this condition')
+                        raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
+                                        % (property_name2, value, objList))
                     newDict.update({value: objList[0]})
                 setattr(obj1, linked_name, newDict)
             # standard behavior
             else: 
                 objList = ObjectContainer2.where_equals(property_name2, obj1_value)
                 if len(objList) != 1:
-                    raise Exception('Either none or more than one objects match this condition')
+                    raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
+                                    % (property_name2, obj1_value, objList))
                 setattr(obj1, linked_name, objList[0])
 
     def copy_linked_property(self, linked_name, linked_name_property, property_name):
@@ -1341,10 +1344,18 @@ class Model(object):
 #        self.update_time()
 
 
-    def updateTimeDependentParameters(self, t=None, t0=None): 
+    def updateTimeDependentParameters(self, t=None, t0=None, dt=None): 
         if not t:
             # custom time
             t = self.t
+        if t0 and dt:
+            raise Exception("Specify either t0 or dt, not both.")
+        elif t0:
+            pass
+        elif dt:
+            t0 = t-dt
+            if t0<0:
+                raise Exception("t0<0, is this the desired behavior?")
         for param_name, param in self.PD.Dict.items():
             if param.is_time_dependent and not param.is_preintegrated:
                 newValue = param.symExpr.subs({'t': t}).evalf()
@@ -1952,7 +1963,9 @@ class Model(object):
                     if pname in self.PD.Dict.keys():
                         p = self.PD.Dict[pname]
                         if p.is_time_dependent:
+                            if not p.is_preintegrated
                             time_param_list.append(p)
+
                         else:
                             param_list.append(pname)
 
@@ -1998,7 +2011,7 @@ class Model(object):
     def newton_iter(self, comp_name):
         self.stopwatch("Newton's method [%s]" % comp_name)
         self.forward_time_step() # increment time afterwards
-        self.updateTimeDependentParameters()
+        self.updateTimeDependentParameters(dt=self.dt)
 
         idx, success = self.nonlinear_solver[comp_name].solve()
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
@@ -2056,7 +2069,7 @@ class Model(object):
     def init_solver_and_plots(self):
         self.data.initSolutionFiles(self.SD, write_type='xdmf')
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
-        self.data.computeStatistics(self.u, self.t, self.dt,self.SD,self.NLidx)
+        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.NLidx)
         self.data.initPlot(self.config)
 
     def update_solution(self):
@@ -2065,7 +2078,7 @@ class Model(object):
             self.u[key]['k'].assign(self.u[key]['u'])
 
     def compute_statistics(self):
-        self.data.computeStatistics(self.u,self.t,self.dt,self.SD,self.NLidx)
+        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.NLidx)
         self.data.outputPickle(self.config)
 
     def plot_solution(self):

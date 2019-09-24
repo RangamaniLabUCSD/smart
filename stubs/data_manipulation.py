@@ -7,6 +7,7 @@ import pickle
 from numbers import Number
 import os
 import petsc4py.PETSc as PETSc
+from collections import defaultdict as ddict
 Print = PETSc.Sys.Print
 
 from stubs.common import round_to_n
@@ -35,7 +36,7 @@ class Data(object):
         self.dtvec=[]
         self.NLidxvec=[]
         self.errors = {}
-        self.parameters = {}
+        self.parameters = ddict(list)
         #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
         self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.subplots()[0]}
 
@@ -85,7 +86,7 @@ class Data(object):
 
 
 
-    def computeStatistics(self, u, t, dt, SD, NLidx):
+    def computeStatistics(self, u, t, dt, SD, PD, NLidx):
         #for sp_name in speciesList:
         for sp_name in SD.Dict.keys():
             comp_name = self.solutions[sp_name]['comp_name']
@@ -102,7 +103,7 @@ class Data(object):
         # store time dependent parameters
         for param in PD.Dict.values():
             if param.is_time_dependent:
-                self.parameters[param.name]
+                self.parameters[param.name].append(param.dolfinConstant)
 
         self.tvec.append(t)
         self.dtvec.append(dt)
