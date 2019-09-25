@@ -1,8 +1,9 @@
-""" Example docstring
-stuff
-
+""" 
+Classes for parameters, species, compartments, reactions, fluxes, and forms
+Model class contains functions to efficiently solve a system
 """
 
+import re
 from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
@@ -39,6 +40,16 @@ comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
+
+
+def color_print(full_text, color):
+    if rank==root:
+        split_text = [s for s in re.split('(\n)', full_text) if s] # colored doesn't like newline characters
+        for text in split_text:
+            if text == '\n':
+                print()
+            else:
+                print(colored(text, color=color))
 
 
 # ====================================================
@@ -326,8 +337,10 @@ class Parameter(_ObjectInstance):
     def assembleTimeDependentParameters(self): 
         if self.is_time_dependent:
             self.symExpr = parse_expr(self.symExpr)
-            if rank==root: print("Creating dolfin object for time-dependent parameter %s" % self.name)
+            Print("Creating dolfin object for time-dependent parameter %s" % self.name)
             self.dolfinConstant = d.Constant(self.value)
+        if self.preintegrated_symExpr:
+            self.preintegrated_symExpr = parse_expr(self.preintegrated_symExpr)
 
 
 class SpeciesContainer(_ObjectContainer):
@@ -591,9 +604,8 @@ class ReactionContainer(_ObjectContainer):
                 sub_sp_name = sp_name+'_sub_'+comp_name
                 compartment_counts.append(comp_name)
                 if sub_sp_name not in SD.Dict.keys():
-                    if rank==root:
-                        print((colored('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
-                            % (sp_name, comp_name, sub_sp_name))))
+                    color_print('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
+                        % (sp_name, comp_name, sub_sp_name), 'blue')
 
                     sub_sp = copy(SD.Dict[sp_name])
                     sub_sp.is_an_added_species = True
@@ -1158,6 +1170,7 @@ class Model(object):
         self.dT = d.Constant(self.dt)
         self.t_final = config.solver['T']
         self.linear_iterations = None
+        self.reset_dt = False
 
         self.timers = {}
         self.timings = ddict(list)
@@ -1318,23 +1331,67 @@ class Model(object):
         self.dt = dt
         self.dT.assign(dt) 
 
+    def check_dt_resets(self):
+        """
+        Checks to see if the size of a full-time step would pass a "reset dt" checkpoint. At these checkpoints dt
+        is reset to some value (e.g. to force smaller sampling during fast events)
+        """        
 
+        # if last time-step we passed a reset dt checkpoint then reset it now
+        if self.reset_dt:
+            new_dt = self.config.advanced['reset_dt'][0]
+            color_print("(!!!) Adjusting time-step (dt = %f -> %f) to match config specified value" % (self.dt, new_dt), 'green')
+            self.set_time(self.t, dt = new_dt)
+            self.config.advanced['reset_dt'] = self.config.advanced['reset_dt'][1:]
+            self.reset_dt = False
+            return
+
+        # check that there are reset times specified
+        if hasattr(self.config, 'advanced'):
+            if 'reset_times' in self.config.advanced.keys():
+                if len(self.config.advanced['reset_times'])!=len(self.config.advanced['reset_dt']):
+                    raise Exception("The number of times to reset dt must be equivalent to the length of the list of dts to reset to.")
+                if len(self.config.advanced['reset_times']) == 0:
+                    return
+            else: 
+                return
+        else:
+            return
+
+        # check if we pass a reset dt checkpoint
+        t0 = self.t # original time
+        potential_t = t0 + self.dt # the final time if dt is not reset
+        next_reset_time = self.config.advanced['reset_times'][0] # the next time value to reset dt at
+        next_reset_dt = self.config.advanced['reset_dt'][0] # next value of dt to reset to
+        if next_reset_time<t0:
+            raise Exception("Next reset time is less than time at beginning of time-step.")
+        if t0 < next_reset_time <= potential_t: # check if the full time-step would pass a reset dt checkpoint
+            new_dt = max([next_reset_time - t0, next_reset_dt])
+            color_print("(!!!) Adjusting time-step (dt = %f -> %f) to avoid passing reset dt checkpoint" % (self.dt, new_dt), 'blue')
+            self.set_time(self.t, dt=new_dt)
+            self.config.advanced['reset_times'] = self.config.advanced['reset_times'][1:]
+            # set a flag to change dt to the config specified value
+            self.reset_dt = True
+
+                
     def forward_time_step(self, factor=1):
 
         self.dT.assign(float(self.dt*factor))
         self.t = float(self.t+self.dt*factor)
         self.T.assign(self.t)
-
         #print("t: %f , dt: %f" % (self.t, self.dt*factor))
 
-    def stopwatch(self, key, stop=False):
+    def stopwatch(self, key, stop=False, color=None):
         if key not in self.timers.keys():
             self.timers[key] = d.Timer()
         if not stop:
             self.timers[key].start()
         else:
             elapsed_time = self.timers[key].elapsed()[0]
-            Print("%s finished in %f seconds" % (key,elapsed_time))
+            time_str = str(elapsed_time)[0:8]
+            if color:
+                time_str = colored(time_str, color)
+            Print("%s finished in %s seconds" % (key,time_str))
             self.timers[key].stop()
             self.timings[key].append(elapsed_time)
             return elapsed_time
@@ -1346,27 +1403,29 @@ class Model(object):
 
     def updateTimeDependentParameters(self, t=None, t0=None, dt=None): 
         if not t:
-            # custom time
             t = self.t
         if t0 and dt:
             raise Exception("Specify either t0 or dt, not both.")
-        elif t0:
-            pass
-        elif dt:
+        elif t0 != None:
+            dt = t-t0
+        elif dt != None:
             t0 = t-dt
-            if t0<0:
-                raise Exception("t0<0, is this the desired behavior?")
+        if t0 != None:
+            if t0<0 or dt<0:
+                raise Exception("Either t0 or dt is less than 0, is this the desired behavior?")
         for param_name, param in self.PD.Dict.items():
-            if param.is_time_dependent and not param.is_preintegrated:
+            if param.is_time_dependent and not param.preintegrated_symExpr:
                 newValue = param.symExpr.subs({'t': t}).evalf()
+                param.value = newValue
                 param.dolfinConstant.assign(newValue)
                 Print('%f assigned to time-dependent parameter %s' % (newValue, param.name))
                 self.params[param_name].append((t,newValue))
 
-            if param.is_time_dependent and param.is_preintegrated:
-                if not t0:
+            if param.is_time_dependent and param.preintegrated_symExpr:
+                if t0 == None:
                     raise Exception("Must provide a time interval for pre-integrated variables.")
-                newValue = param.symExpr.subs({'t': t}).evalf() - param.symExpr.subs({'t': t0}).evalf()
+                newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf() - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
+                param.value = newValue
                 param.dolfinConstant.assign(newValue)
                 Print('%f assigned to time-dependent [pre-integrated] parameter %s' % (newValue, param.name))
                 self.params[param_name].append((t,newValue))
@@ -1375,7 +1434,7 @@ class Model(object):
 
     def strang_RDR_step_forward(self):
         self.idx += 1
-        Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method='BDF', rtol=1e-5, atol=1e-8)
@@ -1413,7 +1472,7 @@ class Model(object):
 
     def strang_RD_step_forward(self):
         self.idx += 1
-        Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
         self.boundary_reactions_forward(factor=0.5)
@@ -1436,7 +1495,7 @@ class Model(object):
 
     def IMEX_2SBDF(self, method='RK45'):
         self.idx += 1
-        Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
 
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method)
         self.set_time(self.t-self.dt/2) # reset time back to t
@@ -1459,7 +1518,7 @@ class Model(object):
     def IMEX_1BDF(self, method='RK45'):
         self.stopwatch("Total time step")
         self.idx += 1
-        Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
 
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
         self.set_time(self.t-self.dt/2) # reset time back to t
@@ -1736,24 +1795,22 @@ class Model(object):
 
 
     def boundary_reactions_forward(self, factor=1, bcs=[]):
-        nsubsteps = int(self.config.solver['reaction_substeps'])
-        # first reaction step
-#        for sp_name, sp in self.SD.Dict.items():
-#            if sp.parent_species:
-#                comp_name = sp.compartment_name
-#                d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'])
-#                self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-#                TODO: add picard iterations here?
+        self.stopwatch("Boundary reactions forward")
+        nsubsteps = 1#int(self.config.solver['reaction_substeps'])
+
         for n in range(nsubsteps):
-            self.forward_time_step(factor=factor/nsubsteps)
-            self.updateTimeDependentParameters()
+            t0 = self.t
+            #self.forward_time_step(factor=factor/nsubsteps)
+            #self.updateTimeDependentParameters(t0=t0)
             for comp_name, comp in self.CD.Dict.items():
                 if comp.dimensionality < self.CD.max_dim:
-                    if self.config.solver['nonlinear'] == 'picard':
-                        self.picard_loop(comp_name, bcs)
-                    elif self.config.solver['nonlinear'] == 'newton':
-                        self.newton_iter(comp_name)
+                    #if self.config.solver['nonlinear'] == 'picard':
+                    #    self.picard_loop(comp_name, bcs)
+                    #elif self.config.solver['nonlinear'] == 'newton':
+                    self.newton_iter(comp_name)
+                    self.set_time(self.t-self.dt)
                     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        self.stopwatch("Boundary reactions forward", stop=True)
 
 
     def boundary_reactions_forward_scipy(self, comp_name, factor=1, all_dofs=False, method='RK45', rtol=1e-4, atol=1e-6):
@@ -1811,8 +1868,9 @@ class Model(object):
 
     def diffusion_forward(self, comp_name, factor=1, bcs=[]):
         self.stopwatch("Diffusion step ["+comp_name+"]")
+        t0 = self.t
         self.forward_time_step(factor=factor)
-        self.updateTimeDependentParameters()
+        self.updateTimeDependentParameters(t0=t0)
         if self.config.solver['nonlinear'] == 'picard':
             self.picard_loop(comp_name, bcs)
         elif self.config.solver['nonlinear'] == 'newton':
@@ -1856,7 +1914,10 @@ class Model(object):
 
     def iterative_solver(self, bcs=[], boundary_method='RK45'):
         self.idx += 1
-        Print('\n\n***Beginning time step %d' % self.idx)
+        self.check_dt_resets()
+        #Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
+        color_print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
+
         self.stopwatch("Total time step")
         exit_loop = False
 
@@ -1865,10 +1926,11 @@ class Model(object):
         # self.iidx += 1
 
         # solve boundary problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality < self.CD.max_dim:
-                self.boundary_reactions_forward_scipy(comp_name, factor=1.0, all_dofs=True, method=boundary_method, rtol=1e-6, atol=1e-9)
-                self.set_time(self.t-self.dt) # reset time back to t
+        self.boundary_reactions_forward()
+        #for comp_name, comp in self.CD.Dict.items():
+        #    if comp.dimensionality < self.CD.max_dim:
+        #        self.boundary_reactions_forward_scipy(comp_name, factor=1.0, all_dofs=True, method=boundary_method, rtol=1e-4, atol=1e-6)
+        #        self.set_time(self.t-self.dt) # reset time back to t
         self.update_solution_boundary_to_volume()
         
         # solve volume problem(s)
@@ -1884,26 +1946,13 @@ class Model(object):
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
             Print("Decreasing step size")
 
-        self.stopwatch("Total time step", stop=True)
+        self.stopwatch("Total time step", stop=True, color='cyan')
 
-#    def check_dt(self):
-#        """
-#        Checks if the current value of dt should be reduced (example: one of the times to reset dt is in [t,t+d])
-#        """
-#        # First check if dt has exceeded the maximum
-#        if self.dt > self.config.solver['max_dt']:
-#            self.dt = self.config.solver['max_dt']
-#            Print("Adjusting dt to not exceed the maximum dt specified: %f" % self.dt)
-#        # Check if the current time-step would cause us to 
-#            TODO finish this 
-#
-#
-#        self.set_time(self.t, self.dt)
 
     def IMEX_1BDF(self, method='RK45'):
         self.stopwatch("Total time step")
         self.idx += 1
-        Print('\n\n ***Beginning time-step %d: time=%f, dt=%f\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
 
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
         self.set_time(self.t-self.dt/2) # reset time back to t
@@ -1963,9 +2012,7 @@ class Model(object):
                     if pname in self.PD.Dict.keys():
                         p = self.PD.Dict[pname]
                         if p.is_time_dependent:
-                            if not p.is_preintegrated
                             time_param_list.append(p)
-
                         else:
                             param_list.append(pname)
 
@@ -2008,10 +2055,11 @@ class Model(object):
 
    
 
-    def newton_iter(self, comp_name):
+    def newton_iter(self, comp_name, factor=1):
         self.stopwatch("Newton's method [%s]" % comp_name)
-        self.forward_time_step() # increment time afterwards
-        self.updateTimeDependentParameters(dt=self.dt)
+        t0 = self.t
+        self.forward_time_step(factor=factor) # increment time afterwards
+        self.updateTimeDependentParameters(t0=t0)
 
         idx, success = self.nonlinear_solver[comp_name].solve()
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
@@ -2070,7 +2118,7 @@ class Model(object):
         self.data.initSolutionFiles(self.SD, write_type='xdmf')
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.NLidx)
-        self.data.initPlot(self.config)
+        self.data.initPlot(self.config, self.SD)
 
     def update_solution(self):
         for key in self.u.keys():
@@ -2083,7 +2131,8 @@ class Model(object):
 
     def plot_solution(self):
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
-        self.data.plotSolutions(self.config)
+        self.data.plotParameters(self.config)
+        self.data.plotSolutions(self.config, self.SD)
 
     def plot_solver_status(self):
         self.data.plotSolverStatus(self.config)

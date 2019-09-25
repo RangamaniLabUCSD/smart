@@ -38,7 +38,8 @@ class Data(object):
         self.errors = {}
         self.parameters = ddict(list)
         #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
-        self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.subplots()[0]}
+        self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.figure()}
+        self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
         self.timer = d.Timer()
 
@@ -103,7 +104,7 @@ class Data(object):
         # store time dependent parameters
         for param in PD.Dict.values():
             if param.is_time_dependent:
-                self.parameters[param.name].append(param.dolfinConstant)
+                self.parameters[param.name].append(param.value)
 
         self.tvec.append(t)
         self.dtvec.append(dt)
@@ -137,36 +138,80 @@ class Data(object):
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
-    def initPlot(self, config):
+    def initPlot(self, config, SD):
         if rank==root:
             if not os.path.exists(config.directory['plot']):
                 os.mkdir(config.directory['plot'])
         Print("Created directory %s to store plots" % config.directory['plot'])
-        # NOTE: for now plots are individual; add an option to group species into subplots by category
-        numPlots = len(self.solutions.keys())
-        subplotCols = 5
+
+        maxCols = 3
+        # solution plots 
+        self.groups = list(set([p.group for p in SD.Dict.values()]))
+        if 'Null' in self.groups: self.groups.remove('Null')
+        numPlots = len(self.groups)
+        #numPlots = len(self.solutions.keys())
+        subplotCols = min([maxCols, numPlots])
         subplotRows = int(np.ceil(numPlots/subplotCols))
-        for idx, key in enumerate(self.solutions.keys()):
+        for idx, key in enumerate(self.groups): 
             self.plots['solutions'].add_subplot(subplotRows,subplotCols,idx+1)
 
+        # parameter plots
+        numPlots = len(self.parameters.keys())
+        subplotCols = min([maxCols, numPlots])
+        subplotRows = int(np.ceil(numPlots/subplotCols))
+        for idx, param_name in enumerate(self.parameters.keys()):
+            self.plots['parameters'].add_subplot(subplotRows,subplotCols,idx+1)
 
-    def plotSolutions(self, config, figsize=(120,120)):
+
+    def plotParameters(self, config, figsize=(120,40)):
+        """
+        Plots time dependent parameters
+        """
         plot_settings = config.plot
         dir_settings = config.directory
-        for idx, key in enumerate(self.solutions.keys()):
-            soln =  self.solutions[key]
+        for idx, key in enumerate(self.parameters.keys()):
+            param = self.parameters[key]
+            subplot = self.plots['parameters'].get_axes()[idx]
+            subplot.clear()
+            subplot.plot(self.tvec, param, linewidth=plot_settings['linewidth_small'], color='b')
+
+            subplot = self.plots['parameters'].get_axes()[idx]
+            subplot.title.set_text(key)
+            subplot.title.set_fontsize(plot_settings['fontsize_med'])
+        for ax in self.plots['parameters'].axes:
+            ax.ticklabel_format(useOffset=False)
+            plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
+            plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
+            ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
+
+        self.plots['parameters'].tight_layout()
+        #plt.tight_layout()
+        self.plots['parameters'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_params', figsize=figsize,dpi=300)#,bbox_inches='tight')
+
+    def plotSolutions(self, config, SD, figsize=(160,160)):
+        plot_settings = config.plot
+        dir_settings = config.directory
+
+        # plot solutions together by group
+        for idx, group in enumerate(self.groups):
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.clear()
-            subplot.plot(self.tvec, soln['min'], linewidth=plot_settings['linewidth_small'], color='b')
-            subplot.plot(self.tvec, soln['mean'], linewidth=plot_settings['linewidth_med'], color='b')
-            subplot.plot(self.tvec, soln['max'], linewidth=plot_settings['linewidth_small'], color='b')
+            sidx = 0
+            for param_name, param in SD.Dict.items():
+                if param.group == group:
 
-            unitStr = '{:P}'.format(self.solutions[key]['concentration_units'].units)
+                    soln =  self.solutions[param_name]
+                    subplot.plot(self.tvec, soln['min'], linewidth=plot_settings['linewidth_small']*0.5, color=self.color_list[sidx])
+                    subplot.plot(self.tvec, soln['mean'], linewidth=plot_settings['linewidth_med'], color=self.color_list[sidx], label=param_name)
+                    subplot.plot(self.tvec, soln['max'], linewidth=plot_settings['linewidth_small']*0.5, color=self.color_list[sidx])
+
+                    unitStr = '{:P}'.format(self.solutions[param_name]['concentration_units'].units)
+                    sidx += 1
             subplot = self.plots['solutions'].get_axes()[idx]
-            subplot.title.set_text(key)# + ' [' + unitStr + ']')
+            subplot.legend(fontsize=plot_settings['fontsize_small'])
+            subplot.title.set_text(group)# + ' [' + unitStr + ']')
             subplot.title.set_fontsize(plot_settings['fontsize_med'])
-            #self.plots['solutions'].canvas.draw()
-            #self.plots['solutions'].show()
+
 
         #self.plots['solutions'].tight_layout()
         for ax in self.plots['solutions'].axes:
@@ -175,8 +220,8 @@ class Data(object):
             plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
             ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
 
-        #self.plots['solutions'].tight_layout()
-        plt.tight_layout()
+        self.plots['solutions'].tight_layout()
+        #plt.tight_layout()
         self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
         #self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
@@ -186,6 +231,8 @@ class Data(object):
         dir_settings = config.directory
         nticks=14
         nround=3
+
+        self.plots['solver_status'] = plt.subplots()[0]#.clear()
 
         if len(self.plots['solver_status'].axes) == 1:
             ax2 = self.plots['solver_status'].axes[0].twinx()
@@ -231,44 +278,6 @@ class Data(object):
             pickle.dump(newDict, pickle_file)
 
         Print('Solutions dumped into pickle.')
-
-
-
-#    def finalizePlot(self):
-#        for idx, key in enumerate(self.solutions.keys()):
-#            unitStr = '{:P}'.format(self.solutions[key]['concentration_units'].units)
-#            subplot = self.plots['solutions'].get_axes()[idx]
-#            subplot.title.set_text(key + ' [' + unitStr + ']')
-#            subplot.title.set_fontsize(fsmed)
-#        self.plots['solutions'].savefig(self.model_parameters['figName'])
-
-
-
-
-
-#import matplotlib.pyplot as plt
-#import time
-#fig = plt.figure()
-#fig.show()
-#for i in range(10):
-#    plt.clf()
-#    xlist = list(range(i))
-#    ylist = [x**2 for x in xlist]
-#    plt.plot(xlist,ylist)
-#    time.sleep(0.3)
-#
-#    fig.canvas.draw()
-#
-#import matplotlib.pyplot as pylab
-#dat=[0,1]
-#pylab.plot(dat)
-#pylab.ion()
-#pylab.draw()
-#for i in range (18):
-#    dat.append(random.uniform(0,1))
-#    pylab.plot(dat)
-#    pylab.draw()
-#    time.sleep(1)
 
 # ====================================================
 # General fenics
