@@ -391,12 +391,12 @@ class SpeciesContainer(_ObjectContainer):
             # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
             if num_species == 1:
                 V[compartment_name] = d.FunctionSpace(CD.meshes[compartment_name], 'P', 1)
-                u[compartment_name] = {'u': d.Function(V[compartment_name]), 't': d.TrialFunction(V[compartment_name]),
+                u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunction(V[compartment_name]),
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunction(V[compartment_name])
             else: # vector space
                 V[compartment_name] = d.VectorFunctionSpace(CD.meshes[compartment_name], 'P', 1, dim=num_species)
-                u[compartment_name] = {'u': d.Function(V[compartment_name]), 't': d.TrialFunctions(V[compartment_name]),
+                u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunctions(V[compartment_name]),
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunctions(V[compartment_name])
 
@@ -414,7 +414,7 @@ class SpeciesContainer(_ObjectContainer):
                             else:
                                 boundaryV = d.VectorFunctionSpace(CD.meshes[boundary_name], 'P', 1, dim=num_species)
                             V['boundary'][compartment_name].update({boundary_name: boundaryV})
-                            u[compartment_name]['b'+boundary_name] = d.Function(boundaryV)
+                            u[compartment_name]['b'+boundary_name] = d.Function(boundaryV, name="concentration_ub")
 
         # associate indexed functions with dataframe
         for key, sp in self.Dict.items():
@@ -671,7 +671,8 @@ class ReactionContainer(_ObjectContainer):
 
 
 class Reaction(_ObjectInstance):
-    def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None, explicit_restriction_to_domain=False):
+    def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None,
+                 explicit_restriction_to_domain=False, speciesDict={}, track_value=False):
         if eqn_f_str:
             print("Reaction %s: using the specified equation for the forward flux: %s" % (name, eqn_f_str))
             self.eqn_f = parse_expr(eqn_f_str)
@@ -679,6 +680,7 @@ class Reaction(_ObjectInstance):
             print("Reaction %s: using the specified equation for the reverse flux: %s" % (name, eqn_r_str))
             self.eqn_r = parse_expr(eqn_r_str)
         self.explicit_restriction_to_domain = explicit_restriction_to_domain
+        self.track_value = track_value
         super().__init__(name, Dict)
 
     def initialize_flux_equations_for_known_reactions(self, reaction_database={}):
@@ -739,18 +741,20 @@ class Reaction(_ObjectInstance):
             stoich = max([self.LHS.count(species_name), self.RHS.count(species_name)])
             #all_species.count(species_name)
 
+            track = True if species_name == self.track_value else False
+
             if hasattr(self, 'eqn_f'):
                 flux_name = self.name + ' (f) [' + species_name + ']'
                 sign = -1 if species_name in self.LHS else 1
                 signed_stoich = sign*stoich
                 self.fluxList.append(Flux(flux_name, species_name, self.eqn_f, signed_stoich, self.involved_species_link,
-                                          self.paramDictValues, self.group, self.explicit_restriction_to_domain))
+                                          self.paramDictValues, self.group, self.explicit_restriction_to_domain, track))
             if hasattr(self, 'eqn_r'):
                 flux_name = self.name + ' (r) [' + species_name + ']'
                 sign = 1 if species_name in self.LHS else -1
                 signed_stoich = sign*stoich
                 self.fluxList.append(Flux(flux_name, species_name, self.eqn_r, signed_stoich, self.involved_species_link,
-                                          self.paramDictValues, self.group, self.explicit_restriction_to_domain))
+                                          self.paramDictValues, self.group, self.explicit_restriction_to_domain, track))
 
 
 
@@ -807,7 +811,8 @@ class FluxContainer(_ObjectContainer):
             for sp_name in involved_species:
                 spDict.update({sp_name: SD.Dict[sp_name]})
 
-            new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.signed_stoich, spDict, f.paramDict, f.group, f.explicit_restriction_to_domain)
+            new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.signed_stoich,
+                            spDict, f.paramDict, f.group, f.explicit_restriction_to_domain, f.track_value)
             new_flux.get_additional_flux_properties(CD, config)
 
             # get length scale factor
@@ -833,7 +838,8 @@ class FluxContainer(_ObjectContainer):
             self.Dict.update({new_flux_name: new_flux})
 
 class Flux(_ObjectInstance):
-    def __init__(self, flux_name, species_name, symEqn, signed_stoich, spDict, paramDict, group, explicit_restriction_to_domain=None):
+    def __init__(self, flux_name, species_name, symEqn, signed_stoich,
+                 spDict, paramDict, group, explicit_restriction_to_domain=None, track_value=False):
         super().__init__(flux_name)
 
         self.flux_name = flux_name
@@ -844,6 +850,8 @@ class Flux(_ObjectInstance):
         self.paramDict = paramDict
         self.group = group
         self.explicit_restriction_to_domain = explicit_restriction_to_domain
+        self.track_value = track_value
+        self.tracked_values = []
 
         self.symList = [str(x) for x in symEqn.free_symbols]
         self.lambdaEqn = sympy.lambdify(self.symList, self.symEqn, modules=['sympy','numpy'])
@@ -1913,10 +1921,11 @@ class Model(object):
 
 
     def iterative_solver(self, bcs=[], boundary_method='RK45'):
+        Print('\n\n\n')
         self.idx += 1
         self.check_dt_resets()
         #Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
-        color_print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
+        color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
 
         self.stopwatch("Total time step")
         exit_loop = False
@@ -2065,6 +2074,7 @@ class Model(object):
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
         self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
+        Print("%d Newton iterations required for convergence." % idx)
         return idx, success
 
 
@@ -2117,8 +2127,8 @@ class Model(object):
     def init_solver_and_plots(self):
         self.data.initSolutionFiles(self.SD, write_type='xdmf')
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
-        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.NLidx)
-        self.data.initPlot(self.config, self.SD)
+        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.FD, self.NLidx)
+        self.data.initPlot(self.config, self.SD, self.FD)
 
     def update_solution(self):
         for key in self.u.keys():
@@ -2126,13 +2136,14 @@ class Model(object):
             self.u[key]['k'].assign(self.u[key]['u'])
 
     def compute_statistics(self):
-        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.NLidx)
+        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
 
     def plot_solution(self):
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
         self.data.plotParameters(self.config)
         self.data.plotSolutions(self.config, self.SD)
+        self.data.plotFluxes(self.config)
 
     def plot_solver_status(self):
         self.data.plotSolverStatus(self.config)

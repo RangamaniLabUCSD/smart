@@ -87,22 +87,25 @@ class ReactionDF(object):
     def __init__(self):
         self.df = pd.DataFrame(columns=["group", "LHS", "RHS",
                                         "paramDict", "reaction_type",
-                                        "explicit_restriction_to_domain", "speciesDict"])
+                                        "explicit_restriction_to_domain", "speciesDict",
+                                        "track_value"])
         self.df = pd.DataFrame({'group': pd.Series([], dtype=str),
                                 'LHS': pd.Series([], dtype=object),
                                 'RHS': pd.Series([], dtype=object),
                                 'paramDict': pd.Series([], dtype=object),
                                 'reaction_type': pd.Series([], dtype=str),
                                 'explicit_restriction_to_domain': pd.Series([], dtype=object),
-                                'speciesDict': pd.Series([], dtype=object)})
+                                'speciesDict': pd.Series([], dtype=object),
+                                'track_value': pd.Series([], dtype=bool)})
     def append(self, name, group, LHS, RHS, paramDict,
-               reaction_type="mass_action", explicit_restriction_to_domain=None, speciesDict={}):
+               reaction_type="mass_action", explicit_restriction_to_domain=None, speciesDict={}, track_value=False):
 
         self.df = self.df.append(pd.Series({"group": group, "LHS": LHS,
                                   "RHS": RHS, "paramDict": paramDict,
                                   "reaction_type": reaction_type,
                                   "explicit_restriction_to_domain": explicit_restriction_to_domain,
-                                  "speciesDict":speciesDict}, name=name))#, ignore_index=True)
+                                  "speciesDict": speciesDict,
+                                  "track_value": track_value}, name=name))#, ignore_index=True)
 
     def write_json(self, name='reactions.json'):
         self.df.to_json(name)

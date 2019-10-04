@@ -31,14 +31,16 @@ from stubs import unit
 class Data(object):
     def __init__(self, config):
         self.config = config
+        self.append_flag = False
         self.solutions = {}
+        self.fluxes = {}
         self.tvec=[]
         self.dtvec=[]
         self.NLidxvec=[]
         self.errors = {}
         self.parameters = ddict(list)
         #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
-        self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.figure()}
+        self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.figure(), 'fluxes': plt.subplots()[0]}
         self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
         self.timer = d.Timer()
@@ -58,7 +60,7 @@ class Data(object):
             elif write_type=='xdmf':
                 #pass
                 file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                self.solutions[sp_name][write_type] = d.XDMFFile(file_str)
+                self.solutions[sp_name][write_type] = d.XDMFFile(comm,file_str)
 
 
     def storeSolutionFiles(self, u, t, write_type='vtk'):
@@ -75,9 +77,8 @@ class Data(object):
                         #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
                         #with d.XDMFFile(file_str) as xdmf:
                         #    xdmf.write(u[comp_name]['u'], t)
-                        with self.solutions[sp_name][write_type] as xdmf:
-                            xdmf.write(u[comp_name]['u'], t)
-                        #self.solutions[sp_name]['xdmf'].close()
+                        self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
+                        self.solutions[sp_name][write_type].close()
                 else:
                     if write_type=='vtk':
                         self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
@@ -85,13 +86,14 @@ class Data(object):
                         #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
                         #with d.XDMFFile(file_str) as xdmf:
                         #    xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
-                        with self.solutions[sp_name][write_type] as xdmf:
-                            xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
-                        #self.solutions[sp_name]['xdmf'].close()
+                        self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
+                        self.solutions[sp_name][write_type].close()
+
+        self.append_flag = True # append to xmdf files rather than write over
 
 
 
-    def computeStatistics(self, u, t, dt, SD, PD, NLidx):
+    def computeStatistics(self, u, t, dt, SD, PD, FD, NLidx):
         #for sp_name in speciesList:
         for sp_name in SD.Dict.keys():
             comp_name = self.solutions[sp_name]['comp_name']
@@ -109,6 +111,15 @@ class Data(object):
         for param in PD.Dict.values():
             if param.is_time_dependent:
                 self.parameters[param.name].append(param.value)
+
+        # store fluxes
+        for flux_name, flux in FD.Dict.items():
+            if flux.track_value:
+                value = sum(d.assemble(flux.dolfin_flux))
+                if flux_name not in self.fluxes.keys():
+                    self.fluxes[flux_name] = [value]
+                else:
+                    self.fluxes[flux_name].append(value)
 
         self.tvec.append(t)
         self.dtvec.append(dt)
@@ -142,7 +153,7 @@ class Data(object):
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
-    def initPlot(self, config, SD):
+    def initPlot(self, config, SD, FD):
         if rank==root:
             if not os.path.exists(config.directory['plot']):
                 os.mkdir(config.directory['plot'])
@@ -156,15 +167,27 @@ class Data(object):
         #numPlots = len(self.solutions.keys())
         subplotCols = min([maxCols, numPlots])
         subplotRows = int(np.ceil(numPlots/subplotCols))
-        for idx, key in enumerate(self.groups): 
+        for idx in range(numPlots):
             self.plots['solutions'].add_subplot(subplotRows,subplotCols,idx+1)
 
         # parameter plots
         numPlots = len(self.parameters.keys())
         subplotCols = min([maxCols, numPlots])
         subplotRows = int(np.ceil(numPlots/subplotCols))
-        for idx, param_name in enumerate(self.parameters.keys()):
+        for idx in range(numPlots):
             self.plots['parameters'].add_subplot(subplotRows,subplotCols,idx+1)
+
+        # flux plots
+        numPlots = 0
+        for flux_name, flux in FD.Dict.items():
+            if flux.track_value:
+                numPlots += 1
+        subplotCols = min([maxCols, numPlots])
+        subplotRows = int(np.ceil(numPlots/subplotCols))
+        if numPlots > 0:
+            for idx in range(numPlots):
+                self.plots['fluxes'].add_subplot(subplotRows,subplotCols,idx+1)
+
 
 
     def plotParameters(self, config, figsize=(120,40)):
@@ -191,6 +214,35 @@ class Data(object):
         self.plots['parameters'].tight_layout()
         #plt.tight_layout()
         self.plots['parameters'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_params', figsize=figsize,dpi=300)#,bbox_inches='tight')
+
+    def plotFluxes(self, config, figsize=(120,120)):
+        """
+        Plots assembled fluxes
+        Note: dt*assemble(flux) [=] time*flux*length^2 has units of molecules
+        """
+        plot_settings = config.plot
+        dir_settings = config.directory
+
+        for idx, (flux_name,flux) in enumerate(self.fluxes.items()):
+            subplot = self.plots['fluxes'].get_axes()[idx]
+            subplot.clear()
+            subplot.plot(self.tvec, flux, linewidth=plot_settings['linewidth_small'], color='b')
+
+            subplot = self.plots['fluxes'].get_axes()[idx]
+            subplot.title.set_text(flux_name)
+            subplot.title.set_fontsize(plot_settings['fontsize_med'])
+        for ax in self.plots['fluxes'].axes:
+            ax.ticklabel_format(useOffset=False)
+            plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
+            plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
+            ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
+
+        self.plots['fluxes'].tight_layout()
+        #plt.tight_layout()
+        self.plots['fluxes'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
+
+
+
 
     def plotSolutions(self, config, SD, figsize=(160,160)):
         plot_settings = config.plot
@@ -227,7 +279,7 @@ class Data(object):
         self.plots['solutions'].tight_layout()
         #plt.tight_layout()
         self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
-        #self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
+        self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
     def plotSolverStatus(self, config, figsize=(85,40)):
@@ -277,6 +329,10 @@ class Data(object):
                 newDict[sp_name][key] = self.solutions[sp_name][key]
         newDict['tvec'] = self.tvec
 
+        for flux_name in self.fluxes.keys():
+            newDict[flux_name] = self.fluxes[flux_name]
+
+
         # pickle file
         with open(config.directory['solutions']+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
             pickle.dump(newDict, pickle_file)
@@ -308,7 +364,6 @@ def reduceVector(u):
     comm.allreduce() only works when the incoming vectors all have the same length. We use comm.Gatherv() to gather vectors
     with different lengths
     """
-    rank = d.MPI.comm_world.rank
     sendcounts = np.array(comm.gather(len(u), root)) # length of vectors being sent by workers
     if rank == root:
         print("reduceVector(): CPUs sent me %s length vectors, total length: %d"%(sendcounts, sum(sendcounts)))
