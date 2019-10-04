@@ -56,9 +56,9 @@ class Data(object):
                 file_str = self.config.directory['solutions'] + '/' + sp_name + '.pvd'
                 self.solutions[sp_name][write_type] = d.File(file_str)
             elif write_type=='xdmf':
-                pass
-#                file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-#                self.solutions[sp_name][write_type] = d.XDMFFile(file_str)
+                #pass
+                file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                self.solutions[sp_name][write_type] = d.XDMFFile(file_str)
 
 
     def storeSolutionFiles(self, u, t, write_type='vtk'):
@@ -72,16 +72,20 @@ class Data(object):
                     if write_type=='vtk':
                         self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
                     elif write_type=='xdmf':
-                        file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                        with d.XDMFFile(file_str) as xdmf:
+                        #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                        #with d.XDMFFile(file_str) as xdmf:
+                        #    xdmf.write(u[comp_name]['u'], t)
+                        with self.solutions[sp_name][write_type] as xdmf:
                             xdmf.write(u[comp_name]['u'], t)
                         #self.solutions[sp_name]['xdmf'].close()
                 else:
                     if write_type=='vtk':
                         self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
                     elif write_type=='xdmf':
-                        file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                        with d.XDMFFile(file_str) as xdmf:
+                        #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                        #with d.XDMFFile(file_str) as xdmf:
+                        #    xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
+                        with self.solutions[sp_name][write_type] as xdmf:
                             xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
                         #self.solutions[sp_name]['xdmf'].close()
 
