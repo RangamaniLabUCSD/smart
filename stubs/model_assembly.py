@@ -1221,21 +1221,34 @@ class Model(object):
                 Print(('\nThe flux, %s, from compartment %s to %s, has units ' %
                        (j.flux_name, j.source_compartment, j.destination_compartment) + colored(unit_prod, "red") +
                        "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
+
+                if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
+                    pass
+                elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
+                    length_scale_factor = 1/length_scale_factor
+                else:
+                    raise Exception("Inconsitent units!")
+
                 Print('Adjusted flux with the length scale factor ' + 
                       colored("%f [%s]"%(length_scale_factor.magnitude,str(length_scale_factor.units)), "cyan") + ' to match units.\n') 
 
-                if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
-                    prod *= length_scale_factor.magnitude
-                    total_scaling *= length_scale_factor.magnitude
-                    unit_prod *= length_scale_factor.units*1
-                    setattr(j, 'length_scale_factor', length_scale_factor)
-                elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
-                    prod /= length_scale_factor.magnitude
-                    total_scaling /= length_scale_factor.magnitude
-                    unit_prod /= length_scale_factor.units*1
-                    setattr(j, 'length_scale_factor', 1/length_scale_factor)
-                else:
-                    raise Exception("Inconsitent units!")
+                prod *= length_scale_factor.magnitude
+                total_scaling *= length_scale_factor.magnitude
+                unit_prod *= length_scale_factor.units*1
+                setattr(j, 'length_scale_factor', length_scale_factor)
+
+                #if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
+                #    prod *= length_scale_factor.magnitude
+                #    total_scaling *= length_scale_factor.magnitude
+                #    unit_prod *= length_scale_factor.units*1
+                #    setattr(j, 'length_scale_factor', length_scale_factor)
+                #elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
+                #    prod /= length_scale_factor.magnitude
+                #    total_scaling /= length_scale_factor.magnitude
+                #    unit_prod /= length_scale_factor.units*1
+                #    setattr(j, 'length_scale_factor', 1/length_scale_factor)
+                #else:
+                #    raise Exception("Inconsitent units!")
 
                                 
 
@@ -1389,7 +1402,7 @@ class Model(object):
         self.T.assign(self.t)
         #print("t: %f , dt: %f" % (self.t, self.dt*factor))
 
-    def stopwatch(self, key, stop=False, color=None):
+    def stopwatch(self, key, stop=False, color='cyan'):
         if key not in self.timers.keys():
             self.timers[key] = d.Timer()
         if not stop:
@@ -1726,7 +1739,7 @@ class Model(object):
                                                      mesh_species_index=mesh_species_index)
                 sp_parent.dof_map.update({sp_name: idx})
 
-    def update_solution_boundary_to_volume(self):
+    def update_solution_boundary_to_volume(self, keys=['k', 'u']):
         for sp_name, sp in self.SD.Dict.items():
             if sp.parent_species:
                 sp_parent = self.SD.Dict[sp.parent_species]
@@ -1736,13 +1749,12 @@ class Model(object):
                 pcomp_name = sp_parent.compartment_name
                 comp_name = sp.compartment_name
 
-                self.u[pcomp_name]['n'].vector()[idx] = \
-                    stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
+                for key in keys:
 
-                self.u[pcomp_name]['u'].vector()[idx] = \
-                    stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
+                    self.u[pcomp_name][key].vector()[idx] = \
+                        stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
 
-                Print("Assigned values from %s (%s) to %s (%s)" % (sp_name, comp_name, sp_parent.name, pcomp_name))
+                Print("Assigned values from %s (%s) to %s (%s) [keys: %s]" % (sp_name, comp_name, sp_parent.name, pcomp_name, keys))
 
     def update_solution_volume_to_boundary(self):
         for comp_name in self.CD.Dict.keys():
@@ -1750,7 +1762,7 @@ class Model(object):
                 if key[0] == 'b':
                     self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
                     sub_comp_name = key[1:]
-                    Print("Interpolated values from compartment %s to %s" % (comp_name, sub_comp_name))
+                    Print("Projected values from volume %s to surface %s" % (comp_name, sub_comp_name))
 
     def update_solution_volume_to_boundary_subspecies(self):
         for sp_name, sp in self.SD.Dict.items():
@@ -1802,7 +1814,7 @@ class Model(object):
         return bcs
 
 
-    def boundary_reactions_forward(self, factor=1, bcs=[]):
+    def boundary_reactions_forward(self, factor=1, bcs=[], key='n'):
         self.stopwatch("Boundary reactions forward")
         nsubsteps = 1#int(self.config.solver['reaction_substeps'])
 
@@ -1817,7 +1829,7 @@ class Model(object):
                     #elif self.config.solver['nonlinear'] == 'newton':
                     self.newton_iter(comp_name)
                     self.set_time(self.t-self.dt)
-                    self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+                    self.u[comp_name][key].assign(self.u[comp_name]['u'])
         self.stopwatch("Boundary reactions forward", stop=True)
 
 
@@ -1928,26 +1940,49 @@ class Model(object):
         color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
 
         self.stopwatch("Total time step")
-        exit_loop = False
 
-        # self.iidx = 0 # inner index (how many times did we iterate back and forth b/w solving boundary/volume problems)
-        # while True:
-        # self.iidx += 1
-
+        # single iteration
         # solve boundary problem(s)
         self.boundary_reactions_forward()
-        #for comp_name, comp in self.CD.Dict.items():
-        #    if comp.dimensionality < self.CD.max_dim:
-        #        self.boundary_reactions_forward_scipy(comp_name, factor=1.0, all_dofs=True, method=boundary_method, rtol=1e-4, atol=1e-6)
-        #        self.set_time(self.t-self.dt) # reset time back to t
         self.update_solution_boundary_to_volume()
-        
         # solve volume problem(s)
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
                 self.NLidx, success = self.newton_iter(comp_name)
+                self.set_time(self.t-self.dt)
+        self.set_time(self.t+self.dt)
+
         self.update_solution_volume_to_boundary()
 
+        # # multiple iterations
+        # self.iidx = 0 # inner index (how many times did we iterate back and forth b/w solving boundary/volume problems)
+        # while True:
+        #     self.iidx += 1
+        #     # solve boundary problem(s)
+        #     self.boundary_reactions_forward(key='k')
+        #     self.update_solution_boundary_to_volume(keys=['u', 'k'])
+        #     # solve volume problem(s)
+        #     for comp_name, comp in self.CD.Dict.items():
+        #         if comp.dimensionality == self.CD.max_dim:
+        #             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+        #             self.NLidx, success = self.newton_iter(comp_name, assign_to_n=False)
+        #             # convergence check
+        #             abs_err = self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+
+        #     self.update_solution_volume_to_boundary()
+
+        #     if abs_err < self.config.solver['iteration_tol']:
+        #         for comp_name in self.CD.Dict.keys():
+        #             self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        #         break
+        #     else: # keep iterating
+        #         color_print('abs_err = %f is not low enough. Resetting time and iterating again.' % abs_err, color='red')
+        #         self.set_time(self.t-self.dt)
+        #         pass
+
+
+
+        # check if time step should be changed
         if self.NLidx <= self.config.solver['min_newton']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
             Print("Increasing step size")
@@ -2061,17 +2096,16 @@ class Model(object):
 
 
 
-
-   
-
-    def newton_iter(self, comp_name, factor=1):
+    def newton_iter(self, comp_name, factor=1, assign_to_n=True):
         self.stopwatch("Newton's method [%s]" % comp_name)
         t0 = self.t
         self.forward_time_step(factor=factor) # increment time afterwards
         self.updateTimeDependentParameters(t0=t0)
 
         idx, success = self.nonlinear_solver[comp_name].solve()
-        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+        if assign_to_n:
+            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
         self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
         Print("%d Newton iterations required for convergence." % idx)
@@ -2097,10 +2131,15 @@ class Model(object):
                 self.F[comp.name] = sum(comp_forms)
                 J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
+
                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
                 p = self.nonlinear_solver[comp.name].parameters
-                p['newton_solver'].update(self.config.dolfin_linear)
-                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # useful for time dependent problems
+                p['nonlinear_solver'] = 'newton'
+
+                p['newton_solver'].update(self.config.dolfin_nonlinear_solver)
+                p['newton_solver']['krylov_solver'].update(self.config.dolfin_krylov_solver)
+                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+
 
         elif self.config.solver['nonlinear'] == 'IMEX':
             Print("Keeping forms separated by compartment and form_type for IMEX scheme.")

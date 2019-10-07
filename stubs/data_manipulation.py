@@ -137,18 +137,21 @@ class Data(object):
         u_n = u[comp_name]['n'].vector().get_local()
         abs_err = np.linalg.norm(u_u - u_k, ord=error_norm)
         #rel_err = np.linalg.norm((u_u - u_k)/u_n, ord=error_norm)
-        rel_err = 1.0
+        #rel_err = 1.0
        
         if errorNormKey not in self.errors[comp_name].keys():
-            self.errors[comp_name][errorNormKey] = {'rel': [], 'abs': []}
+            self.errors[comp_name][errorNormKey] = {'abs': []}
         #     self.errors[comp_name][errorNormKey]['abs'] = [abs_err]
         #     self.errors[comp_name][errorNormKey]['rel'] = [rel_err]
         # else:
         #     self.errors[comp_name][errorNormKey]['abs'].append(abs_err)
         #     self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
 
-        self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
+        #self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
         self.errors[comp_name][errorNormKey]['abs'].append(abs_err)
+        Print("Absolute error [%s] in the %s norm: %f" %(comp_name, errorNormKey, abs_err))
+
+        return abs_err
 
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
@@ -403,7 +406,7 @@ def dolfinGetFunctionValuesAtPoint(u, coord, species_idx=None):
     :param int species_idx: index of species
     :return: list of values at point. If species_idx is not specified it will return all values
     """
-    if species_idx:
+    if species_idx is not None:
         return u(coord)[species_idx]
     else:
         return u(coord)

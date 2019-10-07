@@ -9,6 +9,9 @@ from stubs import model_assembly
 import random
 import numpy as np
 
+import petsc4py.PETSc as PETSc
+Print = PETSc.Sys.Print
+
 import mpi4py.MPI as pyMPI
 
 comm = d.MPI.comm_world
@@ -30,18 +33,10 @@ class Config(object):
             }
 
         if not config_file:
-            print("No configuration file specified...")
+            Print("No configuration file specified...")
         else:
             self.config_file = config_file
             self._parse_file()
-            # we pack this into its own dictionary so it can be input as a parameter into dolfin solve
-            self.dolfin_linear = {}
-            if 'linear_solver' in self.solver.keys():
-                self.dolfin_linear['linear_solver'] = self.solver['linear_solver']
-            if 'preconditioner' in self.solver.keys():
-                self.dolfin_linear['preconditioner'] = self.solver['preconditioner']
-            if 'linear_maxiter' in self.solver.keys():
-                self.dolfin_linear['maximum_iterations'] = self.solver['linear_maxiter']
 
             # prepend a parent directory to file paths
             if 'parent' in self.directory.keys():
@@ -54,9 +49,6 @@ class Config(object):
 
             self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
             self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
-
-        self.dolfin_linear = {}
-        self.dolfin_linear_coarse = {}
 
 
     def _parse_list(self,a_list):
@@ -82,8 +74,6 @@ class Config(object):
             while line:
                 key, match = self._parse_line(line)
 
-                if key == 'comment':
-                    pass
                 if key in ['setting_string', 'setting_float', 'setting_list']:
                     group = match.group('group')
                     parameter = match.group('parameter')
@@ -91,6 +81,10 @@ class Config(object):
                     # initialize an empty dict
                     if not hasattr(self,group):
                         setattr(self, group, {})
+                else:
+                    line = file.readline()
+                    continue
+                
 
                 if key == 'setting_string':
                     new_value = value
@@ -99,15 +93,25 @@ class Config(object):
                 if key == 'setting_list':
                     new_value = self._parse_list(value)
 
+                # change to int
+                if parameter in ['maximum_iterations']:
+                    Print("Changing parameter %s to an int" % parameter)
+                    new_value = int(value)
+                # change to bool
+                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess']:
+                    Print("\n\nChanging parameter %s to a bool" % parameter)
+                    new_value = bool(float(value))
+
+
                 if key in ['setting_string', 'setting_float', 'setting_list']:
                     getattr(self,group)[parameter] = new_value
 
-
                 line = file.readline()
+
 
             if 'directory' in self.model.keys():
                 model_dir = self.model['directory']
-                if rank==root: print("Assuming file names, loading from directory %s" % model_dir)
+                Print("Assuming file names, loading from directory %s" % model_dir)
                 self.model['parameters'] = model_dir + 'parameters.json'
                 self.model['compartments'] = model_dir + 'compartments.json'
                 self.model['species'] = model_dir + 'species.json'
@@ -115,7 +119,7 @@ class Config(object):
 
         if (all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]) 
             and self.mesh.keys()):
-            print("Parameters, species, compartments, reactions, and a mesh were imported succesfully!")
+            Print("Parameters, species, compartments, reactions, and a mesh were imported succesfully!")
 
         file.close()
 
@@ -138,7 +142,7 @@ class Config(object):
             xmin = np.minimum(xmin, x)
 
         midpoint = (xmax-xmin)/2
-        print("Found approximate midpoint %s using %d points" % (str(midpoint), sample_num_vert))
+        Print("Found approximate midpoint %s using %d points" % (str(midpoint), sample_num_vert))
         return midpoint
 
 
@@ -169,12 +173,12 @@ class Config(object):
                 line = file.readline()
                 idx += 1
                 if idx%10000==0: # every 10000 so the output is readable
-                    print('Finished parsing line %d' % idx)
+                    Print('Finished parsing line %d' % idx)
 
         # once we're done modifying we write out to a new file
         with open(new_filename, 'w+') as file:
             file.writelines(new_file_lines)
-        print("Scaled mesh is saved as %s" % new_filename)
+        Print("Scaled mesh is saved as %s" % new_filename)
 
 
     def generate_model(self):
@@ -217,7 +221,7 @@ class Config(object):
         CD.add_property_to_all('V', None)
 
         #RD.replace_sub_species_in_reactions(SD)
-        #CD.print()
+        #CD.Print()
 
         # # # dolfin
         SD.assemble_dolfin_functions(RD, CD, self.settings)
@@ -237,7 +241,7 @@ class Config(object):
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)
 
         if rank==root:
-            print("Model created succesfully! :)")
+            Print("Model created succesfully! :)")
             model.PD.print()
             model.SD.print()
             model.CD.print()
