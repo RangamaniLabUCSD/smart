@@ -95,11 +95,11 @@ class Config(object):
 
                 # change to int
                 if parameter in ['maximum_iterations']:
-                    Print("Changing parameter %s to an int" % parameter)
+                    Print("Changing parameter %s to an int\n" % parameter)
                     new_value = int(value)
                 # change to bool
                 if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess']:
-                    Print("\n\nChanging parameter %s to a bool" % parameter)
+                    Print("Changing parameter %s to a bool\n" % parameter)
                     new_value = bool(float(value))
 
 
@@ -111,7 +111,7 @@ class Config(object):
 
             if 'directory' in self.model.keys():
                 model_dir = self.model['directory']
-                Print("Assuming file names, loading from directory %s" % model_dir)
+                Print("\nAssuming file names, loading from directory %s" % model_dir)
                 self.model['parameters'] = model_dir + 'parameters.json'
                 self.model['compartments'] = model_dir + 'compartments.json'
                 self.model['species'] = model_dir + 'species.json'

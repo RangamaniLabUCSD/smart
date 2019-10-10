@@ -570,7 +570,7 @@ class ReactionContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Reaction, df, Dict)
         #self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
-        self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r']
+        self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
     def get_species_compartment_counts(self, SD, CD, settings):
         self.doToAll('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
@@ -1077,39 +1077,6 @@ class Flux(_ObjectInstance):
         raise Exception("If you made it to this far in get_ukey() I missed some logic...") 
 
 
-    # def flux_to_dolfin(self):
-    #     value_dict = {}
-    #     unit_dict = {}
-
-    #     for var_name in [str(x) for x in self.symList]:
-    #         if var_name in self.paramDict.keys():
-    #             var = self.paramDict[var_name]
-    #             if var.is_time_dependent:
-    #                 value_dict[var_name] = var.dolfinConstant.get()
-    #             else:
-    #                 value_dict[var_name] = var.value_unit.magnitude
-    #             unit_dict[var_name] = var.value_unit.units * 1 # turns unit into "Quantity" class
-    #         elif var_name in self.spDict.keys():
-    #             var = self.spDict[var_name]
-    #             ukey = self.ukeys[var_name]
-    #             if ukey[0] == 'b':
-    #                 if not var.parent_species:
-    #                     sub_species = var.sub_species[self.destination_compartment]
-    #                     value_dict[var_name] = sub_species.u[ukey[1]]
-    #                     print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
-    #                 else:
-    #                     value_dict[var_name] = var.u[ukey[1]]
-    #             else:
-    #                 value_dict[var_name] = var.u[ukey]
-
-    #             unit_dict[var_name] = var.concentration_units * 1
-
-    #     prod = self.lambdaEqn(**value_dict)
-    #     unit_prod = self.lambdaEqn(**unit_dict)
-    #     unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
-
-    #     self.prod = prod
-    #     self.unit_prod = unit_prod
 
 
     def flux_to_dolfin(self, config):
@@ -1387,7 +1354,7 @@ class Model(object):
         if next_reset_time<t0:
             raise Exception("Next reset time is less than time at beginning of time-step.")
         if t0 < next_reset_time <= potential_t: # check if the full time-step would pass a reset dt checkpoint
-            new_dt = max([next_reset_time - t0, next_reset_dt])
+            new_dt = max([next_reset_time - t0, next_reset_dt]) # this is needed otherwise very small time-steps might be taken which wont converge
             color_print("(!!!) Adjusting time-step (dt = %f -> %f) to avoid passing reset dt checkpoint" % (self.dt, new_dt), 'blue')
             self.set_time(self.t, dt=new_dt)
             self.config.advanced['reset_times'] = self.config.advanced['reset_times'][1:]
@@ -1941,17 +1908,26 @@ class Model(object):
 
         self.stopwatch("Total time step")
 
-        # single iteration
-        # solve boundary problem(s)
-        self.boundary_reactions_forward()
-        self.update_solution_boundary_to_volume()
+
         # solve volume problem(s)
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.newton_iter(comp_name)
-                self.set_time(self.t-self.dt)
-        self.set_time(self.t+self.dt)
+                self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
+                self.set_time(self.t-self.dt/2) # reset time back to t=t0
+        self.update_solution_volume_to_boundary()
 
+        # single iteration
+        # solve boundary problem(s)
+        self.boundary_reactions_forward() # t from [t0, t+dt]. automatically resets time back to t0
+        self.update_solution_boundary_to_volume()
+
+        # solve volume problem(s)
+        self.set_time(self.t+self.dt/2) # perform the second half-step
+        for comp_name, comp in self.CD.Dict.items():
+            if comp.dimensionality == self.CD.max_dim:
+                self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
+                self.set_time(self.t-self.dt/2)
+        self.set_time(self.t+self.dt/2)
         self.update_solution_volume_to_boundary()
 
         # # multiple iterations
@@ -2166,7 +2142,7 @@ class Model(object):
     def init_solver_and_plots(self):
         self.data.initSolutionFiles(self.SD, write_type='xdmf')
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
-        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.FD, self.NLidx)
+        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.initPlot(self.config, self.SD, self.FD)
 
     def update_solution(self):
@@ -2175,7 +2151,7 @@ class Model(object):
             self.u[key]['k'].assign(self.u[key]['u'])
 
     def compute_statistics(self):
-        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.FD, self.NLidx)
+        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
 
     def plot_solution(self):
