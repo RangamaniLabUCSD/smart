@@ -1418,6 +1418,8 @@ class Model(object):
                 Print('%f assigned to time-dependent [pre-integrated] parameter %s' % (newValue, param.name))
                 self.params[param_name].append((t,newValue))
 
+            # if parameter is given by data
+
 
 
     def strang_RDR_step_forward(self):

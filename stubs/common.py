@@ -3,6 +3,7 @@
 import pandas as pd
 import dolfin as d
 import numpy as np
+import scipy.interpolate as interp
 
 # pandas
 class ref:
@@ -93,5 +94,31 @@ def round_to_n(x,n):
         sign = np.sign(x)
         x = np.abs(x)
         return sign*round(x, -int(np.floor(np.log10(x))) + (n - 1))
+
+
+def interp_limit_dy(t,y,max_dy,interp_type='linear'):
+    """
+    Interpolates t and y such that dy between time points is never greater than max_dy
+    Maintains all original t and y
+    """
+    interp_t = t.reshape(-1,1)
+    dy_vec = y[1:] - y[:-1]
+
+    for idx, dy in enumerate(dy_vec):
+        npoints = np.int(np.ceil(np.abs(dy/max_dy))) - 1
+        if npoints >= 1:
+            new_t = np.linspace(t[idx], t[idx+1], npoints+2)[1:-1]
+            interp_t = np.vstack([interp_t, new_t.reshape(-1,1)])
+
+    interp_t = np.sort(interp_t.reshape(-1,))
+    interp_y = interp.interp1d(t,y,kind=interp_type)(interp_t)
+
+    return (interp_t, interp_y)
+
+
+
+
+
+
 
 
