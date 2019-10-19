@@ -1,4 +1,4 @@
-# parse the .config file regex parser
+
 import re
 import os
 from pandas import read_json
@@ -25,10 +25,11 @@ class Config(object):
             'comment': re.compile(r'\#.*\n'),
             #'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|\/]\S*)'),
             'setting_list': re.compile(r'\$\s(?P<group>\w*).(?P<parameter>\w*)\s*=\s*\[(?P<value>.*)\]'),
-            'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|()\/]\S*)'),
+            'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-Za-z_|()\/]\S*)'),
             'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e+-]\S*)'),
-            'float': re.compile(r'[\s\'\,]*(?P<value>[\d.e+-]*)[\s\'\,]*'),
-            'string': re.compile(r'[\s\'\,]*(?P<value>[A-z|()\/]*)[\s\'\,]*'),
+            #'float': re.compile(r'[\s\'\,]*(?P<value>[\d.e+-]*)[\s\'\,]*'),
+            'float': re.compile(r'\b(?P<value>[\d.e+-]+)\b'),
+            'string': re.compile(r'\b(?P<value>[A-Za-z_]+[\dA-Za-z_]*)\b'),
             'xml_vertex': re.compile(r'.*vertex index=.*x=\"(?P<value_x>[\d.e+-]*)\" y=\"(?P<value_y>[\d.e+-]*)\" z=\"(?P<value_z>[\d.e+-]*)\".*')
             }
 
