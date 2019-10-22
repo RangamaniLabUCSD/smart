@@ -115,8 +115,49 @@ def interp_limit_dy(t,y,max_dy,interp_type='linear'):
 
     return (interp_t, interp_y)
 
+def sum_discrete_signals(ty1, ty2, max_dy=None):
+    """
+    ty1: Numpy array of size N1 x 2 where the first column is time and the
+    second column is the first signal
+    ty2: Numpy array of size N2 x 2 where the first column is time and the
+    second column is the second signal
+    
+    ty1 and ty2 do not need to have the same dimensions (N1 does not have to
+    equal N2). This function sums the linear interpolation of the two signals.
+
+    tysum will have Nsum<=N1+N2 rows - signals will be summed at all time points
+    from both ty1 and ty2 but not if there """
+    assert type(ty1)==np.ndarray and type(ty2)==np.ndarray
+    assert ty1.ndim==2 and ty2.ndim==2 # confirm there is a t and y vector
+    t1 = ty1[:,0]; y1 = ty1[:,1]; t2 = ty2[:,0]; y2 = ty2[:,1]
+
+    # get the sorted, unique values of t1 and t2
+    tsum = np.sort(np.unique(np.append(t1,t2))) 
+    ysum = np.interp(tsum, t1, y1) + np.interp(tsum, t2, y2)
+
+    if max_dy is not None:
+        tsum, ysum = interp_limit_dy(tsum, ysum, max_dy)
+
+    return np_smart_hstack(tsum, ysum)
 
 
+def np_smart_hstack(x1, x2):
+    """
+    Quality of life function. Converts two (N,) numpy arrays or two lists into a
+    (Nx2) array
+
+    Example usage:
+    a_list = [1,2,3,4]
+    a_np_array = np.array([x**2 for x in a_list])
+    np_smart_hstack(a_list, a_np_array)
+    """
+    onedim_types = [list, np.ndarray]
+    assert type(x1) in onedim_types and type(x2) in onedim_types
+    assert len(x1) == len(x2) # confirm same size
+    if type(x1) == list: x1 = np.array(x1)
+    if type(x2) == list: x2 = np.array(x2)
+
+    return np.hstack([x1.reshape(-1,1), x2.reshape(-1,1)])
 
 
 

@@ -205,7 +205,7 @@ class _ObjectContainer(object):
             setattr(obj, property_name, getattr(linked_obj, linked_name_property))
 
 
-    def doToAll(self, method_name, kwargs=None):
+    def do_to_all(self, method_name, kwargs=None):
         for name, instance in self.Dict.items():
             if kwargs is None:
                 getattr(instance, method_name)()
@@ -335,12 +335,21 @@ class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assembleTimeDependentParameters(self): 
-        if self.is_time_dependent:
+        if not self.is_time_dependent:
+            return
+        # Parse the given string to create a sympy expression 
+        if self.symExpr:
             self.symExpr = parse_expr(self.symExpr)
             Print("Creating dolfin object for time-dependent parameter %s" % self.name)
             self.dolfinConstant = d.Constant(self.value)
         if self.preintegrated_symExpr:
             self.preintegrated_symExpr = parse_expr(self.preintegrated_symExpr)
+        # load in sampling data file
+        if self.sampling_file:
+            self.sampling_data = np.genfromtxt(self.sampling_file, dtype='float',
+                                               delimiter=',')
+            Print("Creating dolfin object for time-dependent parameter %s" % self.name)
+            self.dolfinConstant = d.Constant(self.value)
 
 
 class SpeciesContainer(_ObjectContainer):
@@ -545,7 +554,7 @@ class CompartmentContainer(_ObjectContainer):
 
 
     def compute_scaling_factors(self):
-        self.doToAll('compute_nvolume')
+        self.do_to_all('compute_nvolume')
         for key, obj in self.Dict.items():
             obj.scale_to = {}
             for key2, obj2 in self.Dict.items():
@@ -573,7 +582,7 @@ class ReactionContainer(_ObjectContainer):
         self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
     def get_species_compartment_counts(self, SD, CD, settings):
-        self.doToAll('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
+        self.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
         all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.Dict.values()] for sp in species_set])
         for sp_name, sp in SD.Dict.items():
             if sp in all_involved_species:
@@ -660,7 +669,7 @@ class ReactionContainer(_ObjectContainer):
 
 
     def reaction_to_fluxes(self):
-        self.doToAll('reaction_to_fluxes')
+        self.do_to_all('reaction_to_fluxes')
         fluxList = []
         for rxn in self.Dict.values():
             for f in rxn.fluxList:
@@ -1401,35 +1410,54 @@ class Model(object):
         if t0 != None:
             if t0<0 or dt<0:
                 raise Exception("Either t0 or dt is less than 0, is this the desired behavior?")
-        for param_name, param in self.PD.Dict.items():
-            if param.is_time_dependent and not param.preintegrated_symExpr:
-                newValue = param.symExpr.subs({'t': t}).evalf()
-                param.value = newValue
-                param.dolfinConstant.assign(newValue)
-                Print('%f assigned to time-dependent parameter %s' % (newValue, param.name))
-                self.params[param_name].append((t,newValue))
 
-            if param.is_time_dependent and param.preintegrated_symExpr:
+        # Update time dependent parameters
+        for param_name, param in self.PD.Dict.items():
+            if not param.is_time_dependent:
+                continue
+            # use value by evaluating symbolic expression
+            if param.symExpr and not param.preintegrated_symExpr:
+                newValue = param.symExpr.subs({'t': t}).evalf()
+
+            # calculate a preintegrated expression by subtracting previous value 
+            # and dividing by time-step
+            if param.symExpr and param.preintegrated_symExpr:
                 if t0 == None:
-                    raise Exception("Must provide a time interval for pre-integrated variables.")
-                newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf() - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
-                param.value = newValue
-                param.dolfinConstant.assign(newValue)
-                Print('%f assigned to time-dependent [pre-integrated] parameter %s' % (newValue, param.name))
-                self.params[param_name].append((t,newValue))
+                    raise Exception("Must provide a time interval for"\
+                                    "pre-integrated variables.")
+                newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf() 
+                            - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
 
             # if parameter is given by data
+            if param.sampling_data is not None:
+                data = param.sampling_data
+                # We never want time to extrapolate beyond the provided data.
+                if t<data[0,0] or t>data[-1,0]:
+                    raise Exception("Parameter cannot be extrapolated beyond"\
+                                    "provided data.")
+                # Just in case... return a nan if value is outside of bounds
+                newValue = np.interp(t, data[:,0], data[:,1],
+                                     left=np.nan, right=np.nan)
+
+            param.value = newValue
+            param.dolfinConstant.assign(newValue)
+            Print('%f assigned to time-dependent parameter %s'
+                  % (newValue, param.name))
+            self.params[param_name].append((t,newValue))
 
 
 
     def strang_RDR_step_forward(self):
         self.idx += 1
-        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n'
+              % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
-        self.boundary_reactions_forward_scipy('pm', factor=0.5, method='BDF', rtol=1e-5, atol=1e-8)
+        self.boundary_reactions_forward_scipy('pm', factor=0.5,
+                                              method='BDF', rtol=1e-5, atol=1e-8)
         self.set_time(self.t-self.dt/2) # reset time back to t
-        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45', rtol=1e-5, atol=1e-8)
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True,
+                                              method='RK45', rtol=1e-5, atol=1e-8)
         self.update_solution_boundary_to_volume()
 
         # diffusion step (full time step) t=[t,t+dt]
@@ -1441,9 +1469,11 @@ class Model(object):
 
         # second reaction step (half time step) t=[t+dt/2,t+dt]
         self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
-        self.boundary_reactions_forward_scipy('pm', factor=0.5, method='BDF', rtol=1e-5, atol=1e-8)
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, 
+                                              method='BDF', rtol=1e-5, atol=1e-8)
         self.set_time(self.t-self.dt/2) # reset time back to t
-        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45', rtol=1e-5, atol=1e-8)
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, 
+                                              method='RK45', rtol=1e-5, atol=1e-8)
         self.update_solution_boundary_to_volume()
 
         #print("finished second reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
@@ -1462,16 +1492,19 @@ class Model(object):
 
     def strang_RD_step_forward(self):
         self.idx += 1
-        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n'
+              % (self.idx, self.t, self.dt))
 
         # first reaction step (half time step) t=[t,t+dt/2]
         self.boundary_reactions_forward(factor=0.5)
-        Print("finished reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        Print("finished reaction step: t = %f, dt = %f (%d picard iterations)" 
+              % (self.t, self.dt, self.pidx))
         # transfer values of solution onto volumetric field
         self.update_solution_boundary_to_volume()
 
         self.diffusion_forward('cyto', factor=0.5) 
-        Print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+        Print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" 
+              % (self.t, self.dt, self.pidx))
         self.update_solution_volume_to_boundary()
 
         if self.pidx >= self.config.solver['max_picard']:
@@ -1485,11 +1518,13 @@ class Model(object):
 
     def IMEX_2SBDF(self, method='RK45'):
         self.idx += 1
-        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' 
+              % (self.idx, self.t, self.dt))
 
         self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method)
         self.set_time(self.t-self.dt/2) # reset time back to t
-        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45', rtol=1e-5, atol=1e-8)
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, 
+                                              method='RK45', rtol=1e-5, atol=1e-8)
         self.update_solution_boundary_to_volume()
    
         self.set_time(self.t-self.dt/2) # reset time back to t
@@ -1497,9 +1532,11 @@ class Model(object):
         self.update_solution_volume_to_boundary()
 
         self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
-        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, 
+                                              method=method, rtol=1e-5, atol=1e-8)
         self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
-        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, 
+                                              method='RK45')
 
         self.update_solution_boundary_to_volume()
 

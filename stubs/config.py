@@ -13,13 +13,17 @@ import petsc4py.PETSc as PETSc
 Print = PETSc.Sys.Print
 
 import mpi4py.MPI as pyMPI
-
 comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
 
 class Config(object):
+    """
+    A class which loads in data from a configuration file, and a model from
+    parameter/species/compartment/reaction jsons. The config settings are
+    applied and the model object is generated via generate_model()
+    """
     def __init__(self, config_file=None):
         self._regex_dict = {
             'comment': re.compile(r'\#.*\n'),
@@ -192,22 +196,22 @@ class Config(object):
         RD = self._json_to_ObjectContainer(self.model['reactions'], 'reactions')
 
         # parameter/unit assembly
-        PD.doToAll('assemble_units', {'unit_name': 'unit'})
-        PD.doToAll('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        PD.doToAll('assembleTimeDependentParameters')
-        SD.doToAll('assemble_units', {'unit_name': 'concentration_units'})
-        SD.doToAll('assemble_units', {'unit_name': 'D_units'})
-        CD.doToAll('assemble_units', {'unit_name':'compartment_units'})
-        RD.doToAll('initialize_flux_equations_for_known_reactions', {"reaction_database": self.reaction_database})
+        PD.do_to_all('assemble_units', {'unit_name': 'unit'})
+        PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        PD.do_to_all('assembleTimeDependentParameters')
+        SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+        RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.reaction_database})
 
 
         # linking containers with one another
         RD.link_object(PD,'paramDict','name','paramDictValues', value_is_key=True)
         SD.link_object(CD,'compartment_name','name','compartment')
         SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        RD.doToAll('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
+        RD.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
         RD.link_object(SD,'involved_species','name','involved_species_link')
-        #RD.doToAll('combineDicts', {'dict1': 'paramDictValues', 'dict2': 'involved_species_link', 'new_dict_name': 'varDict'})
+        #RD.do_to_all('combineDicts', {'dict1': 'paramDictValues', 'dict2': 'involved_species_link', 'new_dict_name': 'varDict'})
 
         # meshes
         CD.add_property('meshes', self.mesh)
@@ -229,14 +233,14 @@ class Config(object):
         SD.assign_initial_conditions()
 
         RD.reaction_to_fluxes()
-        RD.doToAll('reaction_to_fluxes')
+        RD.do_to_all('reaction_to_fluxes')
         FD = RD.get_flux_container()
-        FD.doToAll('get_additional_flux_properties', {"CD": CD, "config": self})
+        FD.do_to_all('get_additional_flux_properties', {"CD": CD, "config": self})
 
         # # opportunity to make custom changes
 
 
-        FD.doToAll('flux_to_dolfin', {"config": self})
+        FD.do_to_all('flux_to_dolfin', {"config": self})
         FD.check_and_replace_sub_species(SD, CD, self)
 
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)
