@@ -1,6 +1,5 @@
 """
-stubs
-Fenics stuff
+stubs setup
 """
 import sys
 from setuptools import setup, find_packages

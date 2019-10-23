@@ -8,8 +8,8 @@ class heaviside(object):
         return
     return lambda t: 1 if t>=t0 else 0
 
-heaviside = lambda t: heaviside(t):
-    if 
+#heaviside = lambda t: heaviside(t):
+#    if 
 
 class heaviside(object):
 

@@ -59,13 +59,13 @@ def color_print(full_text, color):
 # ====================================================
 class _ObjectContainer(object):
     """
-    This is a class
+    Parent class containing general methods used by all "containers"
     """
     def __init__(self, ObjectClass, df=None, Dict=None):
         self.Dict = odict()
         self.dtypes = {}
         self.ObjectClass = ObjectClass
-        self.propertyList = [] # properties to print
+        self.propertiesToPrint = [] # properties to print
 #        self.name_key = name_key
         if df is not None:
             self.add_pandas_dataframe(df)
@@ -85,9 +85,6 @@ class _ObjectContainer(object):
             itemDict = row.to_dict()
             self.Dict[row.name] = self.ObjectClass(row.name, Dict=itemDict)
         self.dtypes.update(df.dtypes.to_dict())
-#            name = itemDict[self.name_key]
-#            itemDict.pop(self.name_key)
-#            self.Dict[name] = self.ObjectClass(name, itemDict)
     def get_property(self, property_name):
         # returns a dict of properties
         property_dict = {}
@@ -122,7 +119,6 @@ class _ObjectContainer(object):
                 objList.append(obj)
         return objList
 
-        #TODO: instead of linked_name make a dictionary of linked objects
     def link_object(self, ObjectContainer2, property_name1, property_name2, linked_name, value_is_key=False):
         """
         Links objects from ObjectContainer2 to ObjectContainer1 (the _ObjectContainer invoking
@@ -212,12 +208,12 @@ class _ObjectContainer(object):
             else:
                 getattr(instance, method_name)(**kwargs)
 
-    def get_pandas_dataframe(self, propertyList=[]):
+    def get_pandas_dataframe(self, propertiesToPrint=[]):
         df = pd.DataFrame()
-        if propertyList and 'idx' not in propertyList:
-            propertyList.insert(0, 'idx')
+        if propertiesToPrint and 'idx' not in propertiesToPrint:
+            propertiesToPrint.insert(0, 'idx')
         for idx, (name, instance) in enumerate(self.Dict.items()):
-            df = df.append(instance.get_pandas_series(propertyList=propertyList, idx=idx))
+            df = df.append(instance.get_pandas_series(propertiesToPrint=propertiesToPrint, idx=idx))
         # sometimes types are recast. change entries into their original types
         for dtypeName, dtype in self.dtypes.items():
             if dtypeName in df.columns: 
@@ -230,15 +226,15 @@ class _ObjectContainer(object):
         """
         return list(self.Dict.values())[idx]
 
-    def print(self, tablefmt='fancy_grid', propertyList=[]):
+    def print(self, tablefmt='fancy_grid', propertiesToPrint=[]):
         if rank == root:
-            if propertyList:
-                if type(propertyList) != list: propertyList=[propertyList]
-            elif hasattr(self, 'propertyList'):
-                propertyList = self.propertyList
-            df = self.get_pandas_dataframe(propertyList=propertyList)
-            if propertyList:
-                df = df[propertyList]
+            if propertiesToPrint:
+                if type(propertiesToPrint) != list: propertiesToPrint=[propertiesToPrint]
+            elif hasattr(self, 'propertiesToPrint'):
+                propertiesToPrint = self.propertiesToPrint
+            df = self.get_pandas_dataframe(propertiesToPrint=propertiesToPrint)
+            if propertiesToPrint:
+                df = df[propertiesToPrint]
     
             print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
                    #headers='keys', tablefmt=tablefmt), width=120)
@@ -246,14 +242,12 @@ class _ObjectContainer(object):
             pass
 
     def __str__(self):
-        df = self.get_pandas_dataframe(propertyList=self.propertyList)
-        df = df[self.propertyList]
+        df = self.get_pandas_dataframe(propertiesToPrint=self.propertiesToPrint)
+        df = df[self.propertiesToPrint]
 
         return tabulate(df, headers='keys', tablefmt='fancy_grid')
-        #TODO: look this up
-               #headers='keys', tablefmt=tablefmt), width=120)
 
-    def vprint(self, keyList=None, propertyList=[], print_all=False):
+    def vprint(self, keyList=None, propertiesToPrint=[], print_all=False):
         # in order of priority: kwarg, container object property, else print all keys
         if rank == root:
             if keyList:
@@ -263,19 +257,23 @@ class _ObjectContainer(object):
             else:
                 keyList = list(self.Dict.keys())
 
-            if propertyList:
-                if type(propertyList) != list: propertyList=[propertyList]
-            elif hasattr(self, 'propertyList'):
-                propertyList = self.propertyList
+            if propertiesToPrint:
+                if type(propertiesToPrint) != list: propertiesToPrint=[propertiesToPrint]
+            elif hasattr(self, 'propertiesToPrint'):
+                propertiesToPrint = self.propertiesToPrint
 
-            if print_all: propertyList = []
+            if print_all: propertiesToPrint = []
             for key in keyList:
-                self.Dict[key].print(propertyList=propertyList)
+                self.Dict[key].print(propertiesToPrint=propertiesToPrint)
         else:
             pass
 
 
 class _ObjectInstance(object):
+    """
+    Parent class containing general methods used by all stubs
+    "objects": i.e. parameters, species, compartments, reactions, fluxes, forms
+    """
     def __init__(self, name, Dict=None):
         self.name = name
         if Dict:
@@ -299,19 +297,19 @@ class _ObjectInstance(object):
             unit = ureg(unit)
         setattr(self, assembled_name, value*unit)
 
-    def get_pandas_series(self, propertyList=[], idx=None):
-        if propertyList:
+    def get_pandas_series(self, propertiesToPrint=[], idx=None):
+        if propertiesToPrint:
             dict_to_convert = odict({'idx': idx})
-            dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in propertyList]))
+            dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in propertiesToPrint]))
         else:
             dict_to_convert = self.__dict__
         return pd.Series(dict_to_convert, name=self.name)
-    def print(self, propertyList=[]):
+    def print(self, propertiesToPrint=[]):
         if rank==root:
             print("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
-            if propertyList:
-                dict_to_print = dict([(key,val) for (key,val) in self.__dict__.items() if key in propertyList])
+            if propertiesToPrint:
+                dict_to_print = dict([(key,val) for (key,val) in self.__dict__.items() if key in propertiesToPrint])
             else:
                 dict_to_print = self.__dict__
             pprint(dict_to_print, width=240)
@@ -325,16 +323,17 @@ class _ObjectInstance(object):
 # ==============================================================================
 # ==============================================================================
 
-# parameters, compartments, species, reactions, fluxes
 class ParameterContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Parameter, df, Dict)
-        self.propertyList = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
+        self.propertiesToPrint = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
 
 class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assembleTimeDependentParameters(self): 
+        #TODO: Add in preintegration of sampling data
+
         if not self.is_time_dependent:
             return
         # Parse the given string to create a sympy expression 
@@ -355,7 +354,7 @@ class Parameter(_ObjectInstance):
 class SpeciesContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Species, df, Dict)
-        self.propertyList = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
+        self.propertiesToPrint = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
     def assemble_compartment_indices(self, RD, CD, settings):
         """
@@ -483,7 +482,7 @@ class Species(_ObjectInstance):
 class CompartmentContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Compartment, df, Dict)
-        self.propertyList = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
+        self.propertiesToPrint = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
         self.meshes = {}
         self.vertex_mappings = {} # from submesh -> parent indices
     def load_mesh(self, mesh_key, mesh_str):
@@ -578,8 +577,8 @@ class Compartment(_ObjectInstance):
 class ReactionContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Reaction, df, Dict)
-        #self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
-        self.propertyList = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
+        #self.propertiesToPrint = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
+        self.propertiesToPrint = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
     def get_species_compartment_counts(self, SD, CD, settings):
         self.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
@@ -767,16 +766,14 @@ class Reaction(_ObjectInstance):
 
 
 
-
-
 class FluxContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Flux, df, Dict)
-        # self.propertyList = ['species_name', 'symEqn', 'sign', 'involved_species',
+        # self.propertiesToPrint = ['species_name', 'symEqn', 'sign', 'involved_species',
         #                      'involved_parameters', 'source_compartment', 
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.propertyList = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.propertiesToPrint = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
     def check_and_replace_sub_species(self, SD, CD, config):
         fluxes_to_remove = []
         for flux_name, f in self.Dict.items():

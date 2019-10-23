@@ -100,11 +100,11 @@ class Config(object):
 
                 # change to int
                 if parameter in ['maximum_iterations']:
-                    Print("Changing parameter %s to an int\n" % parameter)
+                    Print("Defining parameter %s to an int\n" % parameter)
                     new_value = int(value)
                 # change to bool
                 if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess']:
-                    Print("Changing parameter %s to a bool\n" % parameter)
+                    Print("Defining parameter %s to a bool\n" % parameter)
                     new_value = bool(float(value))
 
 
@@ -238,7 +238,6 @@ class Config(object):
         FD.do_to_all('get_additional_flux_properties', {"CD": CD, "config": self})
 
         # # opportunity to make custom changes
-
 
         FD.do_to_all('flux_to_dolfin', {"config": self})
         FD.check_and_replace_sub_species(SD, CD, self)
