@@ -1,5 +1,6 @@
 name: test
-channels:
+channels: 
+  - conda-forge
 dependencies:
     # Base depends
   - python
@@ -9,8 +10,18 @@ dependencies:
   - pytest
   - pytest-cov
   - codecov
+  - pint
+  - tabulate
+  - sympy
+  - fenics
+  - pandas
+  - matplotlib
+  - termcolor
+  - numpy
+  - scipy
 
-    # Pip-only installs
-  #- pip:
+  # Pip-only installs
+  - pip:
+    - pprint
   #  - codecov
 
