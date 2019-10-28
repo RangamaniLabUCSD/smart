@@ -21,6 +21,7 @@ from sympy.utilities.iterables import flatten
 
 import numpy as np
 from scipy.integrate import solve_ivp
+from scipy.integrate import cumtrapz
 
 import pint
 from pprint import pprint
@@ -332,8 +333,7 @@ class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assembleTimeDependentParameters(self): 
-        #TODO: Add in preintegration of sampling data
-
+        #TODO
         if not self.is_time_dependent:
             return
         # Parse the given string to create a sympy expression 
@@ -349,6 +349,12 @@ class Parameter(_ObjectInstance):
                                                delimiter=',')
             Print("Creating dolfin object for time-dependent parameter %s" % self.name)
             self.dolfinConstant = d.Constant(self.value)
+
+            # preintegrate sampling data
+            int_data = cumtrapz(self.sampling_data[:,1], x=self.sampling_data[:,0], initial=0)
+            # concatenate time vector
+            self.preint_sampling_data = common.np_smart_hstack(self.sampling_data[:,0], int_data)
+
 
 
 class SpeciesContainer(_ObjectContainer):
@@ -1410,11 +1416,14 @@ class Model(object):
 
         # Update time dependent parameters
         for param_name, param in self.PD.Dict.items():
+            # check to make sure a parameter wasn't assigned a new value more than once
+            value_assigned = 0
             if not param.is_time_dependent:
                 continue
             # use value by evaluating symbolic expression
             if param.symExpr and not param.preintegrated_symExpr:
                 newValue = param.symExpr.subs({'t': t}).evalf()
+                value_assigned += 1
 
             # calculate a preintegrated expression by subtracting previous value 
             # and dividing by time-step
@@ -1424,9 +1433,10 @@ class Model(object):
                                     "pre-integrated variables.")
                 newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf() 
                             - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
+                value_assigned += 1
 
             # if parameter is given by data
-            if param.sampling_data is not None:
+            if param.sampling_data is not None and param.preint_sampling_data is None:
                 data = param.sampling_data
                 # We never want time to extrapolate beyond the provided data.
                 if t<data[0,0] or t>data[-1,0]:
@@ -1435,6 +1445,20 @@ class Model(object):
                 # Just in case... return a nan if value is outside of bounds
                 newValue = np.interp(t, data[:,0], data[:,1],
                                      left=np.nan, right=np.nan)
+                value_assigned += 1
+
+            # if parameter is given by data and it has been pre-integrated
+            if param.sampling_data is not None and param.preint_sampling_data is not None:
+                int_data = param.preint_sampling_data
+                oldValue = np.interp(t0, int_data[:,0], int_data[:,1],
+                                     left=np.nan, right=np.nan)
+                newValue = (np.interp(t, int_data[:,0], int_data[:,1],
+                                     left=np.nan, right=np.nan) - oldValue)/dt
+                value_assigned += 1
+
+            if value_assigned != 1:
+                raise Exception("Either a value was not assigned or more than"\
+                                "one value was assigned to parameter %s" % param.name)
 
             param.value = newValue
             param.dolfinConstant.assign(newValue)

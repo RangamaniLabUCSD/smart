@@ -31,13 +31,14 @@ class ParameterDF(object):
                                 # is the data sampled from some discrete data?
                                 'sampling_file': pd.Series([], dtype=str), 
                                 'sampling_data': pd.Series([], dtype=object), 
+                                'preint_sampling_data': pd.Series([], dtype=object), 
                                 'dolfinConstant': pd.Series([], dtype=object),
                                 'symExpr': pd.Series([], dtype=object),
                                 'preintegrated_symExpr': pd.Series([], dtype=object)})
 
     def append(self, name, value, unit, group, notes='', is_time_dependent=False,
                sampling_file='', sampling_data=None, dolfinConstant=None,
-               symExpr=None, preintegrated_symExpr=None):
+               symExpr=None, preint_sampling_data=None, preintegrated_symExpr=None):
         """
         Adds data to the parameter
         """
@@ -58,6 +59,7 @@ class ParameterDF(object):
                                             # is the data sampled from some discrete data?
                                             'sampling_file': sampling_file,
                                             'sampling_data': sampling_data,
+                                            'preint_sampling_data': preint_sampling_data,
                                             "dolfinConstant": dolfinConstant,
                                             "symExpr": symExpr,
                                             "preintegrated_symExpr": preintegrated_symExpr},
