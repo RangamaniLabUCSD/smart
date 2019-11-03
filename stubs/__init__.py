@@ -8,7 +8,6 @@ unit.define('molecule = mol/6.022140857e23')
 # Add imports here
 from . import model_building
 from . import data_manipulation
-from . import flux_assembly
 from . import model_assembly
 from . import model_building
 from . import solvers

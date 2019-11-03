@@ -30,12 +30,7 @@ from copy import copy, deepcopy
 
 import stubs.common as common
 import stubs
-#import common
-#import unit as ureg
-#import data_manipulation
 from stubs import unit as ureg
-#import stubs.data_manipulation as data_manipulation
-#import stubs.flux_assembly as flux_assembly
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -1169,7 +1164,7 @@ class Model(object):
         self.nonlinear_solver = {}
         self.scipy_odes = {}
 
-        self.data = stubs.data_manipulation.Data(config)
+        self.data = stubs.data_manipulation.Data(self)
 
 
     def assemble_reactive_fluxes(self):
@@ -2212,7 +2207,9 @@ class Model(object):
 
     def compute_statistics(self):
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
+        self.data.outputCSV(self.config)
 
     def plot_solution(self):
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')

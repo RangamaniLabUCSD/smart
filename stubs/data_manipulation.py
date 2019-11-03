@@ -28,10 +28,13 @@ from stubs import unit as ureg
 # fssmall = 5
 
 class Data(object):
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, model):
+        # TODO: refactor data class
+        self.model = model
+        self.config = model.config
         self.append_flag = False
         self.solutions = {}
+        self.probe_solutions = ddict(list)
         self.fluxes = ddict(list)
         self.tvec=[]
         self.dtvec=[]
@@ -68,25 +71,24 @@ class Data(object):
             comp_idx = self.solutions[sp_name]['comp_idx']
             #print("spname: %s" % sp_name)
 
-            if comp_name == 'cyto':
-                if self.solutions[sp_name]['num_species'] == 1:
-                    if write_type=='vtk':
-                        self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
-                    elif write_type=='xdmf':
-                        #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                        #with d.XDMFFile(file_str) as xdmf:
-                        #    xdmf.write(u[comp_name]['u'], t)
-                        self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
-                        self.solutions[sp_name][write_type].close()
-                else:
-                    if write_type=='vtk':
-                        self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
-                    elif write_type=='xdmf':
-                        #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                        #with d.XDMFFile(file_str) as xdmf:
-                        #    xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
-                        self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
-                        self.solutions[sp_name][write_type].close()
+            if self.solutions[sp_name]['num_species'] == 1:
+                if write_type=='vtk':
+                    self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
+                elif write_type=='xdmf':
+                    #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                    #with d.XDMFFile(file_str) as xdmf:
+                    #    xdmf.write(u[comp_name]['u'], t)
+                    self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
+                    self.solutions[sp_name][write_type].close()
+            else:
+                if write_type=='vtk':
+                    self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
+                elif write_type=='xdmf':
+                    #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                    #with d.XDMFFile(file_str) as xdmf:
+                    #    xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
+                    self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
+                    self.solutions[sp_name][write_type].close()
 
         self.append_flag = True # append to xmdf files rather than write over
 
@@ -158,6 +160,43 @@ class Data(object):
         self.tvec.append(t)
         self.dtvec.append(dt)
         self.NLidxvec.append(NLidx)
+
+    def computeProbeValues(self, u, t, dt, SD, PD, CD, FD, NLidx):
+        """
+        Computes the values of functions at various coordinates
+        TODO: refactor
+        """
+
+        # check data is in correct form
+        if not all(key in self.config.output.keys() for key in
+            ['species', 'points_x', 'points_y', 'points_z']):
+            Print("Specify species and coordinates to compute a probe plot.")
+            return
+
+        x_list = self.config.output['points_x']
+        y_list = self.config.output['points_y']
+        z_list = self.config.output['points_z']
+        if not (len(x_list) == len(y_list) == len(z_list)):
+            raise Exception("Specify the same number of coordinates in x,y,z")
+        coord_list = [(x_list[idx],y_list[idx],z_list[idx]) for idx in range(len(x_list))]
+
+
+        for sp_name in self.config.output['species']:
+            comp = self.model.SD.Dict[sp_name].compartment
+            sp_idx = self.model.SD.Dict[sp_name].compartment_index
+            if sp_name not in self.probe_solutions.keys():
+                self.probe_solutions[sp_name] = {}
+            for coords in coord_list:
+                u_coords = u[comp.name]['u'](coords)
+                if coords not in self.probe_solutions[sp_name].keys():
+                    self.probe_solutions[sp_name][coords] = []
+
+                if comp.num_species > 1:
+                    u_eval = u_coords[sp_idx]
+                else:
+                    u_eval = u_coords
+
+                self.probe_solutions[sp_name][coords].append(u_eval)
 
 
     def computeError(self, u, comp_name, errorNormKey):
@@ -293,8 +332,6 @@ class Data(object):
             self.plots['fluxes'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
-
-
     def plotSolutions(self, config, SD, figsize=(160,160)):
         plot_settings = config.plot
         dir_settings = config.directory
@@ -374,23 +411,61 @@ class Data(object):
 
 
     def outputPickle(self, config):
-        saveKeys = ['min','mean','max','std']
+        """
+        Outputs solution statistics as a serialized pickle
+        """
         newDict = {}
+
+        # statistics over entire domain
+        saveKeys = ['min', 'max', 'mean', 'std']
         for sp_name in self.solutions.keys():
             newDict[sp_name] = {}
+            #for key in self.solutions[sp_name].keys():
             for key in saveKeys:
                 newDict[sp_name][key] = self.solutions[sp_name][key]
         newDict['tvec'] = self.tvec
 
+        # fluxes
         for flux_name in self.fluxes.keys():
             newDict[flux_name] = self.fluxes[flux_name]
 
+        # solutions at specific coordinates
+        for sp_name in self.probe_solutions.keys():
+            for coord, val in self.probe_solutions[sp_name].items():
+                newDict[sp_name][coord] = val
 
         # pickle file
-        with open(config.directory['solutions']+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
+        data_dir = config.directory['solutions']+'/stats'
+        if not os.path.exists(data_dir):
+            os.mkdir(data_dir)
+        with open(data_dir+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
             pickle.dump(newDict, pickle_file)
 
         Print('Solutions dumped into pickle.')
+
+    def outputCSV(self, config):
+        """
+        Outputs solution statistics as a csv
+        """
+        data_dir = config.directory['solutions']+'/stats'
+        if not os.path.exists(data_dir):
+            os.mkdir(data_dir)
+
+        # save to file
+        saveKeys = ['min', 'max', 'mean', 'std']
+        for sp_name in self.solutions.keys():
+            #for key in self.solutions[sp_name].keys():
+            for key in saveKeys:
+                np.savetxt(data_dir+'/'+sp_name+'_'+str(key)+'.csv', 
+                           self.solutions[sp_name][key], delimiter=',')
+        np.savetxt(data_dir+'/'+'tvec'+'.csv', self.tvec, delimiter=',')
+
+        for flux_name in self.fluxes.keys():
+            np.savetxt(data_dir+'/'+'flux_name'+'.csv', 
+                       self.fluxes[flux_name], delimiter=',')
+
+
+        Print('Solutions dumped into CSV.')
 
 # ====================================================
 # General fenics
