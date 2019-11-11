@@ -461,7 +461,7 @@ class Data(object):
         np.savetxt(data_dir+'/'+'tvec'+'.csv', self.tvec, delimiter=',')
 
         for flux_name in self.fluxes.keys():
-            np.savetxt(data_dir+'/'+'flux_name'+'.csv', 
+            np.savetxt(data_dir+'/'+flux_name+'.csv', 
                        self.fluxes[flux_name], delimiter=',')
 
 
