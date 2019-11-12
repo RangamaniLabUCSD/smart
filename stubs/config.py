@@ -44,11 +44,14 @@ class Config(object):
 
             # prepend a parent directory to file paths
             if 'parent' in self.directory.keys():
-                dirname = self.directory['parent']
+                if self.directory['relative'] == True:
+                    dirname = os.path.relpath(self.directory['parent'])
+                else:
+                    dirname = os.path.abspath("/"+self.directory['parent'])
                 if rank==root and not os.path.exists(dirname):
                         os.mkdir(dirname)
                 for key, item in self.directory.items():
-                    if key != 'parent':
+                    if key not in ['parent', 'relative']:
                         self.directory[key] = dirname + '/' + item 
 
             self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
@@ -89,7 +92,6 @@ class Config(object):
                     line = file.readline()
                     continue
                 
-
                 if key == 'setting_string':
                     new_value = value
                 if key == 'setting_float':
@@ -97,13 +99,14 @@ class Config(object):
                 if key == 'setting_list':
                     new_value = self._parse_list(value)
 
+                # most parameters will be caught by the regex but some we may wish to redefine
                 # change to int
                 if parameter in ['maximum_iterations']:
-                    Print("Defining parameter %s to an int\n" % parameter)
+                    Print("Defining parameter %s as an int\n" % parameter)
                     new_value = int(value)
                 # change to bool
-                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess']:
-                    Print("Defining parameter %s to a bool\n" % parameter)
+                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess', 'relative']:
+                    Print("Defining parameter %s as a bool\n" % parameter)
                     new_value = bool(float(value))
 
 
