@@ -84,11 +84,11 @@ class Data(object):
                 if write_type=='vtk':
                     self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
                 elif write_type=='xdmf':
-                    #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                    #with d.XDMFFile(file_str) as xdmf:
-                    #    xdmf.write(u[comp_name]['u'].split()[comp_idx], t)
-                    self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
-                    self.solutions[sp_name][write_type].close()
+                    # writing xdmf on submeshes fails in parallel
+                    # TODO: fix me
+                    if comp_name=='cyto':
+                        self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
+                        self.solutions[sp_name][write_type].close()
 
         self.append_flag = True # append to xmdf files rather than write over
 

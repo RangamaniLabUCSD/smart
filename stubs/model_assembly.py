@@ -512,15 +512,21 @@ class CompartmentContainer(_ObjectContainer):
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
 
+        # Loop through compartments
         for key, obj in self.Dict.items():
+            # FEniCS doesn't allow parallelization of SubMeshes. We need
+            # SubMeshes because one boundary will often have multiple domains of
+            # interest with different species (e.g., PM, ER). By exporting the
+            # submeshes in serial we can reload them back in in parallel.
             if key!=main_mesh_str and obj.dimensionality==surfaceDim:
                 # TODO: fix this
-                if size > 1:
-                    print("CPU %d: Loading submesh for %s from file" % (rank, key))
+                if size > 1: # if we are running in parallel
+                    Print("CPU %d: Loading submesh for %s from file" % (rank, key))
                     submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml')
                     self.meshes[key] = submesh
                     obj.mesh = submesh
                 else:
+                    Print("Saving submeshes %s for use in parallel" % key)
                     submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)                
                     self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
                     self.meshes[key] = submesh
@@ -550,6 +556,13 @@ class CompartmentContainer(_ObjectContainer):
         self.bmesh_emap_0 = bmesh_emap_0
         self.bmesh_emap_2 = bmesh_emap_2
         self.bmf = bmf
+
+        # If we were running in serial to generate submeshes, exit here and
+        # restart in parallel
+        if save_to_file and size==1:
+            Print("If run in serial, submeshes were saved to file. Run again"\
+                  "in parallel.")
+            exit()
 
 
 
