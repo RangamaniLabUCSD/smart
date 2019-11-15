@@ -104,3 +104,5 @@ ENV/
 mesh/large/
 plots/
 submeshes/
+
+.vscode
