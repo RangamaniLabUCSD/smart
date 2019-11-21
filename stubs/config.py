@@ -153,16 +153,17 @@ class Config(object):
         return midpoint
 
 
-    def _scale_coords_xml(self, scaling_factor, filename, sig_figs=10, move_midpoint_to_origin=False, max_num_vert_midpoint=20000):
+    def _scale_coords_xml(self, scaling_factor, full_filename, sig_figs=10, move_midpoint_to_origin=False, max_num_vert_midpoint=20000):
         """
         Scales the coordinates a dolfin xml file by some scaling factor
         """
+        file_dir, file_name = os.path.split(full_filename)
+        new_full_filename = file_dir + '/' + file_name.split('.')[0] + '_scaled.' + '.'.join(file_name.split('.')[1:])
         new_file_lines = [] # we will append modified lines to here and write out as a new file
-        new_filename = 'scaled_' + filename 
         idx = 0 
         if move_midpoint_to_origin:
-            midpoint = self._find_mesh_midpoint(filename, max_num_vert=max_num_vert_midpoint)
-        with open(filename, 'r') as file:
+            midpoint = self._find_mesh_midpoint(full_filename, max_num_vert=max_num_vert_midpoint)
+        with open(full_filename, 'r') as file:
             line = file.readline()
             while line:
                 match = self._regex_dict['xml_vertex'].search(line)
@@ -183,9 +184,9 @@ class Config(object):
                     Print('Finished parsing line %d' % idx)
 
         # once we're done modifying we write out to a new file
-        with open(new_filename, 'w+') as file:
+        with open(new_full_filename, 'w+') as file:
             file.writelines(new_file_lines)
-        Print("Scaled mesh is saved as %s" % new_filename)
+        Print("Scaled mesh is saved as %s" % new_full_filename)
 
 
     def generate_model(self):
@@ -260,6 +261,8 @@ class Config(object):
     def _json_to_ObjectContainer(self, json_file_name, data_type=None):
         if not data_type:
             raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
+        if not os.path.exists(json_file_name):
+            raise Exception("Cannot find JSON file, %s"%json_file_name)
         df = read_json(json_file_name).sort_index()
         df = nan_to_none(df)
         if data_type in ['parameters', 'parameter', 'param', 'p']:

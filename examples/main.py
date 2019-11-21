@@ -1,19 +1,14 @@
 # import 
 from dolfin import * # fenics/dolfin api
-import subprocess
-set_log_level(30) # verbosity of fenics
 import numpy as np
 import matplotlib.pyplot as plt
 from petsc4py import PETSc
 Print = PETSc.Sys.Print
 import mpi4py.MPI as pyMPI
-import pandas as pd
-import pint
-import pickle
-from collections import OrderedDict as odict
 
 import stubs
 from stubs import unit as ureg
+
 
 # ====================================================
 # ====================================================

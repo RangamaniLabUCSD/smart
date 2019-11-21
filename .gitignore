@@ -110,3 +110,9 @@ submeshes/
 **.xdmf
 **.obj
 **.csv
+.DS_Store
+**.off
+**.swp
+**.area
+**.angle
+**.out
