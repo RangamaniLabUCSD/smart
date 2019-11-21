@@ -17,7 +17,8 @@ import os
 import sys
 import sphinx_rtd_theme
 sys.path.insert(0, os.path.abspath('..'))
-sys.path.append('/home/justin/anaconda3/envs/fenicsproject/lib/python/3.7/site-packages/pint')
+# sys.path.append('/home/justin/anaconda3/envs/fenicsproject/lib/python/3.7/site-packages/pint')
+sys.path.append('/home/will/anaconda3/envs/fenicsproject/lib/python/3.7/site-packages/pint')
 
 import stubs
 
