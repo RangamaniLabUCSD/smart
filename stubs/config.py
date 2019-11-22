@@ -247,6 +247,15 @@ class Config(object):
 
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)
 
+        # to deal with possible floating point error in mesh coordinates
+        model.set_allow_extrapolation()
+        # Turn fluxes into fenics/dolfin expressions
+        model.assemble_reactive_fluxes()
+        model.assemble_diffusive_fluxes()
+        model.establish_mappings()
+        # Sort forms by type (diffusive, time derivative, etc.)
+        model.sort_forms()
+
         if rank==root:
             Print("Model created succesfully! :)")
             model.PD.print()
