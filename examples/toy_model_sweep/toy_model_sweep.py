@@ -19,6 +19,7 @@ r = stubs.model_building.ReactionDF()
 ### define parameters
 # name, value, unit, notes
 p.append('kf', [5.0, 4.0, 3.0], 1/(unit.uM*unit.s), 'forward rate')
+p.append('k', 5.0, 1/(unit.uM*unit.s), 'forward rate')
 p.append('kr', [0.1, 0.2], 1/unit.s, 'reverse rate')
 
 ### define species
@@ -40,7 +41,7 @@ r.append('A+X <-> B', 'cell 2013', ['A','X'], ['B'], {"on": "kf", "off": "kr"})
 
 
 # write out to file
-p.write_json(cwd=cwd, name='/parameters.json')
+p.write_json(cwd=cwd)
 s.write_json(name=cwd + '/species.json')
 c.write_json(name=cwd + '/compartments.json')
 r.write_json(name=cwd + '/reactions.json')
