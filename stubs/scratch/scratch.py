@@ -1,7 +1,7 @@
 # scratch.py
-# Code that has since been refactored or is no longer needed but may be useful as a reference...
-
-
+"""
+Bits of code which should be culled but may have something worth extracting
+"""
 
 
 # from model_assembly.py
@@ -318,3 +318,213 @@
 
 #     return Forms
 
+
+
+
+
+
+# from Model class
+        
+#    def boundary_reactions_forward_scipy(self, comp_name, factor=1, all_dofs=False, method='RK45', rtol=1e-4, atol=1e-6):
+#        self.stopwatch("Boundary reactions forward %s" % comp_name)
+#        """
+#        TODO: Either fix this or figure out how to integrate full submesh
+#        parallelization
+#        Since FEniCS doesn't support submeshes in parallel we wish to
+#        parallelize manually. However for now this distributes the entire
+#        submesh to each processor
+#        """
+#
+#        # time step forward (irrelevant except for keeping track of time since solve_ivp() uses lambdas for time dependent parameters)
+#        self.forward_time_step(factor=factor) # increment time 
+#        #self.updateTimeDependentParameters() 
+#
+#        if all_dofs:
+#            num_vertices = self.CD.Dict[comp_name].num_vertices
+#        else:
+#            x,y,z = (0,0,0) # point to evaluate
+#            num_vertices = 1
+#        if comp_name not in self.scipy_odes.keys():
+#            self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=num_vertices)
+#        lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
+#
+#        nbspecies = len(boundary_species)
+#        ub = np.full(nbspecies * num_vertices, np.nan)
+#        for spidx, sp in enumerate(boundary_species):
+#            pcomp_name = self.SD.Dict[sp].compartment_name
+#            pcomp_idx = self.SD.Dict[sp].compartment_index
+#            pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
+#            if pcomp_nspecies==0: pcomp_nspecies=1
+#            if all_dofs:
+#                ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
+#            else:
+#                ub[spidx] = self.u[pcomp_name]['b'+comp_name](x,y,z)[pcomp_idx]
+#                
+#
+#        if all_dofs:
+#            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t-self.dt*factor, self.t], self.u[comp_name]['n'].vector(), method=method, rtol=rtol, atol=atol)
+#            # assign solution
+#            self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
+#        else:
+#            # all vertices have the same value
+#            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t-self.dt*factor, self.t], self.u[comp_name]['n'](x,y,z), method=method, rtol=rtol, atol=atol)
+#            for idx, val in enumerate(sol.y[:,-1]):
+#                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, idx) 
+#
+#
+#        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#
+#        self.stopwatch("Boundary reactions forward %s" % comp_name, stop=True)
+#
+#
+#    # TODO
+#    def flux_to_scipy(self, comp_name, mult=1):
+#        """
+#        mult allows us to artificially make an ODE repeat e.g. 
+#        dy = [dy_1, dy_2, dy_3] -> (mult=2) dy=[dy_1, dy_2, dy_3, dy_1, dy_2, dy_3]
+#        Useful when we want to solve a distributed ODE on some domain so that
+#        scipy can work its vector optimization magic
+#        """
+#        dudt = []
+#        param_list = []
+#        time_param_list = []
+#        species_list = list(self.SD.Dict.values())
+#        species_list = [s for s in species_list if s.compartment_name==comp_name]
+#        species_list.sort(key = lambda s: s.compartment_index)
+#        spname_list = [s.name for s in species_list]
+#        num_species = len(species_list)
+#
+#        flux_list = list(self.FD.Dict.values())
+#        flux_list = [f for f in flux_list if f.species_name in spname_list]
+#
+#        for idx in range(num_species):
+#            sp_fluxes = [f.total_scaling*f.signed_stoich*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
+#            total_flux = sum(sp_fluxes)
+#            dudt.append(total_flux)
+#
+#            if total_flux:
+#                for psym in total_flux.free_symbols:
+#                    pname = str(psym)
+#                    if pname in self.PD.Dict.keys():
+#                        p = self.PD.Dict[pname]
+#                        if p.is_time_dependent:
+#                            time_param_list.append(p)
+#                        else:
+#                            param_list.append(pname)
+#
+#        
+#        param_list = list(set(param_list))
+#        time_param_list = list(set(time_param_list))
+#
+#        ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
+#        time_param_lambda = [lambdify('t', p.symExpr, modules=['sympy','numpy']) for p in time_param_list]
+#        time_param_name_list = [p.name for p in time_param_list]
+#
+#        free_symbols = list(set([str(x) for total_flux in dudt for x in total_flux.free_symbols]))
+#
+#        boundary_species = [str(sp) for sp in free_symbols if str(sp) not in spname_list+param_list+time_param_name_list]
+#        num_boundary_species = len(boundary_species)
+#        if boundary_species:
+#            Print("Adding species %s to flux_to_scipy" % boundary_species)
+#        #Params = namedtuple('Params', param_list)
+#
+#        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list+boundary_species), total_flux, modules=['sympy','numpy']) for total_flux in dudt]
+#
+#
+#        def lambdified_odes(t, u, p, time_p, ub=[]):
+#            if int(mult*num_species) != len(u):
+#                raise Exception("mult*num_species [%d x %d = %d] does not match the length of the input vector [%d]!" %
+#                                (mult, num_species, mult*num_species, len(u)))
+#            time_p_eval = [f(t) for f in time_p]
+#            dudt_list = []
+#            for idx in range(mult):
+#                idx0 = idx*num_species
+#                idx0b = idx*num_boundary_species
+#                inp = flatten([u[idx0 : idx0+num_species], p, time_p_eval, ub[idx0b : idx0b+num_boundary_species]])
+#                dudt_list.extend([f(*inp) for f in dudt_lambda])
+#            return dudt_list
+#
+#        return (lambdified_odes, ptuple, time_param_lambda, boundary_species)
+#
+#
+#    def IMEX_1BDF(self, method='RK45'):
+#        self.stopwatch("Total time step")
+#        self.idx += 1
+#        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
+#
+#        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+#        self.set_time(self.t-self.dt/2) # reset time back to t
+#        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+#        self.update_solution_boundary_to_volume()
+#       
+#
+#        self.set_time(self.t-self.dt/2) # reset time back to t
+#        self.IMEX_order1_diffusion_forward('cyto', factor=1)
+#        self.update_solution_volume_to_boundary()
+#
+#        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+#        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+#        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+#        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+#        self.update_solution_boundary_to_volume()
+#
+#        if self.linear_iterations >= self.config.solver['linear_maxiter']:
+#            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+#            Print("Decreasing step size")
+#        if self.linear_iterations < self.config.solver['linear_miniter']:
+#            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+#            Print("Increasing step size")
+#
+#        self.stopwatch("Total time step", stop=True)
+#
+#
+#    def IMEX_order1_diffusion_forward(self, comp_name, factor=1):
+#        self.stopwatch("Diffusion step")
+#        self.forward_time_step(factor=factor)
+#        self.updateTimeDependentParameters()
+#        d.parameters['form_compiler']['optimize'] = True
+#        d.parameters['form_compiler']['cpp_optimize'] = True
+#
+#        forms = self.split_forms[comp_name]
+#
+#        self.stopwatch('A assembly')
+#        if self.idx <= 1:
+#            # terms which will not change across time-steps
+#            self.Abase = d.assemble(forms['Mu'] + forms['D'], form_compiler_parameters={'quadrature_degree': 4}) # +d.lhs(forms["R"])
+#            self.solver = d.KrylovSolver('cg','hypre_amg')
+#            self.solver.parameters['nonzero_initial_guess'] = True
+#
+#
+##        # if the time step size changed we need to reassemble the LHS matrix...
+##        if self.idx > 1 and (self.linear_iterations >= self.config.solver['linear_maxiter'] or
+##           self.linear_iterations < self.config.solver['linear_miniter']):
+##            self.stopwatch('A assembly')
+##            self.A = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+##            self.stopwatch('A assembly', stop=True)
+##            self.linear_iterations = 0
+##            Print("Reassembling A because of change in time-step")
+##
+##        # sanity check to make sure A is not changing
+##        if self.idx == 2:
+##            Anew = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+##            Print("Ainit linf norm = %f" % self.A.norm('linf'))
+##            Print("Anew linf norm = %f" % Anew.norm('linf'))
+##            assert np.abs(self.A.norm('linf') - Anew.norm('linf')) < 1e-10
+#
+#        # full assembly in 1 step requires using previous time step value of volumetric species for boundary fluxes
+#        self.A = self.Abase + d.assemble(d.lhs(forms['B'] + forms['R']), form_compiler_parameters={'quadrature_degree': 4})
+#        self.stopwatch('A assembly', stop=True)
+#
+#        self.stopwatch('b assembly')
+#        b = d.assemble(-forms['Mun'] +  d.rhs(forms['B'] + forms['R']), form_compiler_parameters={'quadrature_degree': 4})
+#        self.stopwatch('b assembly', stop=True)
+#
+#        U = self.u[comp_name]['u'].vector()
+#        self.linear_iterations = self.solver.solve(self.A, U, b)
+#
+#        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#
+#        self.stopwatch("Diffusion step", stop=True)
+#        Print("Diffusion step finished in %d iterations" % self.linear_iterations)
+#        
+#
