@@ -1242,28 +1242,11 @@ class Model(object):
         self.scipy_odes = {}
 
         self.data = stubs.data_manipulation.Data(self)
-
-    def solve(self, plot_period=1):
-        ## solve
-        self.init_solver_and_plots()
-        
-        self.stopwatch("Total simulation")
-        while True:
-            solver_idx +=1
-            self.iterative_solver(boundary_method='RK45')
-            self.compute_statistics()
-            if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
-                self.plot_solution()
-                self.plot_solver_status()
-            if self.t >= self.config.solver['T']:
-                break
-        
-        self.stopwatch("Total simulation", stop=True)
-        Print("Solver finished with %d total time steps." % int(solver_idx))
-
-
-
-
+#===============================================================================
+#===============================================================================
+# PROBLEM SETUP
+#===============================================================================
+#===============================================================================
     def assemble_reactive_fluxes(self):
         """
         Creates the actual dolfin objects for each flux. Checks units for consistency
@@ -1366,9 +1349,7 @@ class Model(object):
                         Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
                         self.Forms.add(Form(Dform, sp, 'D'))
 
-                # time derivative
-                #Mform = (u-un)/dT * v * dx
-                #self.Forms.add(Form(Mform, sp, 'M'))
+                # time derivative 
                 Mform_u = u/dT * v * dx
                 Mform_un = -un/dT * v * dx
                 self.Forms.add(Form(Mform_u, sp, "Mu"))
@@ -1384,11 +1365,74 @@ class Model(object):
                 if func_key != 't': # trial function by convention
                     self.u[comp_name][func_key].set_allow_extrapolation(True)
 
+    def sort_forms(self):
+        """
+        Organizes forms based on solution method. E.g. for picard iterations we
+        split the forms into a bilinear and linear component, for Newton we
+        simply solve F(u;v)=0.
+        """
+        comp_list = [self.CD.Dict[key] for key in self.u.keys()]
+        self.split_forms = ddict(dict)
+        form_types = set([f.form_type for f in self.Forms.form_list])
+
+        if self.config.solver['nonlinear'] == 'picard':
+            Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+            for comp in comp_list:
+                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.a[comp.name] = d.lhs(sum(comp_forms))
+                self.L[comp.name] = d.rhs(sum(comp_forms))
+        elif self.config.solver['nonlinear'] == 'newton':
+            Print("Formulating problem as F(u;v) == 0 for newton iterations")
+            for comp in comp_list:
+                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.F[comp.name] = sum(comp_forms)
+                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
+                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
+
+                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
+                p = self.nonlinear_solver[comp.name].parameters
+                p['nonlinear_solver'] = 'newton'
+
+                p['newton_solver'].update(self.config.dolfin_nonlinear_solver)
+                p['newton_solver']['krylov_solver'].update(self.config.dolfin_krylov_solver)
+                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+
+
+        elif self.config.solver['nonlinear'] == 'IMEX':
+            raise Exception("IMEX functionality needs to be reviewed")
+#            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
+#            for comp in comp_list:
+#                comp_forms = self.Forms.select_by('compartment_name', comp.name)
+#                for form_type in form_types:
+#                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
+
 #===============================================================================
 #===============================================================================
 # SOLVING
 #===============================================================================
 #===============================================================================
+    def solve(self, plot_period=1):
+        ## solve
+        self.init_solver_and_plots()
+        
+        self.stopwatch("Total simulation")
+        while True:
+            solver_idx +=1
+
+            # Solve using specified operator-splitting scheme (just DRD for now)
+            self.DRD_solve(boundary_method='RK45')
+
+            self.compute_statistics()
+            if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
+                self.plot_solution()
+                self.plot_solver_status()
+            if self.t >= self.config.solver['T']:
+                break
+        
+        self.stopwatch("Total simulation", stop=True)
+        Print("Solver finished with %d total time steps." % int(solver_idx))
+
+
     def set_time(self, t, dt=None):
         if not dt:
             dt = self.dt
@@ -1467,11 +1511,6 @@ class Model(object):
             self.timings[key].append(elapsed_time)
             return elapsed_time
 
-#    def solver_step_forward(self):
-#
-#        self.update_time()
-
-
     def updateTimeDependentParameters(self, t=None, t0=None, dt=None): 
         if not t:
             t = self.t
@@ -1548,9 +1587,6 @@ class Model(object):
         for comp_name in comp_list:
             self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
             Print("Assigning old value of u to species in compartment %s" % comp_name)
-#
-#    def adaptive_solver(self):
-#
 
     def update_solution_boundary_to_volume(self, keys=['k', 'u']):
         for sp_name, sp in self.SD.Dict.items():
@@ -1596,9 +1632,6 @@ class Model(object):
                     self.u[comp_name][key].assign(self.u[comp_name]['u'])
         self.stopwatch("Boundary reactions forward", stop=True)
 
-
-
-
     def diffusion_forward(self, comp_name, factor=1, bcs=[]):
         self.stopwatch("Diffusion step ["+comp_name+"]")
         t0 = self.t
@@ -1611,41 +1644,8 @@ class Model(object):
         self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
         self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
 
-    def picard_loop(self, comp_name, bcs=[]):
-        exit_loop = False
-        self.pidx = 0
-        while True:
-            self.pidx += 1
-#            if self.CD.Dict[comp_name].dimensionality == self.CD.max_dim:
-#                linear_solver_settings = self.config.dolfin_linear
-#            else:
-#                linear_solver_settings = self.config.dolfin_linear
-            linear_solver_settings = self.config.dolfin_linear
-            
-            d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
-            #print('u (%s) mean: %f' % (comp_name, self.u[comp_name]['u'].compute_vertex_values().mean()))
-            self.data.computeError(self.u, comp_name, self.config.solver['norm'])
-            self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
-
-
-            Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['linear_abstol']:
-                #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
-                 #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
-                break
-#            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
-#                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
-#                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
-#                break
-
-            if self.pidx > self.config.solver['max_picard']:
-                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
-                (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-                break
-
-
-    def iterative_solver(self, bcs=[], boundary_method='RK45'):
+    def DRD_solve(self, bcs=[], boundary_method='RK45'):
         """
         For now this is a single iteration of DRD Strang operator splitting
         """
@@ -1704,8 +1704,6 @@ class Model(object):
         #         self.set_time(self.t-self.dt)
         #         pass
 
-
-
         # check if time step should be changed
         if self.NLidx <= self.config.solver['min_newton']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
@@ -1735,47 +1733,39 @@ class Model(object):
         Print("%d Newton iterations required for convergence." % idx)
         return idx, success
 
-
-    def sort_forms(self):
-        """
-        Organizes forms based on solution method. E.g. for picard iterations we
-        split the forms into a bilinear and linear component, for Newton we
-        simply solve F(u;v)=0.
-        """
-        comp_list = [self.CD.Dict[key] for key in self.u.keys()]
-        self.split_forms = ddict(dict)
-        form_types = set([f.form_type for f in self.Forms.form_list])
-
-        if self.config.solver['nonlinear'] == 'picard':
-            Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.a[comp.name] = d.lhs(sum(comp_forms))
-                self.L[comp.name] = d.rhs(sum(comp_forms))
-        elif self.config.solver['nonlinear'] == 'newton':
-            Print("Formulating problem as F(u;v) == 0 for newton iterations")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.F[comp.name] = sum(comp_forms)
-                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
-                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
-
-                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
-                p = self.nonlinear_solver[comp.name].parameters
-                p['nonlinear_solver'] = 'newton'
-
-                p['newton_solver'].update(self.config.dolfin_nonlinear_solver)
-                p['newton_solver']['krylov_solver'].update(self.config.dolfin_krylov_solver)
-                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+    def picard_loop(self, comp_name, bcs=[]):
+        exit_loop = False
+        self.pidx = 0
+        while True:
+            self.pidx += 1
+#            if self.CD.Dict[comp_name].dimensionality == self.CD.max_dim:
+#                linear_solver_settings = self.config.dolfin_linear
+#            else:
+#                linear_solver_settings = self.config.dolfin_linear
+            linear_solver_settings = self.config.dolfin_linear
+            
+            d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+            #print('u (%s) mean: %f' % (comp_name, self.u[comp_name]['u'].compute_vertex_values().mean()))
+            self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+            self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
 
-        elif self.config.solver['nonlinear'] == 'IMEX':
-            raise Exception("IMEX functionality needs to be reviewed")
-#            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
-#            for comp in comp_list:
-#                comp_forms = self.Forms.select_by('compartment_name', comp.name)
-#                for form_type in form_types:
-#                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
+
+            Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['linear_abstol']:
+                #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
+                 #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
+                break
+#            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
+#                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
+#                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
+#                break
+
+            if self.pidx > self.config.solver['max_picard']:
+                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
+                (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+                break
+
 
 #===============================================================================
 #===============================================================================
