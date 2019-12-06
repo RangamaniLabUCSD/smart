@@ -104,3 +104,17 @@ ENV/
 mesh/large/
 plots/
 submeshes/
+
+**.h5
+**.vtk
+**.xdmf
+**.obj
+**.csv
+.DS_Store
+**.off
+**.swp
+**.area
+**.angle
+**.out
+
+.vscode

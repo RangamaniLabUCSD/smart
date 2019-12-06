@@ -1,4 +1,3 @@
-
 import re
 import os
 from pandas import read_json
@@ -8,6 +7,7 @@ from stubs.common import round_to_n
 from stubs import model_assembly
 import random
 import numpy as np
+from scipy.spatial.transform import Rotation as Rot
 
 import petsc4py.PETSc as PETSc
 Print = PETSc.Sys.Print
@@ -38,18 +38,21 @@ class Config(object):
             }
 
         if not config_file:
-            Print("No configuration file specified...")
+            Print("Warning: no configuration file specified.")
         else:
             self.config_file = config_file
             self._parse_file()
 
             # prepend a parent directory to file paths
             if 'parent' in self.directory.keys():
-                dirname = self.directory['parent']
+                if self.directory['relative'] == True:
+                    dirname = os.path.relpath(self.directory['parent'])
+                else:
+                    dirname = os.path.abspath("/"+self.directory['parent'])
                 if rank==root and not os.path.exists(dirname):
                         os.mkdir(dirname)
                 for key, item in self.directory.items():
-                    if key != 'parent':
+                    if key not in ['parent', 'relative']:
                         self.directory[key] = dirname + '/' + item 
 
             self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
@@ -90,7 +93,6 @@ class Config(object):
                     line = file.readline()
                     continue
                 
-
                 if key == 'setting_string':
                     new_value = value
                 if key == 'setting_float':
@@ -98,13 +100,14 @@ class Config(object):
                 if key == 'setting_list':
                     new_value = self._parse_list(value)
 
+                # most parameters will be caught by the regex but some we may wish to redefine
                 # change to int
                 if parameter in ['maximum_iterations']:
-                    Print("Defining parameter %s to an int\n" % parameter)
+                    Print("Defining parameter %s as an int\n" % parameter)
                     new_value = int(value)
                 # change to bool
-                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess']:
-                    Print("Defining parameter %s to a bool\n" % parameter)
+                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess', 'relative']:
+                    Print("Defining parameter %s as a bool\n" % parameter)
                     new_value = bool(float(value))
 
 
@@ -128,62 +131,89 @@ class Config(object):
 
         file.close()
 
-
-    def _find_mesh_midpoint(self, filename, max_num_vert=20000, frac=1):
-        """
-        Finds the (approximate) midpoint of a mesh so that we may center it around the origin
-        """
+    def find_mesh_midpoint(self,filename):
         m = d.Mesh(filename)
-        total_num_vert = m.num_vertices()
-        sample_num_vert = min([max_num_vert, total_num_vert*frac])
-        indices = random.sample(range(total_num_vert), sample_num_vert) # choose a subset of indices
-        verts = list(d.vertices(m))
+        return (m.coordinates().max(axis=0) - m.coordinates().min(axis=0))/2
 
-        xmax = verts[0].point().array() # init
-        xmin = verts[0].point().array()
-        for idx in indices:
-            x = verts[idx].point().array()
-            xmax = np.maximum(xmax, x)
-            xmin = np.minimum(xmin, x)
+    def find_mesh_COM(self,filename):
+        m = d.Mesh(filename)
+        return m.coordinates().mean(axis=0)
 
-        midpoint = (xmax-xmin)/2
-        Print("Found approximate midpoint %s using %d points" % (str(midpoint), sample_num_vert))
-        return midpoint
+        # FIXME
+    # def transform_coords_xml(self, scaling_factor, full_filename, sig_figs=10,
+    #                       new_midpoint=None, max_num_vert_midpoint=1e9,
+    #                       pre_rotation=(0,0,0), post_rotation=(0,0,0)):
+    #     """
+    #     Transform the coordinates a dolfin xml file by some scaling factor with
+    #     options to rotate and translate the mesh as well, e.g. to center the
+    #     center of mass at the origin.
+    #     $$t' = $$
+    #     $$x_new = R_{post}(sR_{pre}(x) + t')\bar{x}$$
+        
+    #     Args:
+    #         scaling_factor (TYPE): scale length by this factor
+    #         full_filename (TYPE): xml dolfin mesh
+    #         sig_figs (int, optional): Number of sig figs for coordinates
+    #         new_midpoint (3-tuple [float], optional): If the entire mesh
+    #         should be translated a tuple can be provided which will be the new
+    #         midpoint of the mesh.
+    #         max_num_vert_midpoint (int, optional): Maximum number of vertices 
+    #         to sample when computing midpoint
+    #         pre_rotation (3-tuple [float], optional): Rotation to apply to mesh
+    #         before translation/scaling [xyz, given in degrees]
+    #         post_rotation (3-tuple [float], optional): Rotation to apply to mesh
+    #         after translation/scaling [xyz, given in degrees]
+    
+    #     """
+    #     file_dir, file_name = os.path.split(os.path.abspath(full_filename))
+    #     new_full_filename = (file_dir + '/' + file_name.split('.')[0] + '_scaled.' 
+    #                         + '.'.join(file_name.split('.')[1:]))
+    #     new_file_lines = [] # we will append modified lines to here and write out as a new file
+    #     idx = 0 
+    #     Rpre = Rot.from_euler('xyz', pre_rotation,degrees=True)
+    #     Rpost = Rot.from_euler('xyz', post_rotation,degrees=True)
 
+    #     if new_midpoint is not None:
+    #         midpoint = self.find_mesh_midpoint(full_filename, max_num_vert=max_num_vert_midpoint)
+    #         # translates from the original midpoint to new midpoint
+    #         translation_vector = np.array(new_midpoint) - scaling_factor*Rpre.apply(midpoint)
+    #         Print((f"Mesh translated by {translation_vector} to new midpoint, "
+    #               + f"{new_midpoint}"))
+    #     else:
+    #         translation_vector = np.array([0,0,0]) # no translation
+    #     with open(full_filename, 'r') as file:
+    #         line = file.readline()
+    #         while line:
+    #             match = self._regex_dict['xml_vertex'].search(line)
 
-    def _scale_coords_xml(self, scaling_factor, filename, sig_figs=10, move_midpoint_to_origin=False, max_num_vert_midpoint=20000):
-        """
-        Scales the coordinates a dolfin xml file by some scaling factor
-        """
-        new_file_lines = [] # we will append modified lines to here and write out as a new file
-        new_filename = 'scaled_' + filename 
-        idx = 0 
-        if move_midpoint_to_origin:
-            midpoint = self._find_mesh_midpoint(filename, max_num_vert=max_num_vert_midpoint)
-        with open(filename, 'r') as file:
-            line = file.readline()
-            while line:
-                match = self._regex_dict['xml_vertex'].search(line)
+    #             if match:
+    #                 # parse the original vector
+    #                 old_vector = np.ndarray(3)
+    #                 for coord_idx, coord in enumerate(['x','y','z']):
+    #                     old_vector[coord_idx] = float(match.group('value_'+coord))
+    #                     # new_value = (float(match.group('value_'+coord))
+    #                     #              + translation_vector[coord_idx]) * scaling_factor
+    #                 # apply transformations (pre-rotation, translate+scale,
+    #                 # post-rotation)
+    #                 #new_vector = Rpre.apply(old_vector)
+    #                 #new_vector = (Rpre.apply(old_vector))*scaling_factor + translation_vector
+    #                 new_vector = scaling_factor*Rpre.apply(old_vector - midpoint) + np.array(new_midpoint)
+    #                 #new_vector = Rpost.apply(new_vector)
+    #                 # write the transformed vector to file
+    #                 for coord_idx, coord in enumerate(['x','y','z']):
+    #                     new_value = round_to_n(new_vector[coord_idx], sig_figs)
+    #                     line = re.sub(' '+coord+r'=\"[\d.e+-]+\"', ' '+coord+'=\"'+str(new_value)+'\"', line)
 
-                if match:
-                    for coord_idx, coord in enumerate(['x','y','z']):
-                        if move_midpoint_to_origin:
-                            new_value = (float(match.group('value_'+coord)) - midpoint[coord_idx]) * scaling_factor
-                        else:
-                            new_value = float(match.group('value_'+coord)) * scaling_factor
-                        new_value = round_to_n(new_value, sig_figs)
+    #             new_file_lines.append(line)
+    #             line = file.readline()
+    #             idx += 1
+    #             if idx%10000==0: # print every 10000 so it is readable
+    #                 Print('Finished parsing line %d' % idx)
 
-                        line = re.sub(' '+coord+r'=\"[\d.e+-]+\"', ' '+coord+'=\"'+str(new_value)+'\"', line)
-                new_file_lines.append(line)
-                line = file.readline()
-                idx += 1
-                if idx%10000==0: # every 10000 so the output is readable
-                    Print('Finished parsing line %d' % idx)
-
-        # once we're done modifying we write out to a new file
-        with open(new_filename, 'w+') as file:
-            file.writelines(new_file_lines)
-        Print("Scaled mesh is saved as %s" % new_filename)
+    #     # once we're done modifying we write out to a new file
+    #     with open(new_full_filename, 'w+') as file:
+    #         file.writelines(new_file_lines)
+    #     Print("Scaled mesh is saved as %s" % new_full_filename)
 
 
     def generate_model(self):
@@ -244,6 +274,15 @@ class Config(object):
 
         model = model_assembly.Model(PD, SD, CD, RD, FD, self)
 
+        # to deal with possible floating point error in mesh coordinates
+        model.set_allow_extrapolation()
+        # Turn fluxes into fenics/dolfin expressions
+        model.assemble_reactive_fluxes()
+        model.assemble_diffusive_fluxes()
+        #model.establish_mappings()
+        # Sort forms by type (diffusive, time derivative, etc.)
+        model.sort_forms()
+
         if rank==root:
             Print("Model created succesfully! :)")
             model.PD.print()
@@ -258,6 +297,8 @@ class Config(object):
     def _json_to_ObjectContainer(self, json_file_name, data_type=None):
         if not data_type:
             raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
+        if not os.path.exists(json_file_name):
+            raise Exception("Cannot find JSON file, %s"%json_file_name)
         df = read_json(json_file_name).sort_index()
         df = nan_to_none(df)
         if data_type in ['parameters', 'parameter', 'param', 'p']:
