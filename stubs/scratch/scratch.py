@@ -528,3 +528,18 @@ Bits of code which should be culled but may have something worth extracting
 #        Print("Diffusion step finished in %d iterations" % self.linear_iterations)
 #        
 #
+#
+#   def establish_mappings(self):
+#        for sp_name, sp in self.SD.Dict.items():
+#            if sp.parent_species:
+#                sp_parent = self.SD.Dict[sp.parent_species]
+#                Vsub = self.V[sp.compartment_name]
+#                submesh = self.CD.meshes[sp.compartment_name]
+#                V = self.V[sp_parent.compartment_name]
+#                submesh_species_index = sp.compartment_index
+#                mesh_species_index = sp_parent.compartment_index
+#
+#                idx = common.submesh_dof_to_mesh_dof(Vsub, submesh, self.CD.bmesh_emap_0, V,
+#                                                     submesh_species_index=submesh_species_index,
+#                                                     mesh_species_index=mesh_species_index)
+#                sp_parent.dof_map.update({sp_name: idx})

@@ -22,4 +22,5 @@ settings = stubs.config.Config('main.config')
 model = settings.generate_model()
 
 
-#model.solve()
+model.solve()
+

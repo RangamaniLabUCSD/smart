@@ -279,7 +279,7 @@ class Config(object):
         # Turn fluxes into fenics/dolfin expressions
         model.assemble_reactive_fluxes()
         model.assemble_diffusive_fluxes()
-        model.establish_mappings()
+        #model.establish_mappings()
         # Sort forms by type (diffusive, time derivative, etc.)
         model.sort_forms()
 

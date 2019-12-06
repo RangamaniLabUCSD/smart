@@ -1158,7 +1158,8 @@ class Flux(_ObjectInstance):
         #unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
 
         self.prod = prod
- 
+        self.unit_prod = unit_prod
+
 class FormContainer(object):
     def __init__(self):
         self.form_list = []
@@ -1198,7 +1199,6 @@ class Form(object):
         integrals = self.dolfin_form.integrals()
         for index, integral in enumerate(integrals):
             Print(str(integral) + "\n")
-        self.unit_prod = unit_prod
 
 # ==============================================================================
 # ==============================================================================
@@ -1239,6 +1239,7 @@ class Model(object):
         self.L = {}
         self.F = {}
         self.nonlinear_solver = {}
+        self.linear_solver = {}
         self.scipy_odes = {}
 
         self.data = stubs.data_manipulation.Data(self)
@@ -1381,6 +1382,14 @@ class Model(object):
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
                 self.a[comp.name] = d.lhs(sum(comp_forms))
                 self.L[comp.name] = d.rhs(sum(comp_forms))
+                problem = d.LinearVariationalProblem(self.a[comp.name], 
+                                                     self.L[comp.name], self.u[comp.name]['u'], [])
+                self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
+                p = self.linear_solver[comp.name].parameters
+                p['linear_solver'] = self.config.solver['linear_solver']
+                p['krylov_solver'].update(self.config.dolfin_krylov_solver)
+                p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+
         elif self.config.solver['nonlinear'] == 'newton':
             Print("Formulating problem as F(u;v) == 0 for newton iterations")
             for comp in comp_list:
@@ -1411,16 +1420,19 @@ class Model(object):
 # SOLVING
 #===============================================================================
 #===============================================================================
-    def solve(self, plot_period=1):
+    def solve(self, op_split_scheme = "DRD", plot_period=1):
         ## solve
         self.init_solver_and_plots()
         
         self.stopwatch("Total simulation")
         while True:
-            solver_idx +=1
-
             # Solve using specified operator-splitting scheme (just DRD for now)
-            self.DRD_solve(boundary_method='RK45')
+            if op_split_scheme == "DRD":
+                self.DRD_solve(boundary_method='RK45')
+            elif op_split_scheme == "DR":
+                self.DR_solve(boundary_method='RK45')
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
 
             self.compute_statistics()
             if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
@@ -1430,7 +1442,7 @@ class Model(object):
                 break
         
         self.stopwatch("Total simulation", stop=True)
-        Print("Solver finished with %d total time steps." % int(solver_idx))
+        Print("Solver finished with %d total time steps." % self.idx)
 
 
     def set_time(self, t, dt=None):
@@ -1619,27 +1631,26 @@ class Model(object):
         nsubsteps = 1#int(self.config.solver['reaction_substeps'])
 
         for n in range(nsubsteps):
-            t0 = self.t
-            #self.forward_time_step(factor=factor/nsubsteps)
-            #self.updateTimeDependentParameters(t0=t0)
+            self.forward_time_step(factor=factor/nsubsteps)
+            self.updateTimeDependentParameters(t0=self.t)
             for comp_name, comp in self.CD.Dict.items():
                 if comp.dimensionality < self.CD.max_dim:
-                    self.nonlinear_solver(comp_name, factor=factor)
+                    self.nonlinear_solve(comp_name, factor=factor)
                     self.set_time(self.t-self.dt)
                     self.u[comp_name][key].assign(self.u[comp_name]['u'])
         self.stopwatch("Boundary reactions forward", stop=True)
 
-    def diffusion_forward(self, comp_name, factor=1, bcs=[]):
-        self.stopwatch("Diffusion step ["+comp_name+"]")
-        t0 = self.t
-        self.forward_time_step(factor=factor)
-        self.updateTimeDependentParameters(t0=t0)
-        if self.config.solver['nonlinear'] == 'picard':
-            self.picard_loop(comp_name, bcs)
-        elif self.config.solver['nonlinear'] == 'newton':
-            self.newton_iter(comp_name)
-        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-        self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
+    # def diffusion_forward(self, comp_name, factor=1, bcs=[]):
+    #     self.stopwatch("Diffusion step ["+comp_name+"]")
+    #     t0 = self.t
+    #     self.forward_time_step(factor=factor)
+    #     self.updateTimeDependentParameters(t0=t0)
+    #     if self.config.solver['nonlinear'] == 'picard':
+    #         self.picard_loop(comp_name, bcs)
+    #     elif self.config.solver['nonlinear'] == 'newton':
+    #         self.newton_iter(comp_name)
+    #     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+    #     self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
 
 
     def nonlinear_solve(self, comp_name, factor=1.0):
@@ -1650,6 +1661,8 @@ class Model(object):
             self.NLidx, success = self.newton_iter(comp_name, factor=factor)
         elif self.config.solver['nonlinear'] == 'picard':
             self.NLidx, success = self.picard_loop(comp_name, factor=factor)
+
+        return self.NLidx, success
 
 
     def DRD_solve(self, bcs=[], boundary_method='RK45'):
@@ -1664,7 +1677,6 @@ class Model(object):
 
         self.stopwatch("Total time step")
 
-
         # solve volume problem(s)
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
@@ -1677,42 +1689,49 @@ class Model(object):
         # solve boundary problem(s)
         self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
         self.update_solution_boundary_to_volume()
+        self.set_time(self.t-self.dt/2) # perform the second half-step
 
         # solve volume problem(s)
-        self.set_time(self.t+self.dt/2) # perform the second half-step
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
-                #self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
                 self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
                 self.set_time(self.t-self.dt/2)
         self.set_time(self.t+self.dt/2)
         self.update_solution_volume_to_boundary()
 
-        # # multiple iterations
-        # self.iidx = 0 # inner index (how many times did we iterate back and forth b/w solving boundary/volume problems)
-        # while True:
-        #     self.iidx += 1
-        #     # solve boundary problem(s)
-        #     self.boundary_reactions_forward(key='k')
-        #     self.update_solution_boundary_to_volume(keys=['u', 'k'])
-        #     # solve volume problem(s)
-        #     for comp_name, comp in self.CD.Dict.items():
-        #         if comp.dimensionality == self.CD.max_dim:
-        #             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
-        #             self.NLidx, success = self.newton_iter(comp_name, assign_to_n=False)
-        #             # convergence check
-        #             abs_err = self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+        # check if time step should be changed
+        if self.NLidx <= self.config.solver['min_newton']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+            Print("Increasing step size")
+        if self.NLidx > self.config.solver['max_newton']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+            Print("Decreasing step size")
 
-        #     self.update_solution_volume_to_boundary()
+        self.stopwatch("Total time step", stop=True, color='cyan')
 
-        #     if abs_err < self.config.solver['iteration_tol']:
-        #         for comp_name in self.CD.Dict.keys():
-        #             self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-        #         break
-        #     else: # keep iterating
-        #         color_print('abs_err = %f is not low enough. Resetting time and iterating again.' % abs_err, color='red')
-        #         self.set_time(self.t-self.dt)
-        #         pass
+    def DR_solve(self, bcs=[], boundary_method='RK45'):
+        """
+        General DR operator splitting. Can be used with different non-linear
+        solvers
+        """
+        Print('\n\n\n')
+        self.idx += 1
+        self.check_dt_resets()
+        color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
+
+        self.stopwatch("Total time step")
+
+        # solve volume problem(s)
+        for comp_name, comp in self.CD.Dict.items():
+            if comp.dimensionality == self.CD.max_dim:
+                self.NLidx, success = self.nonlinear_solve(comp_name, factor=1.0)
+                self.set_time(self.t-self.dt) # reset time back to t=t0
+        self.update_solution_volume_to_boundary()
+
+        # single iteration
+        # solve boundary problem(s)
+        self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
+        self.update_solution_boundary_to_volume()
 
         # check if time step should be changed
         if self.NLidx <= self.config.solver['min_newton']:
@@ -1760,16 +1779,20 @@ class Model(object):
         reached.
         """
         self.stopwatch("Picard loop [%s]" % comp_name)
+        t0 = self.t
+        self.forward_time_step(factor=factor) # increment time afterwards
+        self.updateTimeDependentParameters(t0=t0)
         self.pidx = 0 # count the number of picard iterations
         success = True
 
         # main loop
         while True:
             self.pidx += 1
-            linear_solver_settings = self.config.dolfin_linear
+            #linear_solver_settings = self.config.dolfin_krylov_solver
            
             # solve 
-            d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+            self.linear_solver[comp_name].solve()
+            #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
 
             # update temporary value of u
             self.data.computeError(self.u, comp_name, self.config.solver['norm'])
@@ -1797,8 +1820,8 @@ class Model(object):
         if assign_to_n:
             self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
-        Print("%d Newton iterations required for convergence." % idx)
-        return pidx, success
+        Print("%d Picard iterations required for convergence." % self.pidx)
+        return self.pidx, success
 
 
 #===============================================================================
