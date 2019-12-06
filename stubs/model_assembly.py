@@ -1198,7 +1198,7 @@ class Form(object):
         integrals = self.dolfin_form.integrals()
         for index, integral in enumerate(integrals):
             Print(str(integral) + "\n")
-       self.unit_prod = unit_prod
+        self.unit_prod = unit_prod
 
 # ==============================================================================
 # ==============================================================================
@@ -1624,10 +1624,7 @@ class Model(object):
             #self.updateTimeDependentParameters(t0=t0)
             for comp_name, comp in self.CD.Dict.items():
                 if comp.dimensionality < self.CD.max_dim:
-                    #if self.config.solver['nonlinear'] == 'picard':
-                    #    self.picard_loop(comp_name, bcs)
-                    #elif self.config.solver['nonlinear'] == 'newton':
-                    self.newton_iter(comp_name)
+                    self.nonlinear_solver(comp_name, factor=factor)
                     self.set_time(self.t-self.dt)
                     self.u[comp_name][key].assign(self.u[comp_name]['u'])
         self.stopwatch("Boundary reactions forward", stop=True)
@@ -1645,9 +1642,20 @@ class Model(object):
         self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
 
 
+    def nonlinear_solve(self, comp_name, factor=1.0):
+        """
+        A switch for choosing a nonlinear solver
+        """
+        if self.config.solver['nonlinear'] == 'newton':
+            self.NLidx, success = self.newton_iter(comp_name, factor=factor)
+        elif self.config.solver['nonlinear'] == 'picard':
+            self.NLidx, success = self.picard_loop(comp_name, factor=factor)
+
+
     def DRD_solve(self, bcs=[], boundary_method='RK45'):
         """
-        For now this is a single iteration of DRD Strang operator splitting
+        General DRD operator splitting. Can be used with different non-linear
+        solvers
         """
         Print('\n\n\n')
         self.idx += 1
@@ -1660,20 +1668,22 @@ class Model(object):
         # solve volume problem(s)
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
+                #self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
+                self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
                 self.set_time(self.t-self.dt/2) # reset time back to t=t0
         self.update_solution_volume_to_boundary()
 
         # single iteration
         # solve boundary problem(s)
-        self.boundary_reactions_forward() # t from [t0, t+dt]. automatically resets time back to t0
+        self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
         self.update_solution_boundary_to_volume()
 
         # solve volume problem(s)
         self.set_time(self.t+self.dt/2) # perform the second half-step
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
+                #self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
+                self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
                 self.set_time(self.t-self.dt/2)
         self.set_time(self.t+self.dt/2)
         self.update_solution_volume_to_boundary()
@@ -1715,9 +1725,20 @@ class Model(object):
         self.stopwatch("Total time step", stop=True, color='cyan')
 
 
-    def newton_iter(self, comp_name, factor=1, assign_to_n=True):
+
+#===============================================================================
+#===============================================================================
+# Nonlinear solvers: 
+#  - Timestep
+#  - Update time dependent parameters
+#  - Solve
+#  - Assign new solution to old solution unless otherwise stated
+#===============================================================================
+#===============================================================================
+
+    def newton_iter(self, comp_name, factor=1, bcs=[], assign_to_n=True):
         """
-        A single iteration of Newton's method for a single component
+        A single iteration of Newton's method for a single component.
         """
         self.stopwatch("Newton's method [%s]" % comp_name)
         t0 = self.t
@@ -1733,26 +1754,30 @@ class Model(object):
         Print("%d Newton iterations required for convergence." % idx)
         return idx, success
 
-    def picard_loop(self, comp_name, bcs=[]):
-        exit_loop = False
-        self.pidx = 0
+    def picard_loop(self, comp_name, factor=1, bcs=[], assign_to_n=True):
+        """
+        Continue picard iterations until a specified tolerance or count is
+        reached.
+        """
+        self.stopwatch("Picard loop [%s]" % comp_name)
+        self.pidx = 0 # count the number of picard iterations
+        success = True
+
+        # main loop
         while True:
             self.pidx += 1
-#            if self.CD.Dict[comp_name].dimensionality == self.CD.max_dim:
-#                linear_solver_settings = self.config.dolfin_linear
-#            else:
-#                linear_solver_settings = self.config.dolfin_linear
             linear_solver_settings = self.config.dolfin_linear
-            
+           
+            # solve 
             d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
-            #print('u (%s) mean: %f' % (comp_name, self.u[comp_name]['u'].compute_vertex_values().mean()))
+
+            # update temporary value of u
             self.data.computeError(self.u, comp_name, self.config.solver['norm'])
             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
-
-
+            # Exit if error tolerance or max iterations is reached
             Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['linear_abstol']:
+            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['picard_abstol']:
                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
                 break
@@ -1761,10 +1786,19 @@ class Model(object):
 #                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
 #                break
 
-            if self.pidx > self.config.solver['max_picard']:
+            if self.pidx >= self.config.solver['max_picard']:
                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+                success = False
                 break
+
+        self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
+
+        if assign_to_n:
+            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+        Print("%d Newton iterations required for convergence." % idx)
+        return pidx, success
 
 
 #===============================================================================

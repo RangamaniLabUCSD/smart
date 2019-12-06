@@ -1,9 +1,35 @@
-# Classes/functions used to construct models
+"""Classes/functions used to construct models
+"""
 from stubs import unit
 
 import pandas as pd 
 import dolfin as d
 import pint 
+
+
+# IN PROGRESS
+# class ObjectDF(object):
+#     def __init__(self, property_types):
+#         """General dataframe wrapper class which can hold parameters, species, etc.
+        
+#         Args:
+#             property_types (dict): property_name -> data type. Each key/value
+#             pair will correspond to a pandas Series.
+#         """
+#         self.property_types
+#         data_dict = dict()
+#         for property_name, property_type in property_types.items():
+#             data_dict.update({property_name, 
+#                              pd.Series([], dtype=property_type)})
+#         self.df = pd.DataFrame(data_dict)
+
+#         def add(self, name, **kwargs):
+#             inputs = locals()
+#             to_df = kwargs.update({"name": name})
+#             # ensure types are correct
+#             for key, value in to_df.items():
+#                 to_df[key] =  
+
 
 class ParameterDF(object):
     """
