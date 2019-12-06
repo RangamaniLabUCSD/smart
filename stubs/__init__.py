@@ -10,6 +10,7 @@ from . import model_building
 from . import data_manipulation
 from . import model_assembly
 from . import model_building
+from . import sweep
 from . import solvers
 from . import config
 from . import common
