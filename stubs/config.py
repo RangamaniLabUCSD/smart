@@ -215,7 +215,6 @@ class Config(object):
     #         file.writelines(new_file_lines)
     #     Print("Scaled mesh is saved as %s" % new_full_filename)
 
-
     def generate_model(self):
 
         if not all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]):

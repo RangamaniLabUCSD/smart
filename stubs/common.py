@@ -159,7 +159,14 @@ def np_smart_hstack(x1, x2):
 
     return np.hstack([x1.reshape(-1,1), x2.reshape(-1,1)])
 
-
-
+def mark_boundaries(mesh, marker_value, func):
+    """
+    Args:
+        mesh (dolfin mesh): Description
+        marker_value (int): Integer 
+        func (lambda function): Function that takes in a dolfin face and
+        returns true if it should be marked.
+    TODO
+    """
 
 
