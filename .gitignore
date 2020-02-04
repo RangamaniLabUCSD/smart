@@ -105,4 +105,7 @@ mesh/large/
 plots/
 submeshes/
 
+examples/toy_model/solutions/
+examples/toy_model_sweep/solutions/
+
 .vscode
