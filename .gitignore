@@ -108,4 +108,16 @@ submeshes/
 examples/toy_model/solutions/
 examples/toy_model_sweep/solutions/
 
+**.h5
+**.vtk
+**.xdmf
+**.obj
+**.csv
+.DS_Store
+**.off
+**.swp
+**.area
+**.angle
+**.out
+
 .vscode
