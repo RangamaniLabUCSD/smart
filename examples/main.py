@@ -19,6 +19,8 @@ nprocs = comm.size
 
 # Load in model and settings
 settings = stubs.config.Config('main.config')
+# read scaling factor from input
+model_ode = settings.convert_to_ode()
 model = settings.generate_model()
 
 

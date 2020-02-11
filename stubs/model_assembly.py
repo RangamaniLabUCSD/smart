@@ -1427,7 +1427,12 @@ class Model(object):
 
         self.stopwatch("Total simulation")
         if ode_solver:
+
+            # spatial_to_ode(base_unit = ureg.mM)
             # convert everything to 3d
+            # user must input a mesh
+            # for j in self.F?D.values():
+            #     if j.flux.units/base.units == qreg.dimensionless
             # create a lambda function
             # scipy.solve_ivp()
             # write alternative compute_statistics()
