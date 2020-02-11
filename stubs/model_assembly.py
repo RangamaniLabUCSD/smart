@@ -21,7 +21,6 @@ from sympy.utilities.iterables import flatten
 
 import numpy as np
 from scipy.integrate import solve_ivp
-from scipy.integrate import cumtrapz
 
 import pint
 from pprint import pprint
@@ -30,7 +29,12 @@ from copy import copy, deepcopy
 
 import stubs.common as common
 import stubs
+#import common
+#import unit as ureg
+#import data_manipulation
 from stubs import unit as ureg
+#import stubs.data_manipulation as data_manipulation
+#import stubs.flux_assembly as flux_assembly
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -61,7 +65,7 @@ class _ObjectContainer(object):
         self.Dict = odict()
         self.dtypes = {}
         self.ObjectClass = ObjectClass
-        self.properties_to_print = [] # properties to print
+        self.propertiesToPrint = [] # properties to print
 #        self.name_key = name_key
         if df is not None:
             self.add_pandas_dataframe(df)
@@ -204,60 +208,33 @@ class _ObjectContainer(object):
             else:
                 getattr(instance, method_name)(**kwargs)
 
-    def get_pandas_dataframe(self, properties_to_print=[], include_idx=True):
+    def get_pandas_dataframe(self, propertiesToPrint=[]):
         df = pd.DataFrame()
-        if include_idx:
-            if properties_to_print and 'idx' not in properties_to_print:
-                properties_to_print.insert(0, 'idx')
-            for idx, (name, instance) in enumerate(self.Dict.items()):
-                df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx))
-        else:
-            for idx, (name, instance) in enumerate(self.Dict.items()):
-                df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print))
+        if propertiesToPrint and 'idx' not in propertiesToPrint:
+            propertiesToPrint.insert(0, 'idx')
+        for idx, (name, instance) in enumerate(self.Dict.items()):
+            df = df.append(instance.get_pandas_series(propertiesToPrint=propertiesToPrint, idx=idx))
         # sometimes types are recast. change entries into their original types
         for dtypeName, dtype in self.dtypes.items():
             if dtypeName in df.columns: 
                 df = df.astype({dtypeName: dtype})
 
         return df
-
-    def print_to_latex(self, properties_to_print=[], escape=False,
-                       include_idx=False):
-        df = self.get_pandas_dataframe(properties_to_print=properties_to_print,
-                                       include_idx=include_idx)
-
-        # converts Pint units to latex format
-        unit_to_tex = lambda unit: '${:L}$'.format(unit._units)
-        name_to_tex = lambda name: '$' + name.replace('_', '\_') + '$'
-        # bit of a hack... check the first row to guess which columns contain
-        # either Pint unit or quantity objects so we may convert them
-        for name, value in list(df.iloc[0].iteritems()):
-            if hasattr(value, '_units'):
-                df[name] = df[name].apply(unit_to_tex)
-            if name == 'name':
-                df[name] = df[name].apply(name_to_tex)
-            if name == 'idx' and include_idx == False:
-                df = df.drop('idx',axis=1)
-
-        with pd.option_context("max_colwidth", 1000):
-            tex_str = df.to_latex(index=False, longtable=True, escape=escape)
-            print(tex_str)
-
     def get_index(self, idx):
         """
         Get an element of the object container ordered dict by referencing its index
         """
         return list(self.Dict.values())[idx]
 
-    def print(self, tablefmt='fancy_grid', properties_to_print=[]):
+    def print(self, tablefmt='fancy_grid', propertiesToPrint=[]):
         if rank == root:
-            if properties_to_print:
-                if type(properties_to_print) != list: properties_to_print=[properties_to_print]
-            elif hasattr(self, 'properties_to_print'):
-                properties_to_print = self.properties_to_print
-            df = self.get_pandas_dataframe(properties_to_print=properties_to_print)
-            if properties_to_print:
-                df = df[properties_to_print]
+            if propertiesToPrint:
+                if type(propertiesToPrint) != list: propertiesToPrint=[propertiesToPrint]
+            elif hasattr(self, 'propertiesToPrint'):
+                propertiesToPrint = self.propertiesToPrint
+            df = self.get_pandas_dataframe(propertiesToPrint=propertiesToPrint)
+            if propertiesToPrint:
+                df = df[propertiesToPrint]
     
             print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
                    #headers='keys', tablefmt=tablefmt), width=120)
@@ -265,12 +242,12 @@ class _ObjectContainer(object):
             pass
 
     def __str__(self):
-        df = self.get_pandas_dataframe(properties_to_print=self.properties_to_print)
-        df = df[self.properties_to_print]
+        df = self.get_pandas_dataframe(propertiesToPrint=self.propertiesToPrint)
+        df = df[self.propertiesToPrint]
 
         return tabulate(df, headers='keys', tablefmt='fancy_grid')
 
-    def vprint(self, keyList=None, properties_to_print=[], print_all=False):
+    def vprint(self, keyList=None, propertiesToPrint=[], print_all=False):
         # in order of priority: kwarg, container object property, else print all keys
         if rank == root:
             if keyList:
@@ -280,14 +257,14 @@ class _ObjectContainer(object):
             else:
                 keyList = list(self.Dict.keys())
 
-            if properties_to_print:
-                if type(properties_to_print) != list: properties_to_print=[properties_to_print]
-            elif hasattr(self, 'properties_to_print'):
-                properties_to_print = self.properties_to_print
+            if propertiesToPrint:
+                if type(propertiesToPrint) != list: propertiesToPrint=[propertiesToPrint]
+            elif hasattr(self, 'propertiesToPrint'):
+                propertiesToPrint = self.propertiesToPrint
 
-            if print_all: properties_to_print = []
+            if print_all: propertiesToPrint = []
             for key in keyList:
-                self.Dict[key].print(properties_to_print=properties_to_print)
+                self.Dict[key].print(propertiesToPrint=propertiesToPrint)
         else:
             pass
 
@@ -320,19 +297,19 @@ class _ObjectInstance(object):
             unit = ureg(unit)
         setattr(self, assembled_name, value*unit)
 
-    def get_pandas_series(self, properties_to_print=[], idx=None):
-        if properties_to_print:
+    def get_pandas_series(self, propertiesToPrint=[], idx=None):
+        if propertiesToPrint:
             dict_to_convert = odict({'idx': idx})
-            dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in properties_to_print]))
+            dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in propertiesToPrint]))
         else:
             dict_to_convert = self.__dict__
         return pd.Series(dict_to_convert, name=self.name)
-    def print(self, properties_to_print=[]):
+    def print(self, propertiesToPrint=[]):
         if rank==root:
             print("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
-            if properties_to_print:
-                dict_to_print = dict([(key,val) for (key,val) in self.__dict__.items() if key in properties_to_print])
+            if propertiesToPrint:
+                dict_to_print = dict([(key,val) for (key,val) in self.__dict__.items() if key in propertiesToPrint])
             else:
                 dict_to_print = self.__dict__
             pprint(dict_to_print, width=240)
@@ -349,13 +326,14 @@ class _ObjectInstance(object):
 class ParameterContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Parameter, df, Dict)
-        self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
+        self.propertiesToPrint = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
 
 class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assembleTimeDependentParameters(self): 
-        #TODO
+        #TODO: Add in preintegration of sampling data
+
         if not self.is_time_dependent:
             return
         # Parse the given string to create a sympy expression 
@@ -372,17 +350,11 @@ class Parameter(_ObjectInstance):
             Print("Creating dolfin object for time-dependent parameter %s" % self.name)
             self.dolfinConstant = d.Constant(self.value)
 
-            # preintegrate sampling data
-            int_data = cumtrapz(self.sampling_data[:,1], x=self.sampling_data[:,0], initial=0)
-            # concatenate time vector
-            self.preint_sampling_data = common.np_smart_hstack(self.sampling_data[:,0], int_data)
-
-
 
 class SpeciesContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Species, df, Dict)
-        self.properties_to_print = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
+        self.propertiesToPrint = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
     def assemble_compartment_indices(self, RD, CD, settings):
         """
@@ -510,7 +482,7 @@ class Species(_ObjectInstance):
 class CompartmentContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Compartment, df, Dict)
-        self.properties_to_print = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
+        self.propertiesToPrint = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
         self.meshes = {}
         self.vertex_mappings = {} # from submesh -> parent indices
     def load_mesh(self, mesh_key, mesh_str):
@@ -539,21 +511,15 @@ class CompartmentContainer(_ObjectContainer):
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
 
-        # Loop through compartments
         for key, obj in self.Dict.items():
-            # FEniCS doesn't allow parallelization of SubMeshes. We need
-            # SubMeshes because one boundary will often have multiple domains of
-            # interest with different species (e.g., PM, ER). By exporting the
-            # submeshes in serial we can reload them back in in parallel.
             if key!=main_mesh_str and obj.dimensionality==surfaceDim:
                 # TODO: fix this
-                if size > 1: # if we are running in parallel
-                    Print("CPU %d: Loading submesh for %s from file" % (rank, key))
+                if size > 1:
+                    print("CPU %d: Loading submesh for %s from file" % (rank, key))
                     submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml')
                     self.meshes[key] = submesh
                     obj.mesh = submesh
                 else:
-                    Print("Saving submeshes %s for use in parallel" % key)
                     submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)                
                     self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
                     self.meshes[key] = submesh
@@ -584,13 +550,6 @@ class CompartmentContainer(_ObjectContainer):
         self.bmesh_emap_2 = bmesh_emap_2
         self.bmf = bmf
 
-        # If we were running in serial to generate submeshes, exit here and
-        # restart in parallel
-        if save_to_file and size==1:
-            Print("If run in serial, submeshes were saved to file. Run again"\
-                  "in parallel.")
-            exit()
-
 
 
     def compute_scaling_factors(self):
@@ -618,8 +577,8 @@ class Compartment(_ObjectInstance):
 class ReactionContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Reaction, df, Dict)
-        #self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
-        self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
+        #self.propertiesToPrint = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
+        self.propertiesToPrint = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
     def get_species_compartment_counts(self, SD, CD, settings):
         self.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
@@ -810,11 +769,11 @@ class Reaction(_ObjectInstance):
 class FluxContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Flux, df, Dict)
-        # self.properties_to_print = ['species_name', 'symEqn', 'sign', 'involved_species',
+        # self.propertiesToPrint = ['species_name', 'symEqn', 'sign', 'involved_species',
         #                      'involved_parameters', 'source_compartment', 
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.propertiesToPrint = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
     def check_and_replace_sub_species(self, SD, CD, config):
         fluxes_to_remove = []
         for flux_name, f in self.Dict.items():
@@ -1160,49 +1119,12 @@ class Flux(_ObjectInstance):
         self.prod = prod
         self.unit_prod = unit_prod
 
-class FormContainer(object):
-    def __init__(self):
-        self.form_list = []
-    def add(self, new_form):
-        self.form_list.append(new_form)
-    def select_by(self, selection_key, value):
-        return [f for f in self.form_list if getattr(f, selection_key)==value]
-    def inspect(self, form_list=None):
-        if not form_list:
-            form_list = self.form_list
-
-        for index, form in enumerate(form_list):
-            Print("Form with index %d from form_list..." % index)
-            if form.flux_name:
-                Print("Flux name: %s" % form.flux_name)
-            Print("Species name: %s" % form.species_name)
-            Print("Form type: %s" % form.form_type)
-            form.inspect()
 
 
-class Form(object):
-    def __init__(self, dolfin_form, species, form_type, flux_name=None):
-        # form_type:
-        # 'M': transient/mass form (holds time derivative)
-        # 'D': diffusion form
-        # 'R': domain reaction forms
-        # 'B': boundary reaction forms
-
-        self.dolfin_form = dolfin_form
-        self.species = species
-        self.species_name = species.name
-        self.compartment_name = species.compartment_name
-        self.form_type = form_type
-        self.flux_name = flux_name
-
-    def inspect(self):
-        integrals = self.dolfin_form.integrals()
-        for index, integral in enumerate(integrals):
-            Print(str(integral) + "\n")
 
 # ==============================================================================
 # ==============================================================================
-# Model class. Consists of parameters, species, etc. and is used for simulation
+# Model class consists of parameters, species, etc. and is used for simulation
 # ==============================================================================
 # ==============================================================================
 
@@ -1239,15 +1161,11 @@ class Model(object):
         self.L = {}
         self.F = {}
         self.nonlinear_solver = {}
-        self.linear_solver = {}
         self.scipy_odes = {}
 
-        self.data = stubs.data_manipulation.Data(self)
-#===============================================================================
-#===============================================================================
-# PROBLEM SETUP
-#===============================================================================
-#===============================================================================
+        self.data = stubs.data_manipulation.Data(config)
+
+
     def assemble_reactive_fluxes(self):
         """
         Creates the actual dolfin objects for each flux. Checks units for consistency
@@ -1291,6 +1209,21 @@ class Model(object):
                 total_scaling *= length_scale_factor.magnitude
                 unit_prod *= length_scale_factor.units*1
                 setattr(j, 'length_scale_factor', length_scale_factor)
+
+                #if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
+                #    prod *= length_scale_factor.magnitude
+                #    total_scaling *= length_scale_factor.magnitude
+                #    unit_prod *= length_scale_factor.units*1
+                #    setattr(j, 'length_scale_factor', length_scale_factor)
+                #elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
+                #    prod /= length_scale_factor.magnitude
+                #    total_scaling /= length_scale_factor.magnitude
+                #    unit_prod /= length_scale_factor.units*1
+                #    setattr(j, 'length_scale_factor', 1/length_scale_factor)
+                #else:
+                #    raise Exception("Inconsitent units!")
+
+                                
 
             # if units are consistent in dimensionality but not magnitude, adjust values
             if j.flux_units != unit_prod:
@@ -1350,7 +1283,16 @@ class Model(object):
                         Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
                         self.Forms.add(Form(Dform, sp, 'D'))
 
-                # time derivative 
+                #if sp.dimensionality == max_dim or not self.config.settings['ignore_surface_diffusion']:
+                #    dx = sp.compartment.dx
+                #    Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
+                #    self.Forms.add(Form(Dform, sp, 'D'))
+                #elif sp.dimensionality < max_dim and self.config.settings['ignore_surface_diffusion']:
+                #    dx = sp.compartment.dP
+
+                # time derivative
+                #Mform = (u-un)/dT * v * dx
+                #self.Forms.add(Form(Mform, sp, 'M'))
                 Mform_u = u/dT * v * dx
                 Mform_un = -un/dT * v * dx
                 self.Forms.add(Form(Mform_u, sp, "Mu"))
@@ -1366,85 +1308,11 @@ class Model(object):
                 if func_key != 't': # trial function by convention
                     self.u[comp_name][func_key].set_allow_extrapolation(True)
 
-    def sort_forms(self):
-        """
-        Organizes forms based on solution method. E.g. for picard iterations we
-        split the forms into a bilinear and linear component, for Newton we
-        simply solve F(u;v)=0.
-        """
-        comp_list = [self.CD.Dict[key] for key in self.u.keys()]
-        self.split_forms = ddict(dict)
-        form_types = set([f.form_type for f in self.Forms.form_list])
-
-        if self.config.solver['nonlinear'] == 'picard':
-            Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.a[comp.name] = d.lhs(sum(comp_forms))
-                self.L[comp.name] = d.rhs(sum(comp_forms))
-                problem = d.LinearVariationalProblem(self.a[comp.name], 
-                                                     self.L[comp.name], self.u[comp.name]['u'], [])
-                self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
-                p = self.linear_solver[comp.name].parameters
-                p['linear_solver'] = self.config.solver['linear_solver']
-                p['krylov_solver'].update(self.config.dolfin_krylov_solver)
-                p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
-        elif self.config.solver['nonlinear'] == 'newton':
-            Print("Formulating problem as F(u;v) == 0 for newton iterations")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.F[comp.name] = sum(comp_forms)
-                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
-                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
-
-                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
-                p = self.nonlinear_solver[comp.name].parameters
-                p['nonlinear_solver'] = 'newton'
-
-                p['newton_solver'].update(self.config.dolfin_nonlinear_solver)
-                p['newton_solver']['krylov_solver'].update(self.config.dolfin_krylov_solver)
-                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
-
-        elif self.config.solver['nonlinear'] == 'IMEX':
-            raise Exception("IMEX functionality needs to be reviewed")
-#            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
-#            for comp in comp_list:
-#                comp_forms = self.Forms.select_by('compartment_name', comp.name)
-#                for form_type in form_types:
-#                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
-
 #===============================================================================
 #===============================================================================
 # SOLVING
 #===============================================================================
 #===============================================================================
-    def solve(self, op_split_scheme = "DRD", plot_period=1):
-        ## solve
-        self.init_solver_and_plots()
-        
-        self.stopwatch("Total simulation")
-        while True:
-            # Solve using specified operator-splitting scheme (just DRD for now)
-            if op_split_scheme == "DRD":
-                self.DRD_solve(boundary_method='RK45')
-            elif op_split_scheme == "DR":
-                self.DR_solve(boundary_method='RK45')
-            else:
-                raise Exception("I don't know what operator splitting scheme to use")
-
-            self.compute_statistics()
-            if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
-                self.plot_solution()
-                self.plot_solver_status()
-            if self.t >= self.config.solver['T']:
-                break
-        
-        self.stopwatch("Total simulation", stop=True)
-        Print("Solver finished with %d total time steps." % self.idx)
-
-
     def set_time(self, t, dt=None):
         if not dt:
             dt = self.dt
@@ -1459,9 +1327,8 @@ class Model(object):
 
     def check_dt_resets(self):
         """
-        Checks to see if the size of a full-time step would pass a "reset dt" 
-        checkpoint. At these checkpoints dt is reset to some value 
-        (e.g. to force smaller sampling during fast events)
+        Checks to see if the size of a full-time step would pass a "reset dt" checkpoint. At these checkpoints dt
+        is reset to some value (e.g. to force smaller sampling during fast events)
         """        
 
         # if last time-step we passed a reset dt checkpoint then reset it now
@@ -1523,6 +1390,11 @@ class Model(object):
             self.timings[key].append(elapsed_time)
             return elapsed_time
 
+#    def solver_step_forward(self):
+#
+#        self.update_time()
+
+
     def updateTimeDependentParameters(self, t=None, t0=None, dt=None): 
         if not t:
             t = self.t
@@ -1538,14 +1410,11 @@ class Model(object):
 
         # Update time dependent parameters
         for param_name, param in self.PD.Dict.items():
-            # check to make sure a parameter wasn't assigned a new value more than once
-            value_assigned = 0
             if not param.is_time_dependent:
                 continue
             # use value by evaluating symbolic expression
             if param.symExpr and not param.preintegrated_symExpr:
                 newValue = param.symExpr.subs({'t': t}).evalf()
-                value_assigned += 1
 
             # calculate a preintegrated expression by subtracting previous value 
             # and dividing by time-step
@@ -1555,10 +1424,9 @@ class Model(object):
                                     "pre-integrated variables.")
                 newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf() 
                             - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
-                value_assigned += 1
 
             # if parameter is given by data
-            if param.sampling_data is not None and param.preint_sampling_data is None:
+            if param.sampling_data is not None:
                 data = param.sampling_data
                 # We never want time to extrapolate beyond the provided data.
                 if t<data[0,0] or t>data[-1,0]:
@@ -1567,20 +1435,6 @@ class Model(object):
                 # Just in case... return a nan if value is outside of bounds
                 newValue = np.interp(t, data[:,0], data[:,1],
                                      left=np.nan, right=np.nan)
-                value_assigned += 1
-
-            # if parameter is given by data and it has been pre-integrated
-            if param.sampling_data is not None and param.preint_sampling_data is not None:
-                int_data = param.preint_sampling_data
-                oldValue = np.interp(t0, int_data[:,0], int_data[:,1],
-                                     left=np.nan, right=np.nan)
-                newValue = (np.interp(t, int_data[:,0], int_data[:,1],
-                                     left=np.nan, right=np.nan) - oldValue)/dt
-                value_assigned += 1
-
-            if value_assigned != 1:
-                raise Exception("Either a value was not assigned or more than"\
-                                "one value was assigned to parameter %s" % param.name)
 
             param.value = newValue
             param.dolfinConstant.assign(newValue)
@@ -1589,16 +1443,304 @@ class Model(object):
             self.params[param_name].append((t,newValue))
 
 
-    def reset_timestep(self, comp_list=[]):
-        """
-        Resets the time back to what it was before the time-step. Optionally, input a list of compartments
-        to have their function values reset (['n'] value will be assigned to ['u'] function).
-        """
-        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_factor'])
-        Print("Resetting time-step and decreasing step size")
-        for comp_name in comp_list:
-            self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
-            Print("Assigning old value of u to species in compartment %s" % comp_name)
+
+    def strang_RDR_step_forward(self):
+        self.idx += 1
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n'
+              % (self.idx, self.t, self.dt))
+
+        # first reaction step (half time step) t=[t,t+dt/2]
+        self.boundary_reactions_forward_scipy('pm', factor=0.5,
+                                              method='BDF', rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True,
+                                              method='RK45', rtol=1e-5, atol=1e-8)
+        self.update_solution_boundary_to_volume()
+
+        # diffusion step (full time step) t=[t,t+dt]
+
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.diffusion_forward('cyto', factor=1) 
+        self.update_solution_volume_to_boundary()
+        #self.SD.Dict['A_sub_pm'].u['u'].interpolate(self.u['cyto']['u'])
+
+        # second reaction step (half time step) t=[t+dt/2,t+dt]
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, 
+                                              method='BDF', rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, 
+                                              method='RK45', rtol=1e-5, atol=1e-8)
+        self.update_solution_boundary_to_volume()
+
+        #print("finished second reaction step: t = %f, dt = %f (%d picard iterations)" % (self.t, self.dt, self.pidx))
+
+        #if self.pidx >= self.config.solver['max_picard']:
+        #    self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+        #    print("Decreasing step size")
+        #if self.pidx < self.config.solver['min_picard']:
+        #    self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+        #    print("Increasing step size")
+
+        self.update_solution()
+        Print("\n Finished step %d of RDR with final time: %f" % (self.idx, self.t))
+
+
+
+    def strang_RD_step_forward(self):
+        self.idx += 1
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n'
+              % (self.idx, self.t, self.dt))
+
+        # first reaction step (half time step) t=[t,t+dt/2]
+        self.boundary_reactions_forward(factor=0.5)
+        Print("finished reaction step: t = %f, dt = %f (%d picard iterations)" 
+              % (self.t, self.dt, self.pidx))
+        # transfer values of solution onto volumetric field
+        self.update_solution_boundary_to_volume()
+
+        self.diffusion_forward('cyto', factor=0.5) 
+        Print("finished diffusion step: t = %f, dt = %f (%d picard iterations)" 
+              % (self.t, self.dt, self.pidx))
+        self.update_solution_volume_to_boundary()
+
+        if self.pidx >= self.config.solver['max_picard']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+            Print("Decrease step size")
+        if self.pidx < self.config.solver['min_picard']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+            Print("Increasing step size")
+
+        Print("\n Finished step %d of RD with final time: %f" % (self.idx, self.t))
+
+    def IMEX_2SBDF(self, method='RK45'):
+        self.idx += 1
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' 
+              % (self.idx, self.t, self.dt))
+
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, 
+                                              method='RK45', rtol=1e-5, atol=1e-8)
+        self.update_solution_boundary_to_volume()
+   
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.IMEX_order2_diffusion_forward('cyto', factor=1)
+        self.update_solution_volume_to_boundary()
+
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, 
+                                              method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, 
+                                              method='RK45')
+
+        self.update_solution_boundary_to_volume()
+
+
+
+    def IMEX_1BDF(self, method='RK45'):
+        self.stopwatch("Total time step")
+        self.idx += 1
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
+
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+        self.update_solution_boundary_to_volume()
+       
+
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.IMEX_order1_diffusion_forward('cyto', factor=1)
+        self.update_solution_volume_to_boundary()
+
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+        self.update_solution_boundary_to_volume()
+
+        if self.linear_iterations >= self.config.solver['linear_maxiter']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+            Print("Decreasing step size")
+        if self.linear_iterations < self.config.solver['linear_miniter']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+            Print("Increasing step size")
+
+        self.stopwatch("Total time step", stop=True)
+
+        #self.u['cyto']['n'].assign(self.u['cyto']['u'])
+
+
+#    def reset_timestep(self, comp_list=[]):
+#        """
+#        Resets the time back to what it was before the time-step. Optionally, input a list of compartments
+#        to have their function values reset (['n'] value will be assigned to ['u'] function).
+#        """
+#        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_factor'])
+#        Print("Resetting time-step and decreasing step size")
+#        for comp_name in comp_list:
+#            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#            Print("Assigning old value of u to species in compartment %s" % comp_name)
+#
+#    def adaptive_solver(self):
+#
+
+
+    def IMEX_order1_diffusion_forward(self, comp_name, factor=1):
+        self.stopwatch("Diffusion step")
+        self.forward_time_step(factor=factor)
+        self.updateTimeDependentParameters()
+        d.parameters['form_compiler']['optimize'] = True
+        d.parameters['form_compiler']['cpp_optimize'] = True
+
+        forms = self.split_forms[comp_name]
+
+        self.stopwatch('A assembly')
+        if self.idx <= 1:
+            # terms which will not change across time-steps
+            self.Abase = d.assemble(forms['Mu'] + forms['D'], form_compiler_parameters={'quadrature_degree': 4}) # +d.lhs(forms["R"])
+            self.solver = d.KrylovSolver('cg','hypre_amg')
+            self.solver.parameters['nonzero_initial_guess'] = True
+
+
+#        # if the time step size changed we need to reassemble the LHS matrix...
+#        if self.idx > 1 and (self.linear_iterations >= self.config.solver['linear_maxiter'] or
+#           self.linear_iterations < self.config.solver['linear_miniter']):
+#            self.stopwatch('A assembly')
+#            self.A = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+#            self.stopwatch('A assembly', stop=True)
+#            self.linear_iterations = 0
+#            Print("Reassembling A because of change in time-step")
+#
+#        # sanity check to make sure A is not changing
+#        if self.idx == 2:
+#            Anew = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+#            Print("Ainit linf norm = %f" % self.A.norm('linf'))
+#            Print("Anew linf norm = %f" % Anew.norm('linf'))
+#            assert np.abs(self.A.norm('linf') - Anew.norm('linf')) < 1e-10
+
+        # full assembly in 1 step requires using previous time step value of volumetric species for boundary fluxes
+        self.A = self.Abase + d.assemble(d.lhs(forms['B'] + forms['R']), form_compiler_parameters={'quadrature_degree': 4})
+        self.stopwatch('A assembly', stop=True)
+
+        self.stopwatch('b assembly')
+        b = d.assemble(-forms['Mun'] +  d.rhs(forms['B'] + forms['R']), form_compiler_parameters={'quadrature_degree': 4})
+        self.stopwatch('b assembly', stop=True)
+
+        U = self.u[comp_name]['u'].vector()
+        self.linear_iterations = self.solver.solve(self.A, U, b)
+
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+        self.stopwatch("Diffusion step", stop=True)
+        Print("Diffusion step finished in %d iterations" % self.linear_iterations)
+        
+
+
+    def IMEX_order2_diffusion_forward(self, comp_name, factor=1):
+        self.stopwatch("Diffusion step")
+        self.forward_time_step(factor=factor)
+        self.updateTimeDependentParameters()
+
+        forms = self.split_forms[comp_name]
+
+        if self.idx <= 1:
+            # F = forms['Mu'] + forms['Mun'] + forms['D'] + forms['R'] + forms['B']
+            # self.a[comp_name] = d.lhs(F)
+            # self.L[comp_name] = d.rhs(F)
+
+            # terms which will not change across time-steps
+            self.stopwatch('A assembly')
+            self.A = d.assemble(3/2*forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+            self.solver = d.KrylovSolver('cg','hypre_amg')
+            self.solver.parameters['nonzero_initial_guess'] = True
+
+            Ainit = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 4})
+            self.stopwatch('A assembly', stop=True)
+            self.stopwatch('b assembly')
+            Mun = d.assemble(-forms['Mun'], form_compiler_parameters={'quadrature_degree': 4})
+            BR = d.assemble(d.rhs(forms['R']) + d.rhs(forms['B']), form_compiler_parameters={'quadrature_degree': 4})
+            binit = Mun + BR
+
+            self.stopwatch('b assembly', stop=True)
+            U = self.u[comp_name]['u'].vector()
+            self.solver.solve(Ainit, U, binit)
+
+            self.Mun_old = Mun
+            self.BR_old = BR
+            return
+
+        # sanity check to make sure A is not changing
+        #Anew = d.assemble(forms['Mu'] + forms['D'] + d.lhs(forms['R'] + d.lhs(forms['B'])), form_compiler_parameters={'quadrature_degree': 2})
+        #print("A mean: %f" % self.A.array().mean())
+        #print("Anew mean: %f" % Anew.array().mean())
+
+        self.stopwatch('b assembly')
+        d.parameters['form_compiler']['optimize'] = True
+        d.parameters['form_compiler']['cpp_optimize'] = True
+
+        # minus signs here moves terms from LHS (convention) to RHS
+        # rhs() implicitly flips sign of term
+        Mun = d.assemble(-forms['Mun'], form_compiler_parameters={'quadrature_degree': 3})
+        BR = d.assemble(d.rhs(forms['R']) + d.rhs(forms['B']), form_compiler_parameters={'quadrature_degree': 3})
+
+        Mun_rhs = +2*Mun - 1/2 * self.Mun_old
+        BR_rhs = 2*BR - self.BR_old
+
+        b = Mun_rhs + BR_rhs
+
+        ##print('Mun max: %f, B max: %f, R max: %f' % (rxn_Mun.max(), rxn_B.max(), rxn_R.max()))
+        ##b = rxn_Mun+rxn_B+rxn_R
+        self.stopwatch('b assembly', stop=True)
+        ##b = d.assemble(rxn, form_compiler_parameters={'quadrature_degree': 2})
+        U = self.u[comp_name]['u'].vector()
+        #d.solve(self.A, U, b, 'cg', 'hypre_amg')
+        self.solver.solve(self.A, U, b)
+        #d.parameters["form_compiler"]["quadrature_degree"] = 3
+        #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], solver_parameters=self.config.dolfin_linear)
+
+        #self.solver.solve(self.a==self.L, self.u['cyto']['u'])
+#            self.F[comp_name] = total_eqn
+#            J = d.derivative(self.F[comp_name], self.u[comp_name]['u'])
+#            problem = d.NonlinearVariationalProblem(self.F[comp_name], self.u[comp_name]['u'], [], J)
+#            self.nonlinear_solver[comp_name] = d.NonlinearVariationalSolver(problem)
+#            p = self.nonlinear_solver[comp_name].parameters
+#            p['newton_solver'].update(self.config.dolfin_linear)
+
+#            self.a[comp_name] = d.lhs(total_eqn)
+#            self.L[comp_name] = d.rhs(total_eqn)
+
+        #d.solve(self.a[comp_name] == self.L[comp_name], self.u[comp_name]['u'])
+
+        #self.nonlinear_solver[comp_name].solve()
+
+        #self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+        self.Mun_old = Mun
+        self.BR_old = BR
+
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+        self.stopwatch("Diffusion step", stop=True)
+
+
+
+
+
+    def establish_mappings(self):
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.parent_species:
+                sp_parent = self.SD.Dict[sp.parent_species]
+                Vsub = self.V[sp.compartment_name]
+                submesh = self.CD.meshes[sp.compartment_name]
+                V = self.V[sp_parent.compartment_name]
+                submesh_species_index = sp.compartment_index
+                mesh_species_index = sp_parent.compartment_index
+
+                idx = common.submesh_dof_to_mesh_dof(Vsub, submesh, self.CD.bmesh_emap_0, V,
+                                                     submesh_species_index=submesh_species_index,
+                                                     mesh_species_index=mesh_species_index)
+                sp_parent.dof_map.update({sp_name: idx})
 
     def update_solution_boundary_to_volume(self, keys=['k', 'u']):
         for sp_name, sp in self.SD.Dict.items():
@@ -1625,80 +1767,233 @@ class Model(object):
                     sub_comp_name = key[1:]
                     Print("Projected values from volume %s to surface %s" % (comp_name, sub_comp_name))
 
+    def update_solution_volume_to_boundary_subspecies(self):
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.sub_species:
+                for comp_name, sp_sub in sp.sub_species.items():
+                    sub_name = sp_sub.name
+                    submesh_species_index = sp_sub.compartment_index
+                    idx = sp.dof_map[sub_name]
+
+                    pcomp_name = sp.compartment_name
+
+                    unew = self.u[pcomp_name]['u'].vector()[idx]
+
+                    stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], unew, self.V[comp_name], submesh_species_index)
+                    stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['n'], unew, self.V[comp_name], submesh_species_index)
+                    Print("Assigned values from %s (%s) to %s (%s)" % (sp_name, pcomp_name, sub_name, comp_name))
+
+    def update_solution_boundary_to_volume_dirichlet(self):
+        bcs = []
+        for sp_name, sp in self.SD.Dict.items():
+            if sp.parent_species:
+                sp_parent = self.SD.Dict[sp.parent_species]
+                parent_species_index = sp_parent.compartment_index
+                submesh_species_index = sp.compartment_index
+
+                pcomp_name = sp_parent.compartment_name
+                comp_name = sp.compartment_name
+
+                self.stopwatch("split")
+                ub = self.u[comp_name]['u'].split()[submesh_species_index]
+                self.stopwatch("split", stop=True)
+                self.stopwatch("extrapolate")
+                ub.set_allow_extrapolation(True)
+                self.stopwatch("extrapolate", stop=True)
+                self.stopwatch("Vs")
+                Vs = self.V[pcomp_name].sub(parent_species_index)
+                self.stopwatch("Vs", stop=True)
+                Print('pcomp_name %s, parent_species_index %d' % (pcomp_name, parent_species_index))
+                self.stopwatch("interpolate")
+                u_dirichlet = d.interpolate(ub, Vs.collapse())
+                self.stopwatch("interpolate",stop=True)
+
+                self.stopwatch("DirichletBC")
+                bcs.append(d.DirichletBC(Vs, u_dirichlet, self.CD.vmf, sp.compartment.cell_marker))
+                self.stopwatch("DirichletBC", stop=True)
+
+                Print("Assigned values from %s (%s) to %s (%s) [DirichletBC]" % (sp_name, comp_name, sp_parent.name, pcomp_name))
+        self.bcs=bcs
+        return bcs
+
 
     def boundary_reactions_forward(self, factor=1, bcs=[], key='n'):
         self.stopwatch("Boundary reactions forward")
         nsubsteps = 1#int(self.config.solver['reaction_substeps'])
 
         for n in range(nsubsteps):
-            self.forward_time_step(factor=factor/nsubsteps)
-            self.updateTimeDependentParameters(t0=self.t)
+            t0 = self.t
+            #self.forward_time_step(factor=factor/nsubsteps)
+            #self.updateTimeDependentParameters(t0=t0)
             for comp_name, comp in self.CD.Dict.items():
                 if comp.dimensionality < self.CD.max_dim:
-                    self.nonlinear_solve(comp_name, factor=factor)
+                    #if self.config.solver['nonlinear'] == 'picard':
+                    #    self.picard_loop(comp_name, bcs)
+                    #elif self.config.solver['nonlinear'] == 'newton':
+                    self.newton_iter(comp_name)
                     self.set_time(self.t-self.dt)
                     self.u[comp_name][key].assign(self.u[comp_name]['u'])
         self.stopwatch("Boundary reactions forward", stop=True)
 
-    # def diffusion_forward(self, comp_name, factor=1, bcs=[]):
-    #     self.stopwatch("Diffusion step ["+comp_name+"]")
-    #     t0 = self.t
-    #     self.forward_time_step(factor=factor)
-    #     self.updateTimeDependentParameters(t0=t0)
-    #     if self.config.solver['nonlinear'] == 'picard':
-    #         self.picard_loop(comp_name, bcs)
-    #     elif self.config.solver['nonlinear'] == 'newton':
-    #         self.newton_iter(comp_name)
-    #     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-    #     self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
 
-
-    def nonlinear_solve(self, comp_name, factor=1.0):
+    def boundary_reactions_forward_scipy(self, comp_name, factor=1, all_dofs=False, method='RK45', rtol=1e-4, atol=1e-6):
+        self.stopwatch("Boundary reactions forward %s" % comp_name)
         """
-        A switch for choosing a nonlinear solver
+        Since FEniCS doesn't support submeshes in parallel we distribute the entire boundary mesh to each CPU
+        and parallelize manually
         """
-        if self.config.solver['nonlinear'] == 'newton':
-            self.NLidx, success = self.newton_iter(comp_name, factor=factor)
-        elif self.config.solver['nonlinear'] == 'picard':
-            self.NLidx, success = self.picard_loop(comp_name, factor=factor)
 
-        return self.NLidx, success
+        #TODO: parallelize this
+
+        # time step forward (irrelevant except for keeping track of time since solve_ivp() uses lambdas for time dependent parameters)
+        self.forward_time_step(factor=factor) # increment time 
+        #self.updateTimeDependentParameters() 
+
+        if all_dofs:
+            num_vertices = self.CD.Dict[comp_name].num_vertices
+        else:
+            x,y,z = (0,0,0) # point to evaluate
+            num_vertices = 1
+        if comp_name not in self.scipy_odes.keys():
+            self.scipy_odes[comp_name] = self.flux_to_scipy(comp_name, mult=num_vertices)
+        lode, ptuple, tparam, boundary_species = self.scipy_odes[comp_name]
+
+        nbspecies = len(boundary_species)
+        ub = np.full(nbspecies * num_vertices, np.nan)
+        for spidx, sp in enumerate(boundary_species):
+            pcomp_name = self.SD.Dict[sp].compartment_name
+            pcomp_idx = self.SD.Dict[sp].compartment_index
+            pcomp_nspecies = self.V['boundary'][pcomp_name][comp_name].num_sub_spaces()
+            if pcomp_nspecies==0: pcomp_nspecies=1
+            if all_dofs:
+                ub[spidx::nbspecies] = self.u[pcomp_name]['b'+comp_name].vector()[pcomp_idx::pcomp_nspecies]
+            else:
+                ub[spidx] = self.u[pcomp_name]['b'+comp_name](x,y,z)[pcomp_idx]
+                
+
+        if all_dofs:
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t-self.dt*factor, self.t], self.u[comp_name]['n'].vector(), method=method, rtol=rtol, atol=atol)
+            # assign solution
+            self.u[comp_name]['u'].vector()[:] = sol.y[:,-1]
+        else:
+            # all vertices have the same value
+            sol = solve_ivp(lambda t,y: lode(t,y,ptuple,tparam,ub=ub), [self.t-self.dt*factor, self.t], self.u[comp_name]['n'](x,y,z), method=method, rtol=rtol, atol=atol)
+            for idx, val in enumerate(sol.y[:,-1]):
+                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name]['u'], val, idx) 
 
 
-    def DRD_solve(self, bcs=[], boundary_method='RK45'):
-        """
-        General DRD operator splitting. Can be used with different non-linear
-        solvers
-        """
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+        self.stopwatch("Boundary reactions forward %s" % comp_name, stop=True)
+
+
+
+
+    def diffusion_forward(self, comp_name, factor=1, bcs=[]):
+        self.stopwatch("Diffusion step ["+comp_name+"]")
+        t0 = self.t
+        self.forward_time_step(factor=factor)
+        self.updateTimeDependentParameters(t0=t0)
+        if self.config.solver['nonlinear'] == 'picard':
+            self.picard_loop(comp_name, bcs)
+        elif self.config.solver['nonlinear'] == 'newton':
+            self.newton_iter(comp_name)
+        self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
+
+    def picard_loop(self, comp_name, bcs=[]):
+        exit_loop = False
+        self.pidx = 0
+        while True:
+            self.pidx += 1
+#            if self.CD.Dict[comp_name].dimensionality == self.CD.max_dim:
+#                linear_solver_settings = self.config.dolfin_linear
+#            else:
+#                linear_solver_settings = self.config.dolfin_linear
+            linear_solver_settings = self.config.dolfin_linear
+            
+            d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+            #print('u (%s) mean: %f' % (comp_name, self.u[comp_name]['u'].compute_vertex_values().mean()))
+            self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+            self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+
+
+
+            Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['linear_abstol']:
+                #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
+                 #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
+                break
+#            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
+#                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
+#                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
+#                break
+
+            if self.pidx > self.config.solver['max_picard']:
+                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
+                (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+                break
+
+
+    def iterative_solver(self, bcs=[], boundary_method='RK45'):
         Print('\n\n\n')
         self.idx += 1
         self.check_dt_resets()
+        #Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
         color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
 
         self.stopwatch("Total time step")
 
+
         # solve volume problem(s)
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
-                #self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
-                self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
+                self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
                 self.set_time(self.t-self.dt/2) # reset time back to t=t0
         self.update_solution_volume_to_boundary()
 
         # single iteration
         # solve boundary problem(s)
-        self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
+        self.boundary_reactions_forward() # t from [t0, t+dt]. automatically resets time back to t0
         self.update_solution_boundary_to_volume()
-        self.set_time(self.t-self.dt/2) # perform the second half-step
 
         # solve volume problem(s)
+        self.set_time(self.t+self.dt/2) # perform the second half-step
         for comp_name, comp in self.CD.Dict.items():
             if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
+                self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
                 self.set_time(self.t-self.dt/2)
         self.set_time(self.t+self.dt/2)
         self.update_solution_volume_to_boundary()
 
+        # # multiple iterations
+        # self.iidx = 0 # inner index (how many times did we iterate back and forth b/w solving boundary/volume problems)
+        # while True:
+        #     self.iidx += 1
+        #     # solve boundary problem(s)
+        #     self.boundary_reactions_forward(key='k')
+        #     self.update_solution_boundary_to_volume(keys=['u', 'k'])
+        #     # solve volume problem(s)
+        #     for comp_name, comp in self.CD.Dict.items():
+        #         if comp.dimensionality == self.CD.max_dim:
+        #             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+        #             self.NLidx, success = self.newton_iter(comp_name, assign_to_n=False)
+        #             # convergence check
+        #             abs_err = self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+
+        #     self.update_solution_volume_to_boundary()
+
+        #     if abs_err < self.config.solver['iteration_tol']:
+        #         for comp_name in self.CD.Dict.keys():
+        #             self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        #         break
+        #     else: # keep iterating
+        #         color_print('abs_err = %f is not low enough. Resetting time and iterating again.' % abs_err, color='red')
+        #         self.set_time(self.t-self.dt)
+        #         pass
+
+
+
         # check if time step should be changed
         if self.NLidx <= self.config.solver['min_newton']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
@@ -1709,56 +2004,111 @@ class Model(object):
 
         self.stopwatch("Total time step", stop=True, color='cyan')
 
-    def DR_solve(self, bcs=[], boundary_method='RK45'):
-        """
-        General DR operator splitting. Can be used with different non-linear
-        solvers
-        """
-        Print('\n\n\n')
-        self.idx += 1
-        self.check_dt_resets()
-        color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
 
+    def IMEX_1BDF(self, method='RK45'):
         self.stopwatch("Total time step")
+        self.idx += 1
+        Print('\n\n *** Beginning time-step %d [time=%f, dt=%f] ***\n\n' % (self.idx, self.t, self.dt))
 
-        # solve volume problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.nonlinear_solve(comp_name, factor=1.0)
-                self.set_time(self.t-self.dt) # reset time back to t=t0
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
+        self.update_solution_boundary_to_volume()
+       
+
+        self.set_time(self.t-self.dt/2) # reset time back to t
+        self.IMEX_order1_diffusion_forward('cyto', factor=1)
         self.update_solution_volume_to_boundary()
 
-        # single iteration
-        # solve boundary problem(s)
-        self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('pm', factor=0.5, method=method, rtol=1e-5, atol=1e-8)
+        self.set_time(self.t-self.dt/2) # reset time back to t+dt/2
+        self.boundary_reactions_forward_scipy('er', factor=0.5, all_dofs=True, method='RK45')
         self.update_solution_boundary_to_volume()
 
-        # check if time step should be changed
-        if self.NLidx <= self.config.solver['min_newton']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
-            Print("Increasing step size")
-        if self.NLidx > self.config.solver['max_newton']:
+        if self.linear_iterations >= self.config.solver['linear_maxiter']:
             self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
             Print("Decreasing step size")
+        if self.linear_iterations < self.config.solver['linear_miniter']:
+            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+            Print("Increasing step size")
 
-        self.stopwatch("Total time step", stop=True, color='cyan')
+        self.stopwatch("Total time step", stop=True)
 
 
 
-#===============================================================================
-#===============================================================================
-# Nonlinear solvers: 
-#  - Timestep
-#  - Update time dependent parameters
-#  - Solve
-#  - Assign new solution to old solution unless otherwise stated
-#===============================================================================
-#===============================================================================
-
-    def newton_iter(self, comp_name, factor=1, bcs=[], assign_to_n=True):
+    # TODO
+    def flux_to_scipy(self, comp_name, mult=1):
         """
-        A single iteration of Newton's method for a single component.
+        mult allows us to artificially make an ODE repeat e.g. 
+        dy = [dy_1, dy_2, dy_3] -> (mult=2) dy=[dy_1, dy_2, dy_3, dy_1, dy_2, dy_3]
+        Useful when we want to solve a distributed ODE on some domain so that
+        scipy can work its vector optimization magic
         """
+        dudt = []
+        param_list = []
+        time_param_list = []
+        species_list = list(self.SD.Dict.values())
+        species_list = [s for s in species_list if s.compartment_name==comp_name]
+        species_list.sort(key = lambda s: s.compartment_index)
+        spname_list = [s.name for s in species_list]
+        num_species = len(species_list)
+
+        flux_list = list(self.FD.Dict.values())
+        flux_list = [f for f in flux_list if f.species_name in spname_list]
+
+        for idx in range(num_species):
+            sp_fluxes = [f.total_scaling*f.signed_stoich*f.symEqn for f in flux_list if f.species_name == spname_list[idx]]
+            total_flux = sum(sp_fluxes)
+            dudt.append(total_flux)
+
+            if total_flux:
+                for psym in total_flux.free_symbols:
+                    pname = str(psym)
+                    if pname in self.PD.Dict.keys():
+                        p = self.PD.Dict[pname]
+                        if p.is_time_dependent:
+                            time_param_list.append(p)
+                        else:
+                            param_list.append(pname)
+
+        
+        param_list = list(set(param_list))
+        time_param_list = list(set(time_param_list))
+
+        ptuple = tuple([self.PD.Dict[str(x)].value for x in param_list])
+        time_param_lambda = [lambdify('t', p.symExpr, modules=['sympy','numpy']) for p in time_param_list]
+        time_param_name_list = [p.name for p in time_param_list]
+
+        free_symbols = list(set([str(x) for total_flux in dudt for x in total_flux.free_symbols]))
+
+        boundary_species = [str(sp) for sp in free_symbols if str(sp) not in spname_list+param_list+time_param_name_list]
+        num_boundary_species = len(boundary_species)
+        if boundary_species:
+            Print("Adding species %s to flux_to_scipy" % boundary_species)
+        #Params = namedtuple('Params', param_list)
+
+        dudt_lambda = [lambdify(flatten(spname_list+param_list+time_param_name_list+boundary_species), total_flux, modules=['sympy','numpy']) for total_flux in dudt]
+
+
+        def lambdified_odes(t, u, p, time_p, ub=[]):
+            if int(mult*num_species) != len(u):
+                raise Exception("mult*num_species [%d x %d = %d] does not match the length of the input vector [%d]!" %
+                                (mult, num_species, mult*num_species, len(u)))
+            time_p_eval = [f(t) for f in time_p]
+            dudt_list = []
+            for idx in range(mult):
+                idx0 = idx*num_species
+                idx0b = idx*num_boundary_species
+                inp = flatten([u[idx0 : idx0+num_species], p, time_p_eval, ub[idx0b : idx0b+num_boundary_species]])
+                dudt_list.extend([f(*inp) for f in dudt_lambda])
+            return dudt_list
+
+        return (lambdified_odes, ptuple, time_param_lambda, boundary_species)
+
+
+
+    def newton_iter(self, comp_name, factor=1, assign_to_n=True):
         self.stopwatch("Newton's method [%s]" % comp_name)
         t0 = self.t
         self.forward_time_step(factor=factor) # increment time afterwards
@@ -1773,55 +2123,51 @@ class Model(object):
         Print("%d Newton iterations required for convergence." % idx)
         return idx, success
 
-    def picard_loop(self, comp_name, factor=1, bcs=[], assign_to_n=True):
-        """
-        Continue picard iterations until a specified tolerance or count is
-        reached.
-        """
-        self.stopwatch("Picard loop [%s]" % comp_name)
-        t0 = self.t
-        self.forward_time_step(factor=factor) # increment time afterwards
-        self.updateTimeDependentParameters(t0=t0)
-        self.pidx = 0 # count the number of picard iterations
-        success = True
 
-        # main loop
-        while True:
-            self.pidx += 1
-            #linear_solver_settings = self.config.dolfin_krylov_solver
-           
-            # solve 
-            self.linear_solver[comp_name].solve()
-            #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+    def sort_forms(self):
+        # solve the lower dimensional problem first (usually stiffer)
+        comp_list = [self.CD.Dict[key] for key in self.u.keys()]
+        self.split_forms = ddict(dict)
+        form_types = set([f.form_type for f in self.Forms.form_list])
 
-            # update temporary value of u
-            self.data.computeError(self.u, comp_name, self.config.solver['norm'])
-            self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+        if self.config.solver['nonlinear'] == 'picard':
+            Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+            for comp in comp_list:
+                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.a[comp.name] = d.lhs(sum(comp_forms))
+                self.L[comp.name] = d.rhs(sum(comp_forms))
+        elif self.config.solver['nonlinear'] == 'newton':
+            Print("Formulating problem as F(u;v) == 0 for newton iterations")
+            for comp in comp_list:
+                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+                self.F[comp.name] = sum(comp_forms)
+                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
+                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
 
-            # Exit if error tolerance or max iterations is reached
-            Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['picard_abstol']:
-                #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
-                 #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
-                break
-#            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
-#                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
-#                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
-#                break
+                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
+                p = self.nonlinear_solver[comp.name].parameters
+                p['nonlinear_solver'] = 'newton'
 
-            if self.pidx >= self.config.solver['max_picard']:
-                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
-                (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-                success = False
-                break
+                p['newton_solver'].update(self.config.dolfin_nonlinear_solver)
+                p['newton_solver']['krylov_solver'].update(self.config.dolfin_krylov_solver)
+                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
-        self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
 
-        if assign_to_n:
-            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        elif self.config.solver['nonlinear'] == 'IMEX':
+            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
+            for comp in comp_list:
+                comp_forms = self.Forms.select_by('compartment_name', comp.name)
+                for form_type in form_types:
+                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
-        Print("%d Picard iterations required for convergence." % self.pidx)
-        return self.pidx, success
+            # 2nd order semi-implicit BDF
+
+#comp_list = [model.CD.Dict[key] for key in model.u.keys()]
+#form_types = set([f.form_type for f in model.Forms.form_list])
+#for comp in comp_list:
+#    comp_forms = model.Forms.select_by('compartment_name', comp.name)
+#    for form_type in form_types:
+#        model.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
 
 #===============================================================================
@@ -1842,9 +2188,7 @@ class Model(object):
 
     def compute_statistics(self):
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
-        self.data.outputCSV(self.config)
 
     def plot_solution(self):
         self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
@@ -1855,3 +2199,60 @@ class Model(object):
     def plot_solver_status(self):
         self.data.plotSolverStatus(self.config)
 
+    def de_solver(self, func_vectors, num_params, t_span,initial_guess_for_root = None, max_step=0.01, jac=False, method='RK45'):
+        '''
+        >>> de_solver(lambda t, u:[np.sin(u[0])+np.exp(u[1]), 3*u[0]*u[1]], num_params=2,t_span=[0,10]).success
+        True
+        '''
+        if initial_guess_for_root is None:
+            ini = [0]*num_params
+        root_info = optimize.root(lambda y:func_vectors(0, y),ini,jac=jac)
+        if root_info.success:
+            root = root_info.x
+        else:
+            raise Exception('Unable to find initial condition')
+        sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
+        return sol
+#     def init_solver(self):
+
+
+
+class FormContainer(object):
+    def __init__(self):
+        self.form_list = []
+    def add(self, new_form):
+        self.form_list.append(new_form)
+    def select_by(self, selection_key, value):
+        return [f for f in self.form_list if getattr(f, selection_key)==value]
+    def inspect(self, form_list=None):
+        if not form_list:
+            form_list = self.form_list
+
+        for index, form in enumerate(form_list):
+            Print("Form with index %d from form_list..." % index)
+            if form.flux_name:
+                Print("Flux name: %s" % form.flux_name)
+            Print("Species name: %s" % form.species_name)
+            Print("Form type: %s" % form.form_type)
+            form.inspect()
+
+
+class Form(object):
+    def __init__(self, dolfin_form, species, form_type, flux_name=None):
+        # form_type:
+        # 'M': transient/mass form (holds time derivative)
+        # 'D': diffusion form
+        # 'R': domain reaction forms
+        # 'B': boundary reaction forms
+
+        self.dolfin_form = dolfin_form
+        self.species = species
+        self.species_name = species.name
+        self.compartment_name = species.compartment_name
+        self.form_type = form_type
+        self.flux_name = flux_name
+
+    def inspect(self):
+        integrals = self.dolfin_form.integrals()
+        for index, integral in enumerate(integrals):
+            Print(str(integral) + "\n")
