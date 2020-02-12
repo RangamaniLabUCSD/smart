@@ -1,8 +1,8 @@
-""" 
+"""
 Classes for parameters, species, compartments, reactions, fluxes, and forms
 Model class contains functions to efficiently solve a system
 """
-
+import pdb
 import re
 from collections import Counter
 from collections import OrderedDict as odict
@@ -181,7 +181,7 @@ class _ObjectContainer(object):
                     newDict.update({value: objList[0]})
                 setattr(obj1, linked_name, newDict)
             # standard behavior
-            else: 
+            else:
                 objList = ObjectContainer2.where_equals(property_name2, obj1_value)
                 if len(objList) != 1:
                     raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
@@ -216,7 +216,7 @@ class _ObjectContainer(object):
                 df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print))
         # sometimes types are recast. change entries into their original types
         for dtypeName, dtype in self.dtypes.items():
-            if dtypeName in df.columns: 
+            if dtypeName in df.columns:
                 df = df.astype({dtypeName: dtype})
 
         return df
@@ -258,10 +258,10 @@ class _ObjectContainer(object):
             df = self.get_pandas_dataframe(properties_to_print=properties_to_print)
             if properties_to_print:
                 df = df[properties_to_print]
-    
+
             print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
                    #headers='keys', tablefmt=tablefmt), width=120)
-        else: 
+        else:
             pass
 
     def __str__(self):
@@ -308,7 +308,7 @@ class _ObjectInstance(object):
         setattr(self, new_dict_name, getattr(self,dict1).update(getattr(self,dict2)))
     def assemble_units(self, value_name=None, unit_name='unit', assembled_name=None):
         """
-        Simply multiplies a value by a unit (pint type) to create a pint "Quantity" object 
+        Simply multiplies a value by a unit (pint type) to create a pint "Quantity" object
         """
         if not assembled_name:
             assembled_name = unit_name
@@ -354,11 +354,11 @@ class ParameterContainer(_ObjectContainer):
 class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
-    def assembleTimeDependentParameters(self): 
+    def assembleTimeDependentParameters(self):
         #TODO
         if not self.is_time_dependent:
             return
-        # Parse the given string to create a sympy expression 
+        # Parse the given string to create a sympy expression
         if self.symExpr:
             self.symExpr = parse_expr(self.symExpr)
             Print("Creating dolfin object for time-dependent parameter %s" % self.name)
@@ -423,7 +423,7 @@ class SpeciesContainer(_ObjectContainer):
             if rank==root:
                 print('Compartment %s (dimension: %d) has %d species associated with it' %
                       (compartment_name, compartmentDim, num_species))
-        
+
             # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
             if num_species == 1:
                 V[compartment_name] = d.FunctionSpace(CD.meshes[compartment_name], 'P', 1)
@@ -436,7 +436,7 @@ class SpeciesContainer(_ObjectContainer):
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunctions(V[compartment_name])
 
-        if not settings['add_boundary_species']: # if the setting is true sub_species will be added 
+        if not settings['add_boundary_species']: # if the setting is true sub_species will be added
             # now we create boundary functions, which are defined on the function spaces of the surrounding mesh
             V['boundary'] = {}
             for compartment_name, num_species in num_species_per_compartment.items():
@@ -554,7 +554,7 @@ class CompartmentContainer(_ObjectContainer):
                     obj.mesh = submesh
                 else:
                     Print("Saving submeshes %s for use in parallel" % key)
-                    submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)                
+                    submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)
                     self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
                     self.meshes[key] = submesh
                     obj.mesh = submesh
@@ -573,7 +573,7 @@ class CompartmentContainer(_ObjectContainer):
             obj.dx = d.Measure('dx', domain=obj.mesh, metadata={'quadrature_degree': 3})
 
         # Get # of vertices
-        for key, mesh in self.meshes.items():        
+        for key, mesh in self.meshes.items():
             num_vertices = mesh.num_vertices()
             print('CPU %d: My partition of mesh %s has %d vertices' % (rank, key, num_vertices))
             self.Dict[key].num_vertices = num_vertices
@@ -811,7 +811,7 @@ class FluxContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Flux, df, Dict)
         # self.properties_to_print = ['species_name', 'symEqn', 'sign', 'involved_species',
-        #                      'involved_parameters', 'source_compartment', 
+        #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
         self.properties_to_print = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
@@ -870,10 +870,10 @@ class FluxContainer(_ObjectContainer):
             length_scale_factor = comp1.scale_to[comp2]
             print("computed length_scale_factor")
             setattr(new_flux, 'length_scale_factor', length_scale_factor)
-        
+
             new_flux_list.append((new_flux_name, new_flux))
             #else:
-            #    new_species_name = 
+            #    new_species_name =
             #    print("species name, source compartment: %s, %s" % (f.species_name, f.source_compartment))
 
         for flux_rm in fluxes_to_remove:
@@ -1043,8 +1043,8 @@ class Flux(_ObjectInstance):
         var = self.spDict[var_name]
 
         # boundary fluxes (surface -> volume)
-        #if var.dimensionality < sp.dimensionality: 
-        if var.dimensionality < sp.compartment.dimensionality: 
+        #if var.dimensionality < sp.dimensionality:
+        if var.dimensionality < sp.compartment.dimensionality:
             return 'u' # always true if operator splitting to decouple compartments
 
         if sp.name == var.parent_species:
@@ -1118,10 +1118,10 @@ class Flux(_ObjectInstance):
             #         return 'k'
 
         # elif config.solver['nonlinear'] == 'IMEX':
-        #     if 
+        #     if
         #     return 'n'
 
-        raise Exception("If you made it to this far in get_ukey() I missed some logic...") 
+        raise Exception("If you made it to this far in get_ukey() I missed some logic...")
 
 
 
@@ -1269,13 +1269,11 @@ class Model(object):
                     if len(j.involved_compartments.keys()) < 2:
                         Print("Units of flux: %s" % unit_prod)
                         Print("Desired units: %s" % j.flux_units)
-                        raise Exception("Flux %s seems to be a boundary flux (or has inconsistent units) but only has one compartment, %s." 
+                        raise Exception("Flux %s seems to be a boundary flux (or has inconsistent units) but only has one compartment, %s."
                             % (j.name, j.destination_compartment))
                     length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
 
-                Print(('\nThe flux, %s, from compartment %s to %s, has units ' %
-                       (j.flux_name, j.source_compartment, j.destination_compartment) + colored(unit_prod, "red") +
-                       "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
+                Print(f'\nThe flux, {j.flux_name}, from compartment {j.source_compartment} to {j.destination_compartment}, has units {colored(unit_prod.to_root_units(), "red")}... the desired units for this flux are {colored(j.flux_units, "cyan")}')
 
                 if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
                     pass
@@ -1284,8 +1282,8 @@ class Model(object):
                 else:
                     raise Exception("Inconsitent units!")
 
-                Print('Adjusted flux with the length scale factor ' + 
-                      colored("%f [%s]"%(length_scale_factor.magnitude,str(length_scale_factor.units)), "cyan") + ' to match units.\n') 
+                Print('Adjusted flux with the length scale factor ' +
+                      colored("%f [%s]"%(length_scale_factor.magnitude,str(length_scale_factor.units)), "cyan") + ' to match units.\n')
 
                 prod *= length_scale_factor.magnitude
                 total_scaling *= length_scale_factor.magnitude
@@ -1350,7 +1348,7 @@ class Model(object):
                         Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
                         self.Forms.add(Form(Dform, sp, 'D'))
 
-                # time derivative 
+                # time derivative
                 Mform_u = u/dT * v * dx
                 Mform_un = -un/dT * v * dx
                 self.Forms.add(Form(Mform_u, sp, "Mu"))
@@ -1361,7 +1359,7 @@ class Model(object):
 
     def set_allow_extrapolation(self):
         for comp_name in self.u.keys():
-            ucomp = self.u[comp_name] 
+            ucomp = self.u[comp_name]
             for func_key in ucomp.keys():
                 if func_key != 't': # trial function by convention
                     self.u[comp_name][func_key].set_allow_extrapolation(True)
@@ -1382,7 +1380,7 @@ class Model(object):
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
                 self.a[comp.name] = d.lhs(sum(comp_forms))
                 self.L[comp.name] = d.rhs(sum(comp_forms))
-                problem = d.LinearVariationalProblem(self.a[comp.name], 
+                problem = d.LinearVariationalProblem(self.a[comp.name],
                                                      self.L[comp.name], self.u[comp.name]['u'], [])
                 self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
                 p = self.linear_solver[comp.name].parameters
@@ -1423,7 +1421,7 @@ class Model(object):
     def solve(self, op_split_scheme = "DRD", plot_period=1):
         ## solve
         self.init_solver_and_plots()
-        
+
         self.stopwatch("Total simulation")
         while True:
             # Solve using specified operator-splitting scheme (just DRD for now)
@@ -1440,7 +1438,7 @@ class Model(object):
                 self.plot_solver_status()
             if self.t >= self.config.solver['T']:
                 break
-        
+
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
@@ -1455,14 +1453,14 @@ class Model(object):
         self.t = t
         self.T.assign(t)
         self.dt = dt
-        self.dT.assign(dt) 
+        self.dT.assign(dt)
 
     def check_dt_resets(self):
         """
-        Checks to see if the size of a full-time step would pass a "reset dt" 
-        checkpoint. At these checkpoints dt is reset to some value 
+        Checks to see if the size of a full-time step would pass a "reset dt"
+        checkpoint. At these checkpoints dt is reset to some value
         (e.g. to force smaller sampling during fast events)
-        """        
+        """
 
         # if last time-step we passed a reset dt checkpoint then reset it now
         if self.reset_dt:
@@ -1480,7 +1478,7 @@ class Model(object):
                     raise Exception("The number of times to reset dt must be equivalent to the length of the list of dts to reset to.")
                 if len(self.config.advanced['reset_times']) == 0:
                     return
-            else: 
+            else:
                 return
         else:
             return
@@ -1500,7 +1498,7 @@ class Model(object):
             # set a flag to change dt to the config specified value
             self.reset_dt = True
 
-                
+
     def forward_time_step(self, factor=1):
 
         self.dT.assign(float(self.dt*factor))
@@ -1523,7 +1521,7 @@ class Model(object):
             self.timings[key].append(elapsed_time)
             return elapsed_time
 
-    def updateTimeDependentParameters(self, t=None, t0=None, dt=None): 
+    def updateTimeDependentParameters(self, t=None, t0=None, dt=None):
         if not t:
             t = self.t
         if t0 and dt:
@@ -1547,13 +1545,13 @@ class Model(object):
                 newValue = param.symExpr.subs({'t': t}).evalf()
                 value_assigned += 1
 
-            # calculate a preintegrated expression by subtracting previous value 
+            # calculate a preintegrated expression by subtracting previous value
             # and dividing by time-step
             if param.symExpr and param.preintegrated_symExpr:
                 if t0 == None:
                     raise Exception("Must provide a time interval for"\
                                     "pre-integrated variables.")
-                newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf() 
+                newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf()
                             - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
                 value_assigned += 1
 
@@ -1747,7 +1745,7 @@ class Model(object):
 
 #===============================================================================
 #===============================================================================
-# Nonlinear solvers: 
+# Nonlinear solvers:
 #  - Timestep
 #  - Update time dependent parameters
 #  - Solve
@@ -1789,8 +1787,8 @@ class Model(object):
         while True:
             self.pidx += 1
             #linear_solver_settings = self.config.dolfin_krylov_solver
-           
-            # solve 
+
+            # solve
             self.linear_solver[comp_name].solve()
             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
 
@@ -1810,7 +1808,7 @@ class Model(object):
 #                break
 
             if self.pidx >= self.config.solver['max_picard']:
-                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." % 
+                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
                 success = False
                 break
