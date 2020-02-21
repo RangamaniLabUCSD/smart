@@ -10,7 +10,7 @@ sys.path.append("../../")
 import stubs
 unit = stubs.unit # unit registry
 
-# initialize 
+# initialize
 p = stubs.model_building.ParameterDF()
 s = stubs.model_building.SpeciesDF()
 c = stubs.model_building.CompartmentDF()
@@ -24,14 +24,14 @@ p.append('kr', 0.1, 1/unit.s, 'reverse rate')
 ### define species
 # name, plot group, concentration units, initial condition, diffusion
 # coefficient, diffusion coefficient units, compartment
-s.append('A', 'cytosolic', unit.uM, 10.0, 10, unit.um**2/unit.s, 'cyto')
-s.append('X', 'membrane bound', unit.molecule/unit.um**2, 1000.0, 0.1, unit.um**2/unit.s, 'pm')
-s.append('B', 'membrane bound', unit.molecule/unit.um**2, 0.0, 50, unit.um**2/unit.s, 'pm')
+s.append('A', 'cytosolic', unit.uM, 10.0, 10, unit.um**2 / unit.s, 'cyto', ref=True)  # add ref to s schema
+s.append('X', 'membrane bound', unit.molecule / unit.um**2, 1000.0, 0.1, unit.um**2 / unit.s, 'pm')
+s.append('B', 'membrane bound', unit.molecule / unit.um**2, 0.0, 50, unit.um**2 / unit.s, 'pm')
 
 ### define compartments
 # name, geometric dimensionality, length scale units, marker value
-c.append('cyto', 3, unit.um, 1)
-c.append('pm', 2, unit.um, 2)
+c.append('cyto', 3, unit.um, 1, nvolume=2 * unit.um**3)  # add nvolume to c
+c.append('pm', 2, unit.um, 2, nvolume=1 * unit.um**2)
 
 ### define reactions
 # name, notes, left hand side of reaction, right hand side of reaction, kinetic
@@ -44,4 +44,3 @@ p.write_json(name=cwd + '/parameters.json')
 s.write_json(name=cwd + '/species.json')
 c.write_json(name=cwd + '/compartments.json')
 r.write_json(name=cwd + '/reactions.json')
-

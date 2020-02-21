@@ -5,6 +5,7 @@ import dolfin as d
 from stubs.common import nan_to_none
 from stubs.common import round_to_n
 from stubs import model_assembly
+from stubs import unit as ureg
 import random
 import numpy as np
 from scipy.spatial.transform import Rotation as Rot
@@ -57,6 +58,7 @@ class Config(object):
 
             self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
             self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
+            self.settings['zero_d'] = True if self.settings['zero_d'] == 'True' else False
 
 
     def _parse_list(self,a_list):
@@ -217,6 +219,9 @@ class Config(object):
 
 
     def generate_model(self):
+        if (self['zero_d']):
+            self.generate_ode_model()
+            return
 
         if not all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]):
             raise Exception("Parameters, species, compartments, and reactions must all be specified.")
@@ -283,6 +288,81 @@ class Config(object):
         # Sort forms by type (diffusive, time derivative, etc.)
         model.sort_forms()
 
+        if rank==root:
+            Print("Model created succesfully! :)")
+            model.PD.print()
+            model.SD.print()
+            model.CD.print()
+            model.RD.print()
+            model.FD.print()
+
+        return model
+
+    def generate_ode_model(self):
+        if not all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]):
+            raise Exception("Parameters, species, compartments, and reactions must all be specified.")
+        PD = self._json_to_ObjectContainer(self.model['parameters'], 'parameters')
+        SD = self._json_to_ObjectContainer(self.model['species'], 'species')
+        CD = self._json_to_ObjectContainer(self.model['compartments'], 'compartments')
+        RD = self._json_to_ObjectContainer(self.model['reactions'], 'reactions')
+
+        CD.compute_scaling_factors()
+
+        # define a base concentration unit
+        base_compartment = ""
+        base_units = ureg.uM
+        for name, species in SD.Dict.items():
+            if getattr(species, 'ref'):
+                base_compartment = species.compartment_name
+                base_units = species.concentration_units
+                print(f"Base units defined as {base_units.units} by reference species {name}.")
+                break
+
+        for name, compartment in CD.Dict.items():
+            if getattr(compartment, 'dimensionality') != 3:
+                setattr(compartment, 'dimensionality', 3)
+        
+        for name, species in SD.Dict.items():
+            if species.compartment_name != base_compartment:
+                length_scaling = CD.Dict[species.compartment_name].scale_to(base_compartment)
+                updated_concentration = ureg.Quantity(species.initial_condition, species.concentration_units) * length_scaling
+                updated_concentration.ito(base_units)
+                setattr(species, 'concentration_units', updated_concentration.units)
+                setattr(species, 'initial_condition', updated_concentration.value)
+
+        return
+
+        # parameter/unit assembly
+        PD.do_to_all('assemble_units', {'unit_name': 'unit'})
+        PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        PD.do_to_all('assembleTimeDependentParameters', {'zero_d': True})
+        SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+        RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.reaction_database})
+
+        # linking containers with one another
+        RD.link_object(PD,'paramDict','name','paramDictValues', value_is_key=True)
+        SD.link_object(CD,'compartment_name','name','compartment')
+        SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        RD.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
+        RD.link_object(SD,'involved_species','name','involved_species_link')
+
+        num_species_per_compartment = RD.get_species_compartment_counts(SD, CD, self.settings)
+        CD.get_min_max_dim() # Check dimensions (using min/max)
+
+        SD.assemble_compartment_indices(RD, CD, self.settings) 
+        CD.add_property_to_all('is_in_a_reaction', False)
+        CD.add_property_to_all('V', None)
+
+        RD.reaction_to_fluxes()
+        RD.do_to_all('reaction_to_fluxes')
+        FD = RD.get_flux_container()
+
+        # # opportunity to make custom changes
+
+        model = model_assembly.Model(PD, SD, CD, RD, FD, self)
+        
         if rank==root:
             Print("Model created succesfully! :)")
             model.PD.print()

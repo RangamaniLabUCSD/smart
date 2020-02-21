@@ -354,12 +354,12 @@ class ParameterContainer(_ObjectContainer):
 class Parameter(_ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
-    def assembleTimeDependentParameters(self):
+    def assembleTimeDependentParameters(self, zero_d=False):
         #TODO
         if not self.is_time_dependent:
             return
         # Parse the given string to create a sympy expression
-        if self.symExpr:
+        if self.symExpr or zero_d:
             self.symExpr = parse_expr(self.symExpr)
             Print("Creating dolfin object for time-dependent parameter %s" % self.name)
             self.dolfinConstant = d.Constant(self.value)
@@ -594,7 +594,10 @@ class CompartmentContainer(_ObjectContainer):
 
 
     def compute_scaling_factors(self):
-        self.do_to_all('compute_nvolume')
+        for comp in self.Dict.values():
+            if getattr(comp, 'nvolume').dimensionless:
+                comp.compute_nvolume()
+                
         for key, obj in self.Dict.items():
             obj.scale_to = {}
             for key2, obj2 in self.Dict.items():
@@ -1258,9 +1261,11 @@ class Model(object):
             prod = j.prod
             unit_prod = j.unit_prod
             # first, check unit consistency
-            if (unit_prod/j.flux_units).dimensionless:
+            if (unit_prod/j.flux_units).dimensionless: # this is the only case in 0d case
                 setattr(j, 'scale_factor', 1*ureg.dimensionless)
                 pass
+            elif self.zero_d == True:
+                raise Exception("Units should never be inconsistent in 0d case.")
             else:
                 if hasattr(j, 'length_scale_factor'):
                     Print("Adjusting flux for %s by the provided length scale factor." % (j.name, j.length_scale_factor))
@@ -1310,16 +1315,17 @@ class Model(object):
             prod *= j.signed_stoich
 
             # multiply by appropriate integration measure and test function
-            if j.flux_dimensionality[0] < j.flux_dimensionality[1]:
-                form_key = 'B'
-            else:
-                form_key = 'R'
-            prod = prod*sp.v*j.int_measure
+            if not self.zero_d:
+                if j.flux_dimensionality[0] < j.flux_dimensionality[1]:
+                    form_key = 'B'
+                else:
+                    form_key = 'R'
+                prod = prod*sp.v*j.int_measure
 
-            setattr(j, 'dolfin_flux', prod)
+                setattr(j, 'dolfin_flux', prod)
 
-            BRform = -prod # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
-            self.Forms.add(Form(BRform, sp, form_key, flux_name=j.name))
+                BRform = -prod # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
+                self.Forms.add(Form(BRform, sp, form_key, flux_name=j.name))
 
 
     def assemble_diffusive_fluxes(self):
@@ -1421,38 +1427,26 @@ class Model(object):
 #===============================================================================
 #===============================================================================
 
-    def solve(self, op_split_scheme="DRD", plot_period=1, ode_solver=False):
+    def solve(self, op_split_scheme="DRD", plot_period=1):
         ## solve
         self.init_solver_and_plots()
 
         self.stopwatch("Total simulation")
-        if ode_solver:
+        while True:
+            # Solve using specified operator-splitting scheme (just DRD for now)
+            if op_split_scheme == "DRD":
+                self.DRD_solve(boundary_method='RK45')
+            elif op_split_scheme == "DR":
+                self.DR_solve(boundary_method='RK45')
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
 
-            # spatial_to_ode(base_unit = ureg.mM)
-            # convert everything to 3d
-            # user must input a mesh
-            # for j in self.F?D.values():
-            #     if j.flux.units/base.units == qreg.dimensionless
-            # create a lambda function
-            # scipy.solve_ivp()
-            # write alternative compute_statistics()
-            pass
-        else:
-            while True:
-                # Solve using specified operator-splitting scheme (just DRD for now)
-                if op_split_scheme == "DRD":
-                    self.DRD_solve(boundary_method='RK45')
-                elif op_split_scheme == "DR":
-                    self.DR_solve(boundary_method='RK45')
-                else:
-                    raise Exception("I don't know what operator splitting scheme to use")
-
-                self.compute_statistics()
-                if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
-                    self.plot_solution()
-                    self.plot_solver_status()
-                if self.t >= self.config.solver['T']:
-                    break
+            self.compute_statistics()
+            if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
+                self.plot_solution()
+                self.plot_solver_status()
+            if self.t >= self.config.solver['T']:
+                break
 
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)

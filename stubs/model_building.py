@@ -114,7 +114,8 @@ class SpeciesDF(object):
                                             "concentration_units": str(units),
                                             "initial_condition": IC, "D": D,
                                             "D_units": str(D_units),
-                                            "compartment_name": compartment_name}, name=name))
+                                            "compartment_name": compartment_name}, 
+                                            ref=False, name=name))
 
     def write_json(self, name='species.json'):
         self.df.to_json(name)
