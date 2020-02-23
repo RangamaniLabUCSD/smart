@@ -44,4 +44,3 @@ p.write_json(name=cwd + '/parameters.json')
 s.write_json(name=cwd + '/species.json')
 c.write_json(name=cwd + '/compartments.json')
 r.write_json(name=cwd + '/reactions.json')
-
