@@ -595,14 +595,15 @@ class CompartmentContainer(_ObjectContainer):
 
     def compute_scaling_factors(self):
         for comp in self.Dict.values():
-            if getattr(comp, 'nvolume').dimensionless:
+            # if getattr(comp, 'nvolume').dimensionless:
+            if not hasattr(comp, 'nvolume'):
                 comp.compute_nvolume()
                 
         for key, obj in self.Dict.items():
             obj.scale_to = {}
             for key2, obj2 in self.Dict.items():
                 if key != key2:
-                    obj.scale_to.update({key2: obj.nvolume / obj2.nvolume})
+                    obj.scale_to.update({key2: ureg(obj.nvolume) / ureg(obj2.nvolume)})
     def get_min_max_dim(self):
         comp_dims = [comp.dimensionality for comp in self.Dict.values()]
         self.min_dim = min(comp_dims)

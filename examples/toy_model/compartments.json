@@ -1,1 +1,1 @@
-{"dimensionality":{"cyto":3,"pm":2},"compartment_units":{"cyto":"micrometer","pm":"micrometer"},"cell_marker":{"cyto":1,"pm":2}}
+{"dimensionality":{"cyto":3,"pm":2},"compartment_units":{"cyto":"micrometer","pm":"micrometer"},"cell_marker":{"cyto":1,"pm":2},"nvolume":{"cyto":"2 micrometer ** 3","pm":"1 micrometer ** 2"}}

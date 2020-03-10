@@ -219,7 +219,7 @@ class Config(object):
 
 
     def generate_model(self):
-        if (self['zero_d']):
+        if (self.settings['zero_d']):
             self.generate_ode_model()
             return
 
@@ -315,7 +315,7 @@ class Config(object):
             if getattr(species, 'ref'):
                 base_compartment = species.compartment_name
                 base_units = species.concentration_units
-                print(f"Base units defined as {base_units.units} by reference species {name}.")
+                print(f"Base units defined as {base_units} by reference species {name}.")
                 break
 
         for name, compartment in CD.Dict.items():
@@ -324,13 +324,13 @@ class Config(object):
         
         for name, species in SD.Dict.items():
             if species.compartment_name != base_compartment:
-                length_scaling = CD.Dict[species.compartment_name].scale_to(base_compartment)
+                # CD.Dict[species.compartment_name].print()
+                # length_scaling = CD.Dict[species.compartment_name].scale_to(base_compartment)
+                length_scaling = CD.Dict[species.compartment_name].scale_to[base_compartment]
                 updated_concentration = ureg.Quantity(species.initial_condition, species.concentration_units) * length_scaling
                 updated_concentration.ito(base_units)
                 setattr(species, 'concentration_units', updated_concentration.units)
-                setattr(species, 'initial_condition', updated_concentration.value)
-
-        return
+                setattr(species, 'initial_condition', updated_concentration.magnitude)
 
         # parameter/unit assembly
         PD.do_to_all('assemble_units', {'unit_name': 'unit'})

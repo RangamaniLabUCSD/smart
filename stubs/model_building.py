@@ -107,15 +107,17 @@ class SpeciesDF(object):
                                 'D': pd.Series([], dtype=float),
                                 'D_units': pd.Series([], dtype=object),
                                 'compartment_name': pd.Series([], dtype=str),
-                                'group': pd.Series([], dtype=str)})
+                                'group': pd.Series([], dtype=str),
+                                'ref': False})
 
-    def append(self, name, group, units, IC, D, D_units, compartment_name):
+    def append(self, name, group, units, IC, D, D_units, compartment_name, ref=False):
         self.df = self.df.append(pd.Series({"group": group,
                                             "concentration_units": str(units),
                                             "initial_condition": IC, "D": D,
                                             "D_units": str(D_units),
-                                            "compartment_name": compartment_name}, 
-                                            ref=False, name=name))
+                                            "compartment_name": compartment_name,
+                                            "ref": ref}, 
+                                            name=name))
 
     def write_json(self, name='species.json'):
         self.df.to_json(name)
@@ -127,9 +129,15 @@ class CompartmentDF(object):
                                 'compartment_units': pd.Series([], dtype=object),
                                 'cell_marker': pd.Series([], dtype=int)})
 
-    def append(self, name, dim, units, marker):
-        self.df = self.df.append(pd.Series({"dimensionality": dim,
-                                           "compartment_units": str(units),
+    def append(self, name, dim, units, marker, nvolume=None):
+        if nvolume:
+            self.df = self.df.append(pd.Series({"dimensionality": dim,
+                                            "compartment_units": str(units),
+                                            "cell_marker": marker,
+                                            "nvolume": str(nvolume)}, name=name))
+        else:
+            self.df = self.df.append(pd.Series({"dimensionality": dim,
+                                            "compartment_units": str(units),
                                             "cell_marker": marker}, name=name))
 
     def write_json(self, name='compartments.json'):
