@@ -116,7 +116,7 @@ class Config(object):
 
                 line = file.readline()
 
-
+            #self.model['directory'] = '/Users/rabona/Documents/stubs/examples/toy_model/'
             if 'directory' in self.model.keys():
                 model_dir = self.model['directory']
                 Print("\nAssuming file names, loading from directory %s" % model_dir)

@@ -24,7 +24,7 @@ p.append('kr', 0.1, 1/unit.s, 'reverse rate')
 ### define species
 # name, plot group, concentration units, initial condition, diffusion
 # coefficient, diffusion coefficient units, compartment
-s.append('A', 'cytosolic', unit.uM, 10.0, 10, unit.um**2/unit.s, 'cyto')
+s.append('A', 'cytosolic', unit.molecule/unit.um**3, 1000.0, 10, unit.um**2/unit.s, 'cyto')
 s.append('X', 'membrane bound', unit.molecule/unit.um**2, 1000.0, 0.1, unit.um**2/unit.s, 'pm')
 s.append('B', 'membrane bound', unit.molecule/unit.um**2, 0.0, 50, unit.um**2/unit.s, 'pm')
 
