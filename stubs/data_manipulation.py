@@ -139,7 +139,7 @@ class Data(object):
             flux = FD.Dict[flux_name]
             area_units = CD.Dict[flux.source_compartment].compartment_units**2
             scale_to_molecule_per_s = (1*flux.flux_units*area_units).to(ureg.molecule/ureg.s).magnitude
-            value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
+            value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
             self.fluxes[flux_name].append(value)
 
         # compute (assemble) sums of fluxes
@@ -155,8 +155,8 @@ class Data(object):
             scale_to_molecule_per_s_2 = (1*flux_2.flux_units*area_units_2).to(ureg.molecule/ureg.s).magnitude
             new_flux_name = temp[i] + ' (SUM)'
 
-            value = d.assemble(flux_1.dolfin_flux)*scale_to_molecule_per_s_1 \
-                    + d.assemble(flux_2.dolfin_flux)*scale_to_molecule_per_s_2
+            value = sum(d.assemble(flux_1.dolfin_flux))*scale_to_molecule_per_s_1 \
+                    + sum(d.assemble(flux_2.dolfin_flux))*scale_to_molecule_per_s_2
 
             self.fluxes[new_flux_name].append(value)
 
@@ -693,34 +693,3 @@ def reaction_network(model, reaction_expr, output='detailed'):
     #         for pname, p in reaction.paramDictValues.items():
     #             eq_temp = eq_temp.subs(pname, p.value)
 
-    #         return eq_temp >= 0
-    #     else:
-    #         to_diff = edge[1].name
-    #         #eq = reaction.eqn_r.diff(to_diff).subs([(x.name,1) for x in rhs_list]).subs('kr',reaction.paramDictValues['kr'].value)
-    #         eq_temp = reaction.eqn_r.diff(to_diff).subs([(x.name,1) for x in rhs_list])
-    #         for pname, p in reaction.paramDictValues.items():
-    #             eq_temp = eq_temp.subs(pname, p.value)
-    #         return eq_temp >= 0
-    # G=nx.DiGraph()
-    # reaction = model.RD.Dict[reaction_expr]
-    # lhs_list = [model.SD.Dict[i] for i in reaction.LHS]
-    # rhs_list = [model.SD.Dict[i] for i in reaction.RHS]
-    # G.add_nodes_from(lhs_list+rhs_list+list([reaction]))
-    # edges = [(x, reaction) for x in lhs_list]+[(reaction, x) for x in rhs_list]
-    # G.add_edges_from(edges)
-    # pos = nx.spring_layout(G)
-    # #using any species' flux
-    # flux_expr = (reaction_expr+' (f) [%s]') % lhs_list[0].name
-    # flux_mean_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().mean(), 6)
-    # #start plotting
-    # nx.draw_networkx_nodes(G, pos,nodelist=lhs_list+rhs_list,node_shape='o', node_size=500, node_color='#FFFF00')
-    # nx.draw_networkx_nodes(G, pos,nodelist=[reaction],node_shape='s', node_size=500)
-    # #not inhibitor edge
-    # nx.draw_networkx_edges(G, pos=pos, edgelist=[x for x in list(G.edges()) if is_inhibitor_edge(x)], edge_color='r')
-    # #inhibitor edge
-    # nx.draw_networkx_edges(G, pos=pos, edgelist=[x for x in list(G.edges()) if not is_inhibitor_edge(x)], edge_color='g')
-    # #labels
-    # nx.draw_networkx_labels(G, pos, labels=({x: x.name for x in lhs_list+rhs_list}))
-    # nx.draw_networkx_labels(G, pos, labels=({reaction:flux_mean_val}))
-    # plt.show()
-    # return plt
