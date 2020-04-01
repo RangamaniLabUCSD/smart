@@ -30,7 +30,7 @@ def insert_dataframe_col(df, columnName, columnNumber=None, items=None):
     df.insert(columnNumber, columnName, items)
 
 def nan_to_none(df):
-    return df.replace({pd.np.nan: None})
+    return df.replace({np.nan: None})
 
 
 
@@ -62,7 +62,7 @@ def submesh_dof_to_vertex(Vsubmesh, species_index, index=None):
     mapping = d.dof_to_vertex_map(Vsubmesh)
     mapping = mapping[range(species_index,len(mapping),num_species)] / num_species
     mapping = [int(x) for x in mapping]
-    
+
     return [mapping[x] for x in index]
 
 def submesh_to_bmesh(submesh, index):
@@ -83,7 +83,7 @@ def mesh_vertex_to_dof(V, species_index, index):
     mapping = mapping[range(species_index, len(mapping), num_species)]
 
     return [mapping[x] for x in index]
-   
+
 def round_to_n(x,n):
     """
     Rounds to n sig figs
@@ -121,7 +121,7 @@ def sum_discrete_signals(ty1, ty2, max_dy=None):
     second column is the first signal
     ty2: Numpy array of size N2 x 2 where the first column is time and the
     second column is the second signal
-    
+
     ty1 and ty2 do not need to have the same dimensions (N1 does not have to
     equal N2). This function sums the linear interpolation of the two signals.
 
@@ -132,7 +132,7 @@ def sum_discrete_signals(ty1, ty2, max_dy=None):
     t1 = ty1[:,0]; y1 = ty1[:,1]; t2 = ty2[:,0]; y2 = ty2[:,1]
 
     # get the sorted, unique values of t1 and t2
-    tsum = np.sort(np.unique(np.append(t1,t2))) 
+    tsum = np.sort(np.unique(np.append(t1,t2)))
     ysum = np.interp(tsum, t1, y1) + np.interp(tsum, t2, y2)
 
     if max_dy is not None:

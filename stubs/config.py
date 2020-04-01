@@ -1,3 +1,4 @@
+import pdb
 import re
 import os
 from pandas import read_json
@@ -26,15 +27,15 @@ class Config(object):
     """
     def __init__(self, config_file=None):
         self._regex_dict = {
-            'comment': re.compile(r'\#.*\n'),
+            # 'comment': re.compile(r'\#.*\n'),
             #'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-z|\/]\S*)'),
-            'setting_list': re.compile(r'\$\s(?P<group>\w*).(?P<parameter>\w*)\s*=\s*\[(?P<value>.*)\]'),
-            'setting_string': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-Za-z_|()\/]\S*)'),
-            'setting_float': re.compile(r'\$\s*(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e+-]\S*)'),
+            'setting_list': re.compile(r'(?P<group>\w*).(?P<parameter>\w*)\s*=\s*\[(?P<value>.*)\]'),
+            'setting_string': re.compile(r'(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[A-Za-z_|()\/]\S*)'),
+            'setting_float': re.compile(r'(?P<group>\w*).(?P<parameter>\w*)\s*=\s*(?P<value>[\d.e+-]\S*)'),
             #'float': re.compile(r'[\s\'\,]*(?P<value>[\d.e+-]*)[\s\'\,]*'),
             'float': re.compile(r'\b(?P<value>[\d.e+-]+)\b'),
             'string': re.compile(r'\b(?P<value>[A-Za-z_]+[\dA-Za-z_]*)\b'),
-            'xml_vertex': re.compile(r'.*vertex index=.*x=\"(?P<value_x>[\d.e+-]*)\" y=\"(?P<value_y>[\d.e+-]*)\" z=\"(?P<value_z>[\d.e+-]*)\".*')
+            # 'xml_vertex': re.compile(r'.*vertex index=.*x=\"(?P<value_x>[\d.e+-]*)\" y=\"(?P<value_y>[\d.e+-]*)\" z=\"(?P<value_z>[\d.e+-]*)\".*')
             }
 
         if not config_file:
@@ -53,7 +54,7 @@ class Config(object):
                         os.mkdir(dirname)
                 for key, item in self.directory.items():
                     if key not in ['parent', 'relative']:
-                        self.directory[key] = dirname + '/' + item 
+                        self.directory[key] = dirname + '/' + item
 
             self.settings['ignore_surface_diffusion'] = True if self.settings['ignore_surface_diffusion'] == 'True' else False
             self.settings['add_boundary_species'] = True if self.settings['add_boundary_species'] == 'True' else False
@@ -78,54 +79,56 @@ class Config(object):
 
     def _parse_file(self):
         with open(self.config_file, 'r') as file:
-            line = file.readline()
-            while line:
-                key, match = self._parse_line(line)
+            lines = file.readlines()
 
-                if key in ['setting_string', 'setting_float', 'setting_list']:
-                    group = match.group('group')
-                    parameter = match.group('parameter')
-                    value = match.group('value')
-                    # initialize an empty dict
-                    if not hasattr(self,group):
-                        setattr(self, group, {})
-                else:
-                    line = file.readline()
-                    continue
-                
-                if key == 'setting_string':
-                    new_value = value
-                if key == 'setting_float':
-                    new_value = float(value)
-                if key == 'setting_list':
-                    new_value = self._parse_list(value)
+        for line in lines:
+            line = line.split('#')[0]
+            if not line:
+                continue
 
-                # most parameters will be caught by the regex but some we may wish to redefine
-                # change to int
-                if parameter in ['maximum_iterations']:
-                    Print("Defining parameter %s as an int\n" % parameter)
-                    new_value = int(value)
-                # change to bool
-                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess', 'relative']:
-                    Print("Defining parameter %s as a bool\n" % parameter)
-                    new_value = bool(float(value))
+            key, match = self._parse_line(line)
 
+            if key in ['setting_string', 'setting_float', 'setting_list']:
+                group = match.group('group')
+                parameter = match.group('parameter')
+                value = match.group('value')
+                # initialize an empty dict
+                if not hasattr(self, group):
+                    setattr(self, group, {})
+            else:
+                continue
 
-                if key in ['setting_string', 'setting_float', 'setting_list']:
-                    getattr(self,group)[parameter] = new_value
+            if key == 'setting_string':
+                new_value = value
+            if key == 'setting_float':
+                new_value = float(value)
+            if key == 'setting_list':
+                new_value = self._parse_list(value)
 
-                line = file.readline()
+            # most parameters will be caught by the regex but some we may wish to redefine
+            # change to int
+            if parameter in ['maximum_iterations']:
+                Print("Defining parameter %s as an int\n" % parameter)
+                new_value = int(value)
+            # change to bool
+            if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess', 'relative']:
+                Print("Defining parameter %s as a bool\n" % parameter)
+                new_value = bool(float(value))
 
 
-            if 'directory' in self.model.keys():
-                model_dir = self.model['directory']
-                Print("\nAssuming file names, loading from directory %s" % model_dir)
-                self.model['parameters'] = model_dir + 'parameters.json'
-                self.model['compartments'] = model_dir + 'compartments.json'
-                self.model['species'] = model_dir + 'species.json'
-                self.model['reactions'] = model_dir + 'reactions.json'
+            if key in ['setting_string', 'setting_float', 'setting_list']:
+                getattr(self,group)[parameter] = new_value
 
-        if (all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]) 
+
+        if 'directory' in self.model.keys():
+            model_dir = self.model['directory']
+            Print("\nAssuming file names, loading from directory %s" % model_dir)
+            self.model['parameters'] = model_dir + 'parameters.json'
+            self.model['compartments'] = model_dir + 'compartments.json'
+            self.model['species'] = model_dir + 'species.json'
+            self.model['reactions'] = model_dir + 'reactions.json'
+
+        if (all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']])
             and self.mesh.keys()):
             Print("Parameters, species, compartments, reactions, and a mesh were imported succesfully!")
 
@@ -149,7 +152,7 @@ class Config(object):
     #     center of mass at the origin.
     #     $$t' = $$
     #     $$x_new = R_{post}(sR_{pre}(x) + t')\bar{x}$$
-        
+
     #     Args:
     #         scaling_factor (TYPE): scale length by this factor
     #         full_filename (TYPE): xml dolfin mesh
@@ -157,19 +160,19 @@ class Config(object):
     #         new_midpoint (3-tuple [float], optional): If the entire mesh
     #         should be translated a tuple can be provided which will be the new
     #         midpoint of the mesh.
-    #         max_num_vert_midpoint (int, optional): Maximum number of vertices 
+    #         max_num_vert_midpoint (int, optional): Maximum number of vertices
     #         to sample when computing midpoint
     #         pre_rotation (3-tuple [float], optional): Rotation to apply to mesh
     #         before translation/scaling [xyz, given in degrees]
     #         post_rotation (3-tuple [float], optional): Rotation to apply to mesh
     #         after translation/scaling [xyz, given in degrees]
-    
+
     #     """
     #     file_dir, file_name = os.path.split(os.path.abspath(full_filename))
-    #     new_full_filename = (file_dir + '/' + file_name.split('.')[0] + '_scaled.' 
+    #     new_full_filename = (file_dir + '/' + file_name.split('.')[0] + '_scaled.'
     #                         + '.'.join(file_name.split('.')[1:]))
     #     new_file_lines = [] # we will append modified lines to here and write out as a new file
-    #     idx = 0 
+    #     idx = 0
     #     Rpre = Rot.from_euler('xyz', pre_rotation,degrees=True)
     #     Rpost = Rot.from_euler('xyz', post_rotation,degrees=True)
 
@@ -308,7 +311,7 @@ class Config(object):
             return model_assembly.CompartmentContainer(df)
         elif data_type in ['reactions', 'reaction', 'r', 'rxn']:
             return model_assembly.ReactionContainer(df)
-        else: 
+        else:
             raise Exception("I don't know what kind of ObjectContainer this .json file should be")
 
 
