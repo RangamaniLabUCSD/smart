@@ -24,13 +24,13 @@ p.append('kr', 0.1, 1/unit.s, 'reverse rate')
 ### define species
 # name, plot group, concentration units, initial condition, diffusion
 # coefficient, diffusion coefficient units, compartment
-s.append('A', 'cytosolic', unit.uM, 10.0, 10, unit.um**2/unit.s, 'cyto', ref=True)
+s.append('A', 'cytosolic', unit.uM, 10.0, 10, unit.um**2/unit.s, 'cyto', ref=True)  # add ref to s schema
 s.append('X', 'membrane bound', unit.molecule/unit.um**2, 1000.0, 0.1, unit.um**2/unit.s, 'pm')
 s.append('B', 'membrane bound', unit.molecule/unit.um**2, 0.0, 50, unit.um**2/unit.s, 'pm')
 
 ### define compartments
 # name, geometric dimensionality, length scale units, marker value
-c.append('cyto', 3, unit.um, 1, nvolume=2 * unit.um**3)
+c.append('cyto', 3, unit.um, 1, nvolume=2 * unit.um**3)  # add nvolume to c
 c.append('pm', 2, unit.um, 2, nvolume=1 * unit.um**2)
 
 ### define reactions

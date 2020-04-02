@@ -257,8 +257,6 @@ class _ObjectContainer(object):
                 properties_to_print = self.properties_to_print
             df = self.get_pandas_dataframe(properties_to_print=properties_to_print)
             if properties_to_print:
-                # make sure that all properties exist on the dataframe
-                properties_to_print = list(set(properties_to_print).intersection(df.columns))
                 df = df[properties_to_print]
 
             print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
@@ -597,9 +595,10 @@ class CompartmentContainer(_ObjectContainer):
 
     def compute_scaling_factors(self):
         for comp in self.Dict.values():
+            # if getattr(comp, 'nvolume').dimensionless:
             if not hasattr(comp, 'nvolume'):
                 comp.compute_nvolume()
-
+                
         for key, obj in self.Dict.items():
             obj.scale_to = {}
             for key2, obj2 in self.Dict.items():
@@ -1220,12 +1219,9 @@ class Model(object):
         self.FD = FD
         self.config = config
 
-        if hasattr(SD, 'u'):
-            self.u = SD.u
-        if hasattr(SD, 'v'):
-            self.v = SD.v
-        if hasattr(SD, 'V'):
-            self.V = SD.V
+        self.u = SD.u
+        self.v = SD.v
+        self.V = SD.V
 
         self.params = ddict(list)
 

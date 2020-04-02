@@ -220,7 +220,8 @@ class Config(object):
 
     def generate_model(self):
         if (self.settings['zero_d']):
-            return self.generate_ode_model()
+            self.generate_ode_model()
+            return
 
         if not all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]):
             raise Exception("Parameters, species, compartments, and reactions must all be specified.")
