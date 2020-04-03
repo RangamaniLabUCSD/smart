@@ -1312,11 +1312,12 @@ class Model(object):
                 form_key = 'B'
             else:
                 form_key = 'R'
-            prod = prod*sp.v*j.int_measure
+            #prod = prod*sp.v*j.int_measure
+            dolfin_flux = prod*j.int_measure
 
-            setattr(j, 'dolfin_flux', prod)
+            setattr(j, 'dolfin_flux', dolfin_flux)
 
-            BRform = -prod # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
+            BRform = -prod*sp.v*j.int_measure # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
             self.Forms.add(Form(BRform, sp, form_key, flux_name=j.name))
 
 

@@ -136,7 +136,8 @@ class Data(object):
             flux = FD.Dict[flux_name]
             area_units = CD.Dict[flux.source_compartment].compartment_units**2
             scale_to_molecule_per_s = (1*flux.flux_units*area_units).to(ureg.molecule/ureg.s).magnitude
-            value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
+            #value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
+            value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
             self.fluxes[flux_name].append(value)
 
         # compute (assemble) sums of fluxes
@@ -152,8 +153,10 @@ class Data(object):
             scale_to_molecule_per_s_2 = (1*flux_2.flux_units*area_units_2).to(ureg.molecule/ureg.s).magnitude
             new_flux_name = temp[i] + ' (SUM)'
 
-            value = sum(d.assemble(flux_1.dolfin_flux))*scale_to_molecule_per_s_1 \
-                    + sum(d.assemble(flux_2.dolfin_flux))*scale_to_molecule_per_s_2
+#            value = sum(d.assemble(flux_1.dolfin_flux))*scale_to_molecule_per_s_1 \
+#                    + sum(d.assemble(flux_2.dolfin_flux))*scale_to_molecule_per_s_2
+            value = d.assemble(flux_1.dolfin_flux)*scale_to_molecule_per_s_1 \
+                    + d.assemble(flux_2.dolfin_flux)*scale_to_molecule_per_s_2
 
             self.fluxes[new_flux_name].append(value)
 
