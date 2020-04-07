@@ -604,7 +604,11 @@ class CompartmentContainer(_ObjectContainer):
             obj.scale_to = {}
             for key2, obj2 in self.Dict.items():
                 if key != key2:
-                    obj.scale_to.update({key2: ureg(obj.nvolume) / ureg(obj2.nvolume)})
+                    if type(obj.nvolume) == str:
+                        obj.nvolume = ureg(obj.nvolume)
+                    if type(obj2.nvolume) == str:
+                        obj2.nvolume = ureg(obj2.nvolume)
+                    obj.scale_to.update({key2: obj.nvolume / obj2.nvolume})
     def get_min_max_dim(self):
         comp_dims = [comp.dimensionality for comp in self.Dict.values()]
         self.min_dim = min(comp_dims)
@@ -1320,7 +1324,7 @@ class Model(object):
             prod *= j.signed_stoich
 
             # multiply by appropriate integration measure and test function
-            if not self.zero_d:
+            if not hasattr(self, 'zero_d') or not self.zero_d:
                 if j.flux_dimensionality[0] < j.flux_dimensionality[1]:
                     form_key = 'B'
                 else:
