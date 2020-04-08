@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" level="3" version="1">
+  <model>
+    <listOfUnitDefinitions>
+      <unitDefinition id="micrometers_squared">
+        <listOfUnits>
+          <unit kind="metre" exponent="2" scale="-12" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="micrometers_cubed">
+        <listOfUnits>
+          <unit kind="metre" exponent="3" scale="-18" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="micromoles">
+        <listOfUnits>
+          <unit kind="mole" exponent="1" scale="-6" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="per_second">
+        <listOfUnits>
+          <unit kind="second" exponent="-1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="per_uM_seconds">
+        <listOfUnits>
+          <unit kind="second" exponent="-1" scale="0" multiplier="6.022140857e-17"/>
+        </listOfUnits>
+      </unitDefinition>
+    </listOfUnitDefinitions>
+    <listOfCompartments>
+      <compartment id="cyto" spatialDimensions="3" size="3" units="micrometers_cubed" constant="true"/>
+      <compartment id="pm" spatialDimensions="2" size="2" units="micrometers_squared" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="A" compartment="cyto" initialAmount="10" substanceUnits="micromoles" constant="false"/>
+      <species id="X" compartment="pm" initialAmount="1000" substanceUnits="item" constant="false"/>
+      <species id="B" compartment="pm" initialAmount="0" substanceUnits="item" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="kf" value="5" units="per_uM_seconds" constant="true"/>
+      <parameter id="kr" value="0.1" units="per_second" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction reversible="true" fast="false">
+        <listOfReactants>
+          <speciesReference species="A" constant="false"/>
+          <speciesReference species="X" constant="false"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="B" constant="false"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> kf </ci>
+              <apply>
+                <plus/>
+                <apply>
+                  <times/>
+                  <ci> A </ci>
+                  <ci> cyto </ci>
+                </apply>
+                <apply>
+                  <times/>
+                  <ci> X </ci>
+                  <ci> pm </ci>
+                </apply>
+              </apply>
+            </apply>
+          </math>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>
