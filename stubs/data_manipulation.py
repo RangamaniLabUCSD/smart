@@ -139,7 +139,7 @@ class Data(object):
             flux = FD.Dict[flux_name]
             area_units = CD.Dict[flux.source_compartment].compartment_units**2
             scale_to_molecule_per_s = (1*flux.flux_units*area_units).to(ureg.molecule/ureg.s).magnitude
-            value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
+            value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
             self.fluxes[flux_name].append(value)
 
         # compute (assemble) sums of fluxes
@@ -155,8 +155,8 @@ class Data(object):
             scale_to_molecule_per_s_2 = (1*flux_2.flux_units*area_units_2).to(ureg.molecule/ureg.s).magnitude
             new_flux_name = temp[i] + ' (SUM)'
 
-            value = sum(d.assemble(flux_1.dolfin_flux))*scale_to_molecule_per_s_1 \
-                    + sum(d.assemble(flux_2.dolfin_flux))*scale_to_molecule_per_s_2
+            value = d.assemble(flux_1.dolfin_flux)*scale_to_molecule_per_s_1 \
+                    + d.assemble(flux_2.dolfin_flux)*scale_to_molecule_per_s_2
 
             self.fluxes[new_flux_name].append(value)
 
@@ -623,9 +623,10 @@ def reaction_network(model, reaction_expr, output='detailed'):
         else:
             direction = 'r'
         flux_expr = (reaction_expr+' ('+direction+') [%s]') % to_spe.name
-        flux_mean_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().mean(), 6)
-        flux_min_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().min(), 6)
-        flux_max_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().max(), 6)
+        local_f = model.FD.Dict[flux_expr]
+        flux_mean_val = np.round(d.assemble(local_f.dolfin_flux), 6)*local_f.total_scaling
+        flux_min_val = np.round(d.assemble(local_f.alt_dolfin_flux).get_local().min(), 6)*local_f.total_scaling
+        flux_max_val = np.round(d.assemble(local_f.alt_dolfin_flux).get_local().max(), 6)*local_f.total_scaling
         reaction_node.set_data(flux_min_val, flux_max_val,flux_mean_val)
         G.add_edge(reaction_node, to_spe, flux_val = flux_mean_val, is_inhibitor = None, edge_type = 'out')
         return G
@@ -654,7 +655,7 @@ def reaction_network(model, reaction_expr, output='detailed'):
         l_out = nx.draw_networkx_edges(G, pos=pos, edgelist=[x for x in list(G.edges()) if G.edges()[x]['edge_type']=='out'],arrowstyle='->',  arrowsize=40,connectionstyle='arc3, rad = 0.1')
         nx.draw_networkx_labels(G, pos, labels=({x: x.name for x in lhs_list+rhs_list}))
         nx.draw_networkx_labels(G, pos, labels=({reaction_f_node:reaction_f_node.__repr__(),reaction_r_node:reaction_r_node.__repr__()}),  font_size=5)
-        nx.draw_networkx_edge_labels(G, pos, edge_labels = {x: str(G.edges()[x]['flux_val'])[:4] for x in list(G.edges())}, ax=ax,  font_size=6)
+        nx.draw_networkx_edge_labels(G, pos, edge_labels = {x: str(G.edges()[x]['flux_val'])[:7] for x in list(G.edges())}, ax=ax,  font_size=6)
         inhibitor = mlines.Line2D([], [], color='red', marker='>', linestyle='None',
                           markersize=10, label='Incoming edge is inhibitor')
         non_inhibitor = mlines.Line2D([], [], color='green', marker='>', linestyle='None',
@@ -668,9 +669,10 @@ def reaction_network(model, reaction_expr, output='detailed'):
         pos.update({lhs_list[i] : (1, 4 + (-1)**(i) * (1.5)**((i+1)//2)) for i in range(len(lhs_list))})
         pos.update({rhs_list[i] : (7, 4 + (-1)**(i) * (1.5)**((i+1)//2)) for i in range(len(rhs_list))})
         flux_expr = (reaction_expr+' ('+'f'+') [%s]') % lhs_list[1].name
-        flux_mean_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().mean(), 6)
-        flux_min_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().min(), 6)
-        flux_max_val = np.round(d.assemble(model.FD.Dict[flux_expr].dolfin_flux).get_local().max(), 6)
+        local_f = model.FD.Dict[flux_expr]
+        flux_mean_val = np.round(d.assemble(local_f.dolfin_flux), 6)*local_f.total_scaling
+        flux_min_val = np.round(d.assemble(local_f.alt_dolfin_flux).get_local().min(), 6)*local_f.total_scaling
+        flux_max_val = np.round(d.assemble(local_f.alt_dolfin_flux).get_local().max(), 6)*local_f.total_scaling
         reaction_node.set_data(flux_min_val, flux_max_val,flux_mean_val)
         pos.update({reaction_node:(4,4)})
         edges = [(x, reaction_node) for x in lhs_list+rhs_list]

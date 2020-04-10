@@ -79,7 +79,6 @@ class Config(object):
 
     def _parse_file(self):
         with open(self.config_file, 'r') as file:
-<<<<<<< HEAD
             lines = file.readlines()
 
         for line in lines:
@@ -130,56 +129,6 @@ class Config(object):
             self.model['reactions'] = model_dir + 'reactions.json'
 
         if (all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']])
-=======
-            line = file.readline()
-            while line:
-                key, match = self._parse_line(line)
-
-                if key in ['setting_string', 'setting_float', 'setting_list']:
-                    group = match.group('group')
-                    parameter = match.group('parameter')
-                    value = match.group('value')
-                    # initialize an empty dict
-                    if not hasattr(self,group):
-                        setattr(self, group, {})
-                else:
-                    line = file.readline()
-                    continue
-                
-                if key == 'setting_string':
-                    new_value = value
-                if key == 'setting_float':
-                    new_value = float(value)
-                if key == 'setting_list':
-                    new_value = self._parse_list(value)
-
-                # most parameters will be caught by the regex but some we may wish to redefine
-                # change to int
-                if parameter in ['maximum_iterations']:
-                    Print("Defining parameter %s as an int\n" % parameter)
-                    new_value = int(value)
-                # change to bool
-                if parameter in ['error_on_nonconvergence', 'nonzero_initial_guess', 'relative']:
-                    Print("Defining parameter %s as a bool\n" % parameter)
-                    new_value = bool(float(value))
-
-
-                if key in ['setting_string', 'setting_float', 'setting_list']:
-                    getattr(self,group)[parameter] = new_value
-
-                line = file.readline()
-
-
-            if 'directory' in self.model.keys():
-                model_dir = self.model['directory']
-                Print("\nAssuming file names, loading from directory %s" % model_dir)
-                self.model['parameters'] = model_dir + 'parameters.json'
-                self.model['compartments'] = model_dir + 'compartments.json'
-                self.model['species'] = model_dir + 'species.json'
-                self.model['reactions'] = model_dir + 'reactions.json'
-
-        if (all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]) 
->>>>>>> parent of 584f6b3... add solver
             and self.mesh.keys()):
             Print("Parameters, species, compartments, reactions, and a mesh were imported succesfully!")
 

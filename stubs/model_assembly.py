@@ -1291,18 +1291,6 @@ class Model(object):
                 setattr(j, 'length_scale_factor', length_scale_factor)
 
             # if units are consistent in dimensionality but not magnitude, adjust values
-            def adjust_magnitude(flux_obj, total_scaling, unit_prod):
-                if flux_obj.flux_units != unit_prod:
-                    unit_scaling = unit_prod.to(flux_obj.flux_units).magnitude
-                    total_scaling *= unit_scaling
-                    prod *= unit_scaling
-                    Print(('\nThe flux, %s, has units '%j.flux_name + colored(unit_prod, "red") +
-                        "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
-                    Print('Adjusted value of flux by ' + colored("%f"%unit_scaling, "cyan") + ' to match units.\n')
-                    setattr(flux_obj, 'unit_scaling', unit_scaling)
-                else:
-                    setattr(flux_obj, 'unit_scaling', 1)
-                return flux_obj, prod, unit_scaling, total_scaling
             
             if j.flux_units != unit_prod:
                 unit_scaling = unit_prod.to(j.flux_units).magnitude
@@ -1325,13 +1313,26 @@ class Model(object):
                 form_key = 'B'
             else:
                 form_key = 'R'
-            prod = prod*sp.v*j.int_measure
+            dolfin_flux = prod*j.int_measure
 
-            setattr(j, 'dolfin_flux', prod)
+            setattr(j, 'dolfin_flux', dolfin_flux)
 
-            BRform = -prod # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
+            BRform = -prod*sp.v*j.int_measure # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
             self.Forms.add(Form(BRform, sp, form_key, flux_name=j.name))
+            setattr(j, 'alt_dolfin_flux', -BRform)
 
+    def adjust_magnitude(flux_obj, total_scaling, unit_prod):
+        if flux_obj.flux_units != unit_prod:
+            unit_scaling = unit_prod.to(flux_obj.flux_units).magnitude
+            total_scaling *= unit_scaling
+            prod *= unit_scaling
+            Print(('\nThe flux, %s, has units '%j.flux_name + colored(unit_prod, "red") +
+                "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
+            Print('Adjusted value of flux by ' + colored("%f"%unit_scaling, "cyan") + ' to match units.\n')
+            setattr(flux_obj, 'unit_scaling', unit_scaling)
+        else:
+            setattr(flux_obj, 'unit_scaling', 1)
+        return flux_obj, prod, unit_scaling, total_scaling
 
     def de_solver(self, func_vectors, num_params, t_span,initial_guess_for_root = None, root_check=True, max_step=0.01, jac=False, method='RK45'):
         if initial_guess_for_root is None:
@@ -1348,6 +1349,7 @@ class Model(object):
         else:
             root = initial_guess_for_root
         sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
+        #returns u
         return sol
     
     def get_lambdified(self, reaction_expr):
