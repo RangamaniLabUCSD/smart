@@ -220,8 +220,7 @@ class Config(object):
 
     def generate_model(self):
         if (self.settings['zero_d']):
-            self.generate_ode_model()
-            return
+            return self.generate_ode_model()
 
         if not all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]):
             raise Exception("Parameters, species, compartments, and reactions must all be specified.")
@@ -367,9 +366,9 @@ class Config(object):
             Print("Model created succesfully! :)")
             model.PD.print()
             model.SD.print()
-            model.CD.print()
+            #model.CD.print()
             model.RD.print()
-            model.FD.print()
+            #model.FD.print()
 
         return model
 

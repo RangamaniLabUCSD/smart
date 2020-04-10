@@ -1223,9 +1223,9 @@ class Model(object):
         self.FD = FD
         self.config = config
 
-        self.u = SD.u
-        self.v = SD.v
-        self.V = SD.V
+        # self.u = SD.u
+        # self.v = SD.v
+        # self.V = SD.V
 
         self.params = ddict(list)
 
@@ -1434,6 +1434,9 @@ class Model(object):
 
     def solve(self, op_split_scheme="DRD", plot_period=1):
         ## solve
+        if self.zero_d == True:
+            print('Zero d')
+            return
         self.init_solver_and_plots()
 
         self.stopwatch("Total simulation")
