@@ -15,7 +15,7 @@ def compartment_to_sbml(compartment, model):
     sbml_comp = model.createCompartment()
     sbml_comp.setId(compartment.name)
     sbml_comp.setConstant(True)
-    sbml_comp.setSize(float(compartment.cell_marker))
+    # sbml_comp.setSize(float(compartment.cell_marker))
     sbml_comp.setSpatialDimensions(int(compartment.dimensionality))
     sbml_comp.setUnits(compartment.compartment_units)
     return 
@@ -30,6 +30,6 @@ m = document.createModel()
 # compartment_to_sbml(c.df['cyto'], m)
 compartment_to_sbml(c.df.iloc[0, :], m)
 
-# Print final document and write to sbml.xml
+# Print final document
 sbml_str = writeSBMLToString(document)
 print(sbml_str)

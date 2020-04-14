@@ -1,5 +1,8 @@
 from libsbml import *
 
+import stubs
+unit = stubs.unit
+
 class SBMLUnit:
     def __init__(self, id, kind, exponent, scale, multiplier):
         self.id = id
@@ -17,6 +20,5 @@ class SBMLUnit:
         u.setMultiplier(self.multiplier)
 
 SBML_UNIT_REGISTRY = {
-    # "micrometers_squared" : SBMLUnit('micrometer', UNIT_KIND_METRE, 2, -12, 1)
     "micrometer" : SBMLUnit('micrometer', UNIT_KIND_METRE, 1, -6, 1)
 }
