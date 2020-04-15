@@ -1462,7 +1462,7 @@ class Model(object):
                 symComp = symComp.subs(i, r.paramDictValues[i].value)
             lam = sympy.lambdify(r.LHS+r.RHS, symComp)
             func_vector.append(lam)
-        return lambda u:[f(*u) for f in func_vector]
+        return lambda u:[-f(*u) for f in func_vector]
 
     def solve(self, op_split_scheme="DRD", plot_period=1):
         ## solve
