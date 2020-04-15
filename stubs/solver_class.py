@@ -20,85 +20,87 @@ size = comm.size
 root = 0
 
 
-class Setting(object):
-    def __init__(self, value, type_, required='False', validity_condition='True'):
-        """
-        required can either be True, False, or conditional on another setting;
-        in the last case required is a dictionary where key/value is the
-        setting and its value that must be true)
-        validity_condition: str 
+# class Setting(object):
+#     def __init__(self, value, type_, required='False', validity_condition='True'):
+#         """
+#         required can either be True, False, or conditional on another setting;
+#         in the last case required is a dictionary where key/value is the
+#         setting and its value that must be true)
+#         validity_condition: str 
         
-        Args:
-            value (variable): Value of setting
-            type_ (variable): Type of setting (if this differs from type
-            (setting.value) an Exception will be raised)
-            required (str, optional): str that evaluates to a lambda function
-            with input argument 'solver'
-            validity_condition (str, optional): str that evaluates to a lambda
-            function with input argument 'value'
-        """
+#         Args:
+#             value (variable): Value of setting
+#             type_ (variable): Type of setting (if this differs from type
+#             (setting.value) an Exception will be raised)
+#             required (str, optional): str that evaluates to a lambda function
+#             with input argument 'solver'
+#             validity_condition (str, optional): str that evaluates to a lambda
+#             function with input argument 'value'
+#         """
 
-        # example: setting 'b' has initial value 0.0, type_ 'float', is only a
-        # required setting if setting 'a' is equal to True, and must be >= 0. 
-        # Initialize as such:
-        # 
-        # Setting(0.0, 'b', float, required=lambda s: s.a.value==True, 
-        # validity_condition=lambda val: val>=0)
-        self.value              = value
-        self.type_              = type_
-        self.required           = required
-        self.validity_condition = validity_condition
+#         # example: setting 'b' has initial value 0.0, type_ 'float', is only a
+#         # required setting if setting 'a' is equal to True, and must be >= 0. 
+#         # Initialize as such:
+#         # 
+#         # Setting(0.0, 'b', float, required=lambda s: s.a.value==True, 
+#         # validity_condition=lambda val: val>=0)
+#         self.value              = value
+#         self.type_              = type_
+#         self.required           = required
+#         self.validity_condition = validity_condition
 
-        self._required_lambda           = self.string_to_lambda(required, 'solver')
-        self._validity_condition_lambda = self.string_to_lambda(validity_condition, 'value')
+#         self._required_lambda           = self.string_to_lambda(required, 'solver')
+#         self._validity_condition_lambda = self.string_to_lambda(validity_condition, 'value')
 
-    def string_to_lambda(self, string, var_name):
-        """
-        Converts a string representing a lambda function with a single input
-        variable into a lambda function
-        """
-        if type(string) is not str or type(var_name) is not str:
-            raise Exception(f"string and var_name must both have type str")
+#     def string_to_lambda(self, string, var_name):
+#         """
+#         Converts a string representing a lambda function with a single input
+#         variable into a lambda function
+#         """
+#         if type(string) is not str or type(var_name) is not str:
+#             raise Exception(f"string and var_name must both have type str")
 
-        return eval('lambda ' + var_name + ': ' + string)
+#         return eval('lambda ' + var_name + ': ' + string)
 
 class Solver(object):
-    def __init__(self, method):
-        self.method = Setting(None, str, required='True')
-    def check_validity(self, verbose=False):
-        """
-        Check that all current settings are valid
-        """
-        for setting_name, setting in self.__dict__.items():
-            if type(setting) == Setting:
-                # type checks
-                if type(setting.value) != setting.type_:
-                    raise Exception(f"The type of setting \"{setting_name}\" is \"{type(setting.value)}\". \
-                                      Required type is \"{setting.type_}\"")
+    def __init__(self, base_variable=''):
+        self.base_variable = base_variable
+        #self.method = Setting(None, str, required='True')
+    # def check_validity(self, verbose=False):
+    #     """
+    #     Check that all current settings are valid
+    #     """
+    #     for setting_name, setting in self.__dict__.items():
+    #         if type(setting) == Setting:
+    #             # type checks
+    #             if type(setting.value) != setting.type_:
+    #                 raise Exception(f"The type of setting \"{setting_name}\" is \"{type(setting.value)}\". \
+    #                                   Required type is \"{setting.type_}\"")
 
-                # validity condition check
-                if setting._validity_condition_lambda(setting.value) not in (True, False):
-                    raise Exception(f"The validity condition for setting \"{setting_name}\" must return either True or False")
-                if setting._validity_condition_lambda(setting.value) is False:
-                    raise Exception(f"The validity condition for setting \"{setting_name}\" was not satisfied.")
+    #             # validity condition check
+    #             if setting._validity_condition_lambda(setting.value) not in (True, False):
+    #                 raise Exception(f"The validity condition for setting \"{setting_name}\" must return either True or False")
+    #             if setting._validity_condition_lambda(setting.value) is False:
+    #                 raise Exception(f"The validity condition for setting \"{setting_name}\" was not satisfied.")
 
-                # requirement/dependency check
-                if setting._required_lambda(self) not in (True, False):
-                    raise Exception(f"The valdiity condition for setting \"{setting_name}\" must return either True or False")
-                if setting._required_lambda(self) is False:
-                    print(f"Setting \"{setting_name}\" was provided but is not required.")
-                elif setting._required_lambda(self) is True:
-                    if setting.value is None:
-                        raise Exception(f"Required setting \"{setting_name}\" has not been initialized!")
+    #             # requirement/dependency check
+    #             if setting._required_lambda(self) not in (True, False):
+    #                 raise Exception(f"The valdiity condition for setting \"{setting_name}\" must return either True or False")
+    #             if setting._required_lambda(self) is False:
+    #                 print(f"Setting \"{setting_name}\" was provided but is not required.")
+    #             elif setting._required_lambda(self) is True:
+    #                 if setting.value is None:
+    #                     raise Exception(f"Required setting \"{setting_name}\" has not been initialized!")
 
-                # print a summary
-                if verbose is True:
-                    print(f"Setting \"{setting_name}\" passes all checks and is valid:")
-                    print(f"\t* Type of setting, {type(setting.value)} matches required type, {setting.type_.__name__}")
-                    print(f"\t* Validity condition, {setting.validity_condition}, is satisfied.")
+    #             # print a summary
+    #             if verbose is True:
+    #                 print(f"Setting \"{setting_name}\" passes all checks and is valid:")
+    #                 print(f"\t* Type of setting, {type(setting.value)} matches required type, {setting.type_.__name__}")
+    #                 print(f"\t* Validity condition, {setting.validity_condition}, is satisfied.")
 
-        print(f"All settings for \"{self.__class__.__name__}\" are valid!")
-
+    #     print(f"All settings for \"{self.__class__.__name__}\" are valid!")
+    def check_solver_validity(self):
+        print('Solver settings are valid')
 
 class MultiphysicsSolver(Solver):
     def __init__(self, method='iterative'):
@@ -116,42 +118,66 @@ mps = MultiphysicsSolver('iterative')
 mps.check_validity(verbose=True)
 
 class NonlinearSolver(Solver):
-    def __init__(self, method='newton'):
+    def __init__(self, method='newton', mix_nonlinear=2, max_nonlinear=10,
+                 dt_increase_factor=1.0, dt_decrease_factor=0.8,):
         super().__init__(method)
-        # default values
-        self.method.value               = method
-        self.method.validity_condition  = "x in ['newton', 'picard']"
 
-        self.min_nonlinear      = Setting(2, int, required="True")
-        self.max_nonlinear      = Setting(10, int, required="True")
-        self.dt_increase_factor = Setting(1.0, float, required="True")
-        self.dt_decrease_factor = Setting(0.8, float, required="True")
-        self.dolfin_newton      = Setting({'maximum_iterations': 50, 'error_on_nonconvergence': False,
-                                           'relative_tolerance': 1e-8, 'absolute_tolerance': 1e-10},
-                                           dict, required="solver.method.value=='newton'")
+        #self.relative_tolerance = Setting(1e-8, float, required="solver.method.value=='picard'")
+        #self.absolute_tolerance = Setting(1e-8, float, required="solver.method.value=='picard'")
+    def check_nls_validity(self, verbose=False):
+        """
+        Check that all current settings are valid
+        """
+        if type(self.min_nonlinear) != int or type(self.max_nonlinear) != int:
+            raise TypeError("min_nonlinear and max_nonlinear must be integers.")
 
-        self.picard_norm        = Setting('Linf', str, required="solver.method.value=='picard'",
-                                          validity_condition="value in ['Linf', 'L2']")
-        self.relative_tolerance = Setting(1e-8, float, required="solver.method.value=='picard'")
-        self.absolute_tolerance = Setting(1e-8, float, required="solver.method.value=='picard'")
+        if self.dt_increase_factor < 1.0: 
+            raise ValueError("dt_increase_factor must be >= 1.0")
+
+        print('All NonlinearSolver settings are valid!')
+        # check settings of parent class
+        self.check_solver_validity() 
+
 
 nls = NonlinearSolver('newton')
 nls.check_validity(verbose=True)
 
-class NonLinearPicardSolver(NonLinearSovler):
+class NonLinearPicardSolver(NonlinearSovler):
 
-    valid_norms = ['Linf', 'L2']
+    self._valid_norms = ['Linf', 'L2']
 
-    def __init__(self, mix_nonlinear=2, max_nonlinear=10, dt_increase_factor=1.0, dt_decrease_factor=0.8,
+    def __init__(self, 
                  picard_norm = 'Linf', ...
                  ):
-        super().__init__(max_nonlinear...)
+        super().__init__()
 
         # EXPENSIVE!
 
         if picard_norm not in valid_norms:
             raise RuntimeException(f"Invalid Picard norm ({picard_norm}) reasonable values are: {valid_norms}")
         self.picard_norm = picard_norm
+
+
+
+
+
+        self.dolfin_newton      = Setting({'maximum_iterations': 50, 'error_on_nonconvergence': False,
+                                           'relative_tolerance': 1e-8, 'absolute_tolerance': 1e-10},
+                                           dict, required="solver.method.value=='newton'")
+
+        self.picard_norm        = Setting('Linf', str, required="solver.method.value=='picard'",
+                                          validity_condition="value in ['Linf', 'L2']")
+
+class alpha(object):
+    def __init__(self):
+        self.a=1
+    def foo(self):
+        print('hi')
+
+class beta(alpha):
+    def __init__(self):
+        #super().__init__()
+
 
 
 class LinearSolver(Solver):
