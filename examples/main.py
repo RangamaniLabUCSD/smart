@@ -19,7 +19,7 @@ nprocs = comm.size
 
 # Load in model and settings
 settings = stubs.config.Config('main.config')
-model = settings.generate_ode_model()
+model = settings.generate_model()
 print(model)
 model.solve()
 
