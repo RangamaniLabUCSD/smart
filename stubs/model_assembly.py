@@ -1215,14 +1215,14 @@ class Form(object):
 # ==============================================================================
 
 class Model(object):
-    def __init__(self, PD, SD, CD, RD, FD, config):
+    def __init__(self, PD, SD, CD, RD, FD, config,zero_d):
         self.PD = PD
         self.SD = SD
         self.CD = CD
         self.RD = RD
         self.FD = FD
         self.config = config
-
+        self.zero_d = zero_d
         # self.u = SD.u
         # self.v = SD.v
         # self.V = SD.V
@@ -1432,10 +1432,42 @@ class Model(object):
 #===============================================================================
 #===============================================================================
 
+    def de_solver(self, func_vectors, num_params, t_span,initial_guess_for_root = None, root_check=True, max_step=0.01, jac=False, method='RK45'):
+            if initial_guess_for_root is None:
+                initial_guess_for_root = [0]*num_params
+                print("Warning: The initial condition of species is not given")
+            if root_check:
+                root_info = optimize.root(lambda y:func_vectors(0, y),initial_guess_for_root,jac=jac)
+                if root_info.success:
+                    root = root_info.x
+                    if (((initial_guess_for_root - root)/initial_guess_for_root)>0.1).any():
+                        print("Initial guess doesn't match root condition")
+                else:
+                    raise Exception('Unable to find initial condition: unable to find root')
+            else:
+                root = initial_guess_for_root
+            sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
+            #returns u
+            return sol
+    
+    def get_lambdified(self, reaction_expr):
+        r = self.RD.Dict[reaction_expr]
+        func_vector = []
+        for s in r.LHS+r.RHS:
+            if s in r.LHS:
+                symComp = self.FD.Dict[reaction_expr+' (f) ['+s+']'].symEqn - self.FD.Dict[reaction_expr+' (r) ['+s+']'].symEqn
+            else:
+                symComp = self.FD.Dict[reaction_expr+' (r) ['+s+']'].symEqn - self.FD.Dict[reaction_expr+' (f) ['+s+']'].symEqn
+            for i in r.paramDictValues.keys():
+                symComp = symComp.subs(i, r.paramDictValues[i].value)
+            lam = sympy.lambdify(r.LHS+r.RHS, symComp)
+            func_vector.append(lam)
+        return lambda u:[f(*u) for f in func_vector]
+
     def solve(self, op_split_scheme="DRD", plot_period=1):
         ## solve
         if self.zero_d == True:
-            print('Zero d')
+            
             return
         self.init_solver_and_plots()
 

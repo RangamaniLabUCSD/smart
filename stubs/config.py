@@ -360,7 +360,7 @@ class Config(object):
 
         # # opportunity to make custom changes
 
-        model = model_assembly.Model(PD, SD, CD, RD, FD, self)
+        model = model_assembly.Model(PD, SD, CD, RD, FD, self,self.settings['zero_d'])
         
         if rank==root:
             Print("Model created succesfully! :)")
