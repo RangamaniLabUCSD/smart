@@ -1,6 +1,5 @@
 from libsbml import *
-from sbml_unit_registry import SBMLUnit, SBML_UNIT_REGISTRY
-
+import sbml_unit_conversion
 
 import sys
 import os
@@ -33,6 +32,8 @@ def sbml_to_compartment(document, compartment_df):
         units = compartment.getUnits()
         if units == "":
             units = "meter"
+        # units = compartment.getDerivedUnitDefinition()
+
         dim = compartment.getSpatialDimensions()
         print(s_id, units, dim, marker)
         compartment_df.append(s_id, dim, units, marker)

@@ -1,5 +1,5 @@
 from libsbml import *
-from sbml_unit_registry import SBMLUnit, SBML_UNIT_REGISTRY
+# from sbml_unit_registry import SBMLUnit, SBML_UNIT_REGISTRY
 
 import sys
 sys.path.append("../")
