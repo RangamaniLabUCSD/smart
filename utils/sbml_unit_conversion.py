@@ -28,7 +28,7 @@ def convert_sbml_unit_to_pint(sbml_unit):
 
 def convert_pint_to_sbml_unit_definition(pint_unit, model):
     u_def = model.createUnitDefinition()
-    u_def.setId(pint_unit.units.format_babel())
+    u_def.setId(pint_unit.format_babel())
 
     quant = 1 * pint_unit
     quant = quant.to_base_units()
@@ -70,9 +70,9 @@ model = doc.createModel()
 u_a = 5 * unit_registry.kilometers ** 3
 u_b = 10 * unit_registry.molecules / unit_registry.miles ** 3
 u_c = 5 * unit_registry.inches / unit_registry.hours
-convert_pint_to_sbml_unit_definition(u_a, model)
-convert_pint_to_sbml_unit_definition(u_b, model)
-convert_pint_to_sbml_unit_definition(u_c, model)
+convert_pint_to_sbml_unit_definition(u_a.units, model)
+convert_pint_to_sbml_unit_definition(u_b.units, model)
+convert_pint_to_sbml_unit_definition(u_c.units, model)
 print(writeSBMLToString(doc))
 
 # fp = "models/Voliotis2019.xml"
