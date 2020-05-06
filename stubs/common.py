@@ -4,6 +4,9 @@ import pandas as pd
 import dolfin as d
 import numpy as np
 import scipy.interpolate as interp
+import os
+import stubs.model_assembly as model_assembly
+from pandas import read_json
 
 # pandas
 class ref:
@@ -168,5 +171,25 @@ def mark_boundaries(mesh, marker_value, func):
         returns true if it should be marked.
     TODO
     """
+
+def json_to_ObjectContainer(json_file_name, data_type=None):
+    if not data_type:
+        raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
+    if not os.path.exists(json_file_name):
+        raise Exception("Cannot find JSON file, %s"%json_file_name)
+    df = read_json(json_file_name).sort_index()
+    df = nan_to_none(df)
+    if data_type in ['parameters', 'parameter', 'param', 'p']:
+        return model_assembly.ParameterContainer(df)
+    elif data_type in ['species', 'sp', 'spec', 's']:
+        return model_assembly.SpeciesContainer(df)
+    elif data_type in ['compartments', 'compartment', 'comp', 'c']:
+        return model_assembly.CompartmentContainer(df)
+    elif data_type in ['reactions', 'reaction', 'r', 'rxn']:
+        return model_assembly.ReactionContainer(df)
+    else:
+        raise Exception("I don't know what kind of ObjectContainer this .json file should be")
+
+
 
 

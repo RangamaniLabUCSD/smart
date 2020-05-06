@@ -282,6 +282,16 @@ class Config(object):
         model.assemble_reactive_fluxes()
         model.assemble_diffusive_fluxes()
         #model.establish_mappings()
+
+
+        # # debug
+        # model.PD.print()
+        # model.SD.print()
+        # model.CD.print()
+        # model.RD.print()
+        # model.FD.print()
+        # return model
+
         # Sort forms by type (diffusive, time derivative, etc.)
         model.sort_forms()
 

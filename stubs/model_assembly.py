@@ -436,21 +436,37 @@ class SpeciesContainer(_ObjectContainer):
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunctions(V[compartment_name])
 
-        if not settings['add_boundary_species']: # if the setting is true sub_species will be added
-            # now we create boundary functions, which are defined on the function spaces of the surrounding mesh
-            V['boundary'] = {}
-            for compartment_name, num_species in num_species_per_compartment.items():
-                compartmentDim = CD.Dict[compartment_name].dimensionality
-                if compartmentDim == CD.max_dim: # mesh may have boundaries
-                    V['boundary'][compartment_name] = {}
-                    for boundary_name, boundary_mesh in CD.meshes.items():
-                        if compartment_name != boundary_name:
-                            if num_species == 1:
-                                boundaryV = d.FunctionSpace(CD.meshes[boundary_name], 'P', 1)
-                            else:
-                                boundaryV = d.VectorFunctionSpace(CD.meshes[boundary_name], 'P', 1, dim=num_species)
-                            V['boundary'][compartment_name].update({boundary_name: boundaryV})
-                            u[compartment_name]['b'+boundary_name] = d.Function(boundaryV, name="concentration_ub")
+        # now we create boundary functions, i.e. interpolations of functions defined on the volume
+        # to function spaces of the surrounding mesh
+        V['boundary'] = {}
+        for compartment_name, num_species in num_species_per_compartment.items():
+            compartmentDim = CD.Dict[compartment_name].dimensionality
+            if compartmentDim == CD.max_dim: # mesh may have boundaries
+                V['boundary'][compartment_name] = {}
+                for mesh_name, mesh in CD.meshes.items():
+                    if compartment_name != mesh_name:
+                        if num_species == 1:
+                            boundaryV = d.FunctionSpace(mesh, 'P', 1)
+                        else:
+                            boundaryV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
+                        V['boundary'][compartment_name].update({mesh_name: boundaryV})
+                        u[compartment_name]['b'+mesh_name] = d.Function(boundaryV, name="concentration_ub")
+
+        # now we create volume functions, i.e. interpolations of functions defined on the surface
+        # to function spaces of the associated volume
+        V['volume'] = {}
+        for compartment_name, num_species in num_species_per_compartment.items():
+            compartmentDim = CD.Dict[compartment_name].dimensionality
+            if compartmentDim == CD.min_dim: # mesh may be a boundary with a connected volume
+                V['volume'][compartment_name] = {}
+                for mesh_name, mesh in CD.meshes.items():
+                    if compartment_name != mesh_name:
+                        if num_species == 1:
+                            volumeV = d.FunctionSpace(CD.meshes[mesh_name], 'P', 1)
+                        else:
+                            volumeV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
+                        V['volume'][compartment_name].update({mesh_name: volumeV})
+                        u[compartment_name]['v'+mesh_name] = d.Function(volumeV, name="concentration_uv")
 
         # associate indexed functions with dataframe
         for key, sp in self.Dict.items():
@@ -528,13 +544,13 @@ class CompartmentContainer(_ObjectContainer):
         # should only call entity_map once to avoid this
         emap_0 = bmesh.entity_map(0)
         bmesh_emap_0 = deepcopy(emap_0.array())
-        emap_2 = bmesh.entity_map(2)
-        bmesh_emap_2 = deepcopy(emap_2.array())
+        emap_n = bmesh.entity_map(surfaceDim)
+        bmesh_emap_n = deepcopy(emap_n.array())
         vmf = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
         bmf = d.MeshFunction("size_t", bmesh, surfaceDim)
         for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): # iterate through faces of bmesh
             #vmesh_idx = bmesh.entity_map(surfaceDim)[idx] # get the index of the face on vmesh corresponding to this face on bmesh
-            vmesh_idx = bmesh_emap_2[idx] # get the index of the face on vmesh corresponding to this face on bmesh
+            vmesh_idx = bmesh_emap_n[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
@@ -581,7 +597,7 @@ class CompartmentContainer(_ObjectContainer):
         self.vmf = vmf
         self.bmesh = bmesh
         self.bmesh_emap_0 = bmesh_emap_0
-        self.bmesh_emap_2 = bmesh_emap_2
+        self.bmesh_emap_n = bmesh_emap_n
         self.bmf = bmf
 
         # If we were running in serial to generate submeshes, exit here and
@@ -631,45 +647,45 @@ class ReactionContainer(_ObjectContainer):
         compartment_counts = [sp.compartment_name for sp in all_involved_species]
 
 
-        if settings['add_boundary_species']:
-            ### additional boundary functions
-            # get volumetric species which should also be defined on their boundaries
-            sub_species_to_add = []
-            for rxn in self.Dict.values():
-                involved_compartments = [CD.Dict[comp_name] for comp_name in rxn.involved_compartments]
-                rxn_min_dim = min([comp.dimensionality for comp in involved_compartments])
-                rxn_max_dim = min([comp.dimensionality for comp in involved_compartments])
-                for sp_name in rxn.involved_species:
-                    sp = SD.Dict[sp_name]
-                    if sp.dimensionality > rxn_min_dim: # species is involved in a boundary reaction
-                        for comp in involved_compartments:
-                            if comp.name != sp.compartment_name:
-                                sub_species_to_add.append((sp_name, comp.name))
-                                #sp.sub_species.update({comp.name: None})
+        # if settings['add_boundary_species']:
+        #     ### additional boundary functions
+        #     # get volumetric species which should also be defined on their boundaries
+        #     sub_species_to_add = []
+        #     for rxn in self.Dict.values():
+        #         involved_compartments = [CD.Dict[comp_name] for comp_name in rxn.involved_compartments]
+        #         rxn_min_dim = min([comp.dimensionality for comp in involved_compartments])
+        #         rxn_max_dim = min([comp.dimensionality for comp in involved_compartments])
+        #         for sp_name in rxn.involved_species:
+        #             sp = SD.Dict[sp_name]
+        #             if sp.dimensionality > rxn_min_dim: # species is involved in a boundary reaction
+        #                 for comp in involved_compartments:
+        #                     if comp.name != sp.compartment_name:
+        #                         sub_species_to_add.append((sp_name, comp.name))
+        #                         #sp.sub_species.update({comp.name: None})
 
-            # Create a new species on boundaries
-            sub_sp_list = []
-            for sp_name, comp_name in set(sub_species_to_add):
-                sub_sp_name = sp_name+'_sub_'+comp_name
-                compartment_counts.append(comp_name)
-                if sub_sp_name not in SD.Dict.keys():
-                    color_print('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
-                        % (sp_name, comp_name, sub_sp_name), 'blue')
+        #     # Create a new species on boundaries
+        #     sub_sp_list = []
+        #     for sp_name, comp_name in set(sub_species_to_add):
+        #         sub_sp_name = sp_name+'_sub_'+comp_name
+        #         compartment_counts.append(comp_name)
+        #         if sub_sp_name not in SD.Dict.keys():
+        #             color_print('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
+        #                 % (sp_name, comp_name, sub_sp_name), 'blue')
 
-                    sub_sp = copy(SD.Dict[sp_name])
-                    sub_sp.is_an_added_species = True
-                    sub_sp.name = sub_sp_name
-                    sub_sp.compartment_name = comp_name
-                    sub_sp.compartment = CD.Dict[comp_name]
-                    sub_sp.is_in_a_reaction = True
-                    sub_sp.sub_species = {}
-                    sub_sp.parent_species = sp_name
-                    sub_sp_list.append(sub_sp)
+        #             sub_sp = copy(SD.Dict[sp_name])
+        #             sub_sp.is_an_added_species = True
+        #             sub_sp.name = sub_sp_name
+        #             sub_sp.compartment_name = comp_name
+        #             sub_sp.compartment = CD.Dict[comp_name]
+        #             sub_sp.is_in_a_reaction = True
+        #             sub_sp.sub_species = {}
+        #             sub_sp.parent_species = sp_name
+        #             sub_sp_list.append(sub_sp)
 
-            #if sub_sp_name not in SD.Dict.keys():
-            for sub_sp in sub_sp_list:
-                SD.Dict[sub_sp.name] = sub_sp
-                SD.Dict[sub_sp.parent_species].sub_species.update({sub_sp.compartment_name: sub_sp})
+        #     #if sub_sp_name not in SD.Dict.keys():
+        #     for sub_sp in sub_sp_list:
+        #         SD.Dict[sub_sp.name] = sub_sp
+        #         SD.Dict[sub_sp.parent_species].sub_species.update({sub_sp.compartment_name: sub_sp})
 
 
         return Counter(compartment_counts)
@@ -1043,39 +1059,48 @@ class Flux(_ObjectInstance):
         var = self.spDict[var_name]
 
         # boundary fluxes (surface -> volume)
-        #if var.dimensionality < sp.dimensionality:
-        if var.dimensionality < sp.compartment.dimensionality:
-            return 'u' # always true if operator splitting to decouple compartments
+        # # 
+        # if var.dimensionality < sp.compartment.dimensionality:
+        #     return 'u' # always true if operator splitting to decouple compartments
 
-        if sp.name == var.parent_species:
-            return 'u'
+        # if sp.name == var.parent_species:
+        #     return 'u'
 
-        if config.solver['nonlinear'] == 'picard':# or 'IMEX':
-            # volume -> surface
-            if var.dimensionality > sp.dimensionality and config.settings['add_boundary_species']:
-                if self.is_linear_wrt_comp[var.compartment_name]:
-                    return 'bt'
-                else:
-                    return 'bk'
+        # if config.solver['nonlinear'] == 'picard':# or 'IMEX':
+        #     # volume -> surface
+        #     if var.dimensionality > sp.dimensionality and config.settings['add_boundary_species']:
+        #         if self.is_linear_wrt_comp[var.compartment_name]:
+        #             return 'bt'
+        #         else:
+        #             return 'bk'
 
-            elif var.dimensionality > sp.dimensionality:
-                return 'b'+sp.compartment_name
+        #     elif var.dimensionality > sp.dimensionality:
+        #         return 'b'+sp.compartment_name
 
-            # volumetric fluxes
-            elif var.compartment_name == self.destination_compartment:
-                if self.is_linear_wrt_comp[var.compartment_name]:
-                    return 't'
-                #dynamic LHS
-                elif var.name == sp.name and self.is_linear_wrt[sp.name]:
-                    return 't'
-                else:
-                    return 'k'
+        #     # volumetric fluxes
+        #     elif var.compartment_name == self.destination_compartment:
+        #         if self.is_linear_wrt_comp[var.compartment_name]:
+        #             return 't'
+        #         #dynamic LHS
+        #         elif var.name == sp.name and self.is_linear_wrt[sp.name]:
+        #             return 't'
+        #         else:
+        #             return 'k'
 
-        elif config.solver['nonlinear'] == 'newton':
+        if config.solver['nonlinear'] == 'newton':
+            # if var.dimensionality > sp.dimensionality:
+            #     return 'b'+sp.compartment_name
+            # else:
+            #     return 'u'
+
+            # Testing volume interpolated functions
             if var.dimensionality > sp.dimensionality:
                 return 'b'+sp.compartment_name
+            elif var.dimensionality < sp.dimensionality:
+                return 'v'+sp.compartment_name
             else:
                 return 'u'
+
 
         elif config.solver['nonlinear'] == 'IMEX':
             ## same compartment
@@ -1139,15 +1164,15 @@ class Flux(_ObjectInstance):
             elif var_name in self.spDict.keys():
                 var = self.spDict[var_name]
                 ukey = self.ukeys[var_name]
-                if ukey[0] == 'b' and config.settings['add_boundary_species']:
-                    if not var.parent_species and config.settings['add_boundary_species']:
-                        sub_species = var.sub_species[self.destination_compartment]
-                        value_dict[var_name] = sub_species.u[ukey[1]]
-                        Print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
-                    else:
-                        value_dict[var_name] = var.u[ukey[1]]
-                else:
-                    value_dict[var_name] = var.u[ukey]
+                # if ukey[0] == 'b' and config.settings['add_boundary_species']:
+                #     if not var.parent_species and config.settings['add_boundary_species']:
+                #         sub_species = var.sub_species[self.destination_compartment]
+                #         value_dict[var_name] = sub_species.u[ukey[1]]
+                #         Print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
+                #     else:
+                #         value_dict[var_name] = var.u[ukey[1]]
+                # else:
+                value_dict[var_name] = var.u[ukey]
 
                 value_dict[var_name] *= var.concentration_units * 1
 
@@ -1395,6 +1420,18 @@ class Model(object):
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
                 self.F[comp.name] = sum(comp_forms)
                 J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
+
+                # #debug
+                # print(comp.name)
+                # for dolfin_form in comp_forms:
+                #     d.assemble(dolfin_form)
+                # print("assembled dolfin forms individually...")
+
+                # Fassem = d.assemble(self.F[comp.name])
+                # print(Fassem.get_local().shape)
+                # Jassem = d.assemble(J)
+                # print(Jassem.array().shape)
+
                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
 
                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
@@ -1599,27 +1636,18 @@ class Model(object):
             self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
             Print("Assigning old value of u to species in compartment %s" % comp_name)
 
-    def update_solution_boundary_to_volume(self, keys=['k', 'u']):
-        for sp_name, sp in self.SD.Dict.items():
-            if sp.parent_species:
-                sp_parent = self.SD.Dict[sp.parent_species]
-                submesh_species_index = sp.compartment_index
-                idx = sp_parent.dof_map[sp_name]
-
-                pcomp_name = sp_parent.compartment_name
-                comp_name = sp.compartment_name
-
-                for key in keys:
-
-                    self.u[pcomp_name][key].vector()[idx] = \
-                        stubs.data_manipulation.dolfinGetFunctionValues(self.u[comp_name]['u'], self.V[comp_name], submesh_species_index)
-
-                Print("Assigned values from %s (%s) to %s (%s) [keys: %s]" % (sp_name, comp_name, sp_parent.name, pcomp_name, keys))
+    def update_solution_boundary_to_volume(self):
+        for comp_name in self.CD.Dict.keys():
+            for key in self.u[comp_name].keys():
+                if key[0] == 'v': # fixme
+                    self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
+                    parent_comp_name = key[1:]
+                    Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
 
     def update_solution_volume_to_boundary(self):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
-                if key[0] == 'b':
+                if key[0] == 'b': # fixme
                     self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
                     sub_comp_name = key[1:]
                     Print("Projected values from volume %s to surface %s" % (comp_name, sub_comp_name))
@@ -1841,7 +1869,8 @@ class Model(object):
 
     def compute_statistics(self):
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        # debug
+        #self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
         self.data.outputCSV(self.config)
 
