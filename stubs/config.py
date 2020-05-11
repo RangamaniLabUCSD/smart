@@ -278,6 +278,8 @@ class Config(object):
 
         # to deal with possible floating point error in mesh coordinates
         model.set_allow_extrapolation()
+        # allows interpolation between different meshes
+        #model.create_bounding_boxes()
         # Turn fluxes into fenics/dolfin expressions
         model.assemble_reactive_fluxes()
         model.assemble_diffusive_fluxes()

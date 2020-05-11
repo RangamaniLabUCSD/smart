@@ -172,6 +172,7 @@ def mark_boundaries(mesh, marker_value, func):
     TODO
     """
 
+
 def json_to_ObjectContainer(json_file_name, data_type=None):
     if not data_type:
         raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
@@ -189,6 +190,16 @@ def json_to_ObjectContainer(json_file_name, data_type=None):
         return model_assembly.ReactionContainer(df)
     else:
         raise Exception("I don't know what kind of ObjectContainer this .json file should be")
+
+
+def append_meshfunction_to_meshdomains(mesh, mesh_function):
+    md = mesh.domains()
+    mf_dim = mesh_function.dim()
+
+    for idx, val in enumerate(mesh_function.array()):
+        md.set_marker((idx,val), mf_dim)
+
+
 
 
 

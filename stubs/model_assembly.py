@@ -444,7 +444,7 @@ class SpeciesContainer(_ObjectContainer):
             if compartmentDim == CD.max_dim: # mesh may have boundaries
                 V['boundary'][compartment_name] = {}
                 for mesh_name, mesh in CD.meshes.items():
-                    if compartment_name != mesh_name:
+                    if compartment_name != mesh_name and mesh.topology().dim() < compartmentDim:
                         if num_species == 1:
                             boundaryV = d.FunctionSpace(mesh, 'P', 1)
                         else:
@@ -460,9 +460,9 @@ class SpeciesContainer(_ObjectContainer):
             if compartmentDim == CD.min_dim: # mesh may be a boundary with a connected volume
                 V['volume'][compartment_name] = {}
                 for mesh_name, mesh in CD.meshes.items():
-                    if compartment_name != mesh_name:
+                    if compartment_name != mesh_name and mesh.topology().dim() > compartmentDim:
                         if num_species == 1:
-                            volumeV = d.FunctionSpace(CD.meshes[mesh_name], 'P', 1)
+                            volumeV = d.FunctionSpace(mesh, 'P', 1)
                         else:
                             volumeV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
                         V['volume'][compartment_name].update({mesh_name: volumeV})
@@ -606,8 +606,6 @@ class CompartmentContainer(_ObjectContainer):
             Print("If run in serial, submeshes were saved to file. Run again"\
                   "in parallel.")
             exit()
-
-
 
     def compute_scaling_factors(self):
         self.do_to_all('compute_nvolume')
@@ -1268,6 +1266,9 @@ class Model(object):
         self.scipy_odes = {}
 
         self.data = stubs.data_manipulation.Data(self)
+#    def create_bounding_boxes(self):
+#        for mesh_name, mesh in self.CD.meshes.items():
+
 #===============================================================================
 #===============================================================================
 # PROBLEM SETUP
@@ -1640,7 +1641,7 @@ class Model(object):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
                 if key[0] == 'v': # fixme
-                    self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
+                    d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
                     parent_comp_name = key[1:]
                     Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
 
