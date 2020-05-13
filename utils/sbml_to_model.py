@@ -22,6 +22,7 @@ if doc.getNumErrors() > 0:
     raise Exception('Unable to read SBML from ' + fp)
 
 c_df = stubs.model_building.CompartmentDF()
+p_df = stubs.model_building.ParameterDF()
 
 def sbml_to_compartment(document, compartment_df):
     marker = 1
@@ -40,7 +41,20 @@ def sbml_to_compartment(document, compartment_df):
         marker += 1
     return
 
+def sbml_to_parameters(document, parameter_df):
+    model = document.getModel()
+    parameters = model.getListOfParameters()
+    for parameter in parameters:
+        s_id = parameter.getId()
+        value = float(parameter.getValue())
+        units = parameter.getUnits()
+        notes = parameter.getNotesString()
+        print(s_id, value, units)
+        parameter_df.append(s_id, value, units, notes)
+    return
+
 sbml_to_compartment(doc, c_df)
+sbml_to_parameters(doc, p_df)
 
 c_df.df.to_json(fp.split(".xml")[0] + "_compartments.json")
 
