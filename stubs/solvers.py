@@ -76,6 +76,8 @@ class SolverSystem(object):
 
         # General settings 
         self.ignore_surface_diffusion = ignore_surface_diffusion # setting to True will treat surface variables as ODEs 
+        self.auto_preintegrate=auto_preintegrate
+        #self.check_solver_system_validity()
 
     def check_solver_system_validity(self):
         if self.initial_dt <= 0:
@@ -124,7 +126,7 @@ class Solver(object):
     #                 print(f"\t* Validity condition, {setting.validity_condition}, is satisfied.")
 
     #     print(f"All settings for \"{self.__class__.__name__}\" are valid!")
-    def check_solver_validity(self):
+    def check_validity(self):
         if self.framework not in ['dolfin']:
             raise ValueError(f"Framework {self.framework} is not supported.")
 
@@ -132,7 +134,7 @@ class Solver(object):
 
 class MultiphysicsSolver(Solver):
     def __init__(self, mp_method='iterative'):
-        super().__init__(mp_method)
+        super().__init__()
         # default values
         self.mp_method = mp_method
         #self.method.value               = method
@@ -145,12 +147,20 @@ class MultiphysicsSolver(Solver):
             raise ValueError(f"MultiphysicsSolver must be either 'iterative' or 'monolithic'.")
 
         print('Multiphysics solver settings are valid')
+    
+    def check_validity(self):
+        super().check_validity()
+        self.check_multiphysics_solver_validity()
 
 class NonlinearSolver(Solver):
     def __init__(self, method='newton', min_nonlinear=2, max_nonlinear=10,
                  dt_increase_factor=1.0, dt_decrease_factor=0.8,):
-        super().__init__(method)
-
+        super().__init__()
+        self.method=method
+        self.min_nonlinear=min_nonlinear
+        self.max_nonlinear=max_nonlinear
+        self.dt_increase_factor=dt_increase_factor
+        self.dt_decrease_factor=dt_decrease_factor
         #self.relative_tolerance = Setting(1e-8, float, required="solver.method.value=='picard'")
         #self.absolute_tolerance = Setting(1e-8, float, required="solver.method.value=='picard'")
     def check_nls_validity(self, verbose=False):
@@ -164,8 +174,13 @@ class NonlinearSolver(Solver):
             raise ValueError("dt_increase_factor must be >= 1.0")
 
         print("All NonlinearSolver settings are valid!")
+
+    def check_validity(self):
         # check settings of parent class
-        self.check_solver_validity() 
+        super().check_validity()
+        self.check_nls_validity()
+    
+
 
 class NonlinearNewtonSolver(NonlinearSolver):
     """
@@ -173,7 +188,8 @@ class NonlinearNewtonSolver(NonlinearSolver):
     """
     def __init__(self, maximum_iterations=50, error_on_nonconvergence=False, relative_tolerance=1e-8, 
                  absolute_tolerance=1e-10):
-        self.method = 'newton'
+        super().__init__(method = 'newton')
+        
         self.maximum_iterations         = maximum_iterations
         self.error_on_nonconvergence    = error_on_nonconvergence
         self.relative_tolerance         = relative_tolerance
@@ -190,14 +206,15 @@ class NonlinearNewtonSolver(NonlinearSolver):
 
         print("All NonlinearNewtonSolver settings are valid!")
         # check settings of parent class
-        self.check_nls_validity()
+        #self.check_nls_validity()
+        super().check_validity()
 
 class NonlinearPicardSolver(NonlinearSolver):
 
     valid_norms = ['Linf', 'L2']
 
     def __init__(self, picard_norm = 'Linf'):
-        super().__init__()
+        super().__init__(method='?')
 
         if picard_norm not in valid_norms:
             raise ValueError(f"Invalid Picard norm ({picard_norm}) reasonable values are: {valid_norms}")
@@ -213,8 +230,8 @@ class NonlinearPicardSolver(NonlinearSolver):
 
 class LinearSolver(Solver):
     def __init__(self, method):
-        super().__init__(Solver, method)
-
+        super().__init__()
+        self.method=method
 
 
     def check_config_validity(self):
