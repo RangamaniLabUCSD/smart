@@ -28,25 +28,15 @@ from pprint import pprint
 from tabulate import tabulate
 from copy import copy, deepcopy
 
-import stubs.common as common
 import stubs
+import stubs.common as common
 from stubs import unit as ureg
+color_print = common.color_print
 
 comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
-
-
-def color_print(full_text, color):
-    if rank==root:
-        split_text = [s for s in re.split('(\n)', full_text) if s] # colored doesn't like newline characters
-        for text in split_text:
-            if text == '\n':
-                print()
-            else:
-                print(colored(text, color=color))
-
 
 # ====================================================
 # ====================================================
@@ -384,11 +374,11 @@ class SpeciesContainer(_ObjectContainer):
         super().__init__(Species, df, Dict)
         self.properties_to_print = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
-    def assemble_compartment_indices(self, RD, CD, settings):
+    def assemble_compartment_indices(self, RD, CD):
         """
         Adds a column to the species dataframe which indicates the index of a species relative to its compartment
         """
-        num_species_per_compartment = RD.get_species_compartment_counts(self, CD, settings)
+        num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
         for compartment, num_species in num_species_per_compartment.items():
             idx = 0
             comp_species = [sp for sp in self.Dict.values() if sp.compartment_name==compartment]
@@ -400,7 +390,7 @@ class SpeciesContainer(_ObjectContainer):
                     print('Warning: species %s is not used in any reactions!' % sp.name)
 
 
-    def assemble_dolfin_functions(self, RD, CD, settings):
+    def assemble_dolfin_functions(self, RD, CD):
         """
         define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
         IMPORTANT: this function will create additional species on boundaries in order to use operator-splitting later on
@@ -410,9 +400,9 @@ class SpeciesContainer(_ObjectContainer):
         """
 
         # functions to run beforehand as we need their results
-        num_species_per_compartment = RD.get_species_compartment_counts(self, CD, settings)
+        num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
         CD.get_min_max_dim()
-        self.assemble_compartment_indices(RD, CD, settings)
+        self.assemble_compartment_indices(RD, CD)
         CD.add_property_to_all('is_in_a_reaction', False)
         CD.add_property_to_all('V', None)
 
@@ -531,7 +521,7 @@ class CompartmentContainer(_ObjectContainer):
         self.vertex_mappings = {} # from submesh -> parent indices
     def load_mesh(self, mesh_key, mesh_str):
         self.meshes[mesh_key] = d.Mesh(mesh_str)
-    def extract_submeshes(self, main_mesh_str, save_to_file):
+    def extract_submeshes(self, main_mesh_str, save_to_file=False):
         main_mesh = self.Dict[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
 
@@ -635,7 +625,10 @@ class ReactionContainer(_ObjectContainer):
         #self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
-    def get_species_compartment_counts(self, SD, CD, settings):
+    def get_species_compartment_counts(self, SD, CD):
+        """
+        Returns a Counter object with the number of times a species appears in each compartment
+        """
         self.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
         all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.Dict.values()] for sp in species_set])
         for sp_name, sp in SD.Dict.items():
@@ -644,83 +637,7 @@ class ReactionContainer(_ObjectContainer):
 
         compartment_counts = [sp.compartment_name for sp in all_involved_species]
 
-
-        # if settings['add_boundary_species']:
-        #     ### additional boundary functions
-        #     # get volumetric species which should also be defined on their boundaries
-        #     sub_species_to_add = []
-        #     for rxn in self.Dict.values():
-        #         involved_compartments = [CD.Dict[comp_name] for comp_name in rxn.involved_compartments]
-        #         rxn_min_dim = min([comp.dimensionality for comp in involved_compartments])
-        #         rxn_max_dim = min([comp.dimensionality for comp in involved_compartments])
-        #         for sp_name in rxn.involved_species:
-        #             sp = SD.Dict[sp_name]
-        #             if sp.dimensionality > rxn_min_dim: # species is involved in a boundary reaction
-        #                 for comp in involved_compartments:
-        #                     if comp.name != sp.compartment_name:
-        #                         sub_species_to_add.append((sp_name, comp.name))
-        #                         #sp.sub_species.update({comp.name: None})
-
-        #     # Create a new species on boundaries
-        #     sub_sp_list = []
-        #     for sp_name, comp_name in set(sub_species_to_add):
-        #         sub_sp_name = sp_name+'_sub_'+comp_name
-        #         compartment_counts.append(comp_name)
-        #         if sub_sp_name not in SD.Dict.keys():
-        #             color_print('\nSpecies %s will have a new function defined on compartment %s with name: %s\n'
-        #                 % (sp_name, comp_name, sub_sp_name), 'blue')
-
-        #             sub_sp = copy(SD.Dict[sp_name])
-        #             sub_sp.is_an_added_species = True
-        #             sub_sp.name = sub_sp_name
-        #             sub_sp.compartment_name = comp_name
-        #             sub_sp.compartment = CD.Dict[comp_name]
-        #             sub_sp.is_in_a_reaction = True
-        #             sub_sp.sub_species = {}
-        #             sub_sp.parent_species = sp_name
-        #             sub_sp_list.append(sub_sp)
-
-        #     #if sub_sp_name not in SD.Dict.keys():
-        #     for sub_sp in sub_sp_list:
-        #         SD.Dict[sub_sp.name] = sub_sp
-        #         SD.Dict[sub_sp.parent_species].sub_species.update({sub_sp.compartment_name: sub_sp})
-
-
         return Counter(compartment_counts)
-
-    # def replace_sub_species_in_reactions(self, SD):
-    #     """
-    #     New species may be created to live on boundaries
-    #     TODO: this may cause issues if new properties are added to SpeciesContainer
-    #     """
-    #     sp_to_replace = []
-    #     for rxn in self.Dict.values():
-    #         for sp_name, sp in rxn.involved_species_link.items():
-    #             if set(sp.sub_species.keys()).intersection(rxn.involved_compartments):
-    #             #if sp.sub_species:
-    #                 print(sp.sub_species.items())
-    #                 for sub_comp, sub_sp in sp.sub_species.items():
-    #                     sub_sp_name = sub_sp.name
-
-    #                     rxn.LHS = [sub_sp_name if x==sp_name else x for x in rxn.LHS]
-    #                     rxn.RHS = [sub_sp_name if x==sp_name else x for x in rxn.RHS]
-    #                     rxn.eqn_f = rxn.eqn_f.subs({sp_name: sub_sp_name})
-    #                     rxn.eqn_r = rxn.eqn_r.subs({sp_name: sub_sp_name})
-
-    #                     sp_to_replace.append((sp_name, sub_sp_name, sub_sp))
-
-    #                     print('Species %s replaced with %s in reaction %s!!!' % (sp_name, sub_sp_name, rxn.name))
-
-    #                 rxn.name = rxn.name + ' [modified]'
-
-    #         for tup in sp_to_replace:
-    #             sp_name, sub_sp_name, sub_sp = tup
-    #             rxn.involved_species.remove(sp_name)
-    #             rxn.involved_species.add(sub_sp_name)
-    #             rxn.involved_species_link.pop(sp_name, None)
-    #             rxn.involved_species_link.update({sub_sp_name: sub_sp})
-
-
 
     def reaction_to_fluxes(self):
         self.do_to_all('reaction_to_fluxes')
@@ -920,7 +837,7 @@ class Flux(_ObjectInstance):
         self.involved_parameters = list(paramDict.keys())
 
 
-    def get_additional_flux_properties(self, CD, config):
+    def get_additional_flux_properties(self, CD, solver_system):
         # get additional properties of the flux
         self.get_involved_species_parameters_compartment(CD)
         self.get_flux_dimensionality()
@@ -928,8 +845,8 @@ class Flux(_ObjectInstance):
         self.get_flux_units()
         self.get_is_linear()
         self.get_is_linear_comp()
-        self.get_ukeys(config)
-        self.get_integration_measure(CD, config)
+        self.get_ukeys(solver_system)
+        self.get_integration_measure(CD, solver_system)
 
     def get_involved_species_parameters_compartment(self, CD):
         symStrList = {str(x) for x in self.symList}
@@ -1021,7 +938,7 @@ class Flux(_ObjectInstance):
 
         self.is_linear_wrt_comp = is_linear_wrt_comp
 
-    def get_integration_measure(self, CD, config):
+    def get_integration_measure(self, CD, solver_system):
         sp = self.spDict[self.species_name]
         flux_dim = self.flux_dimensionality
         min_dim = min(CD.get_property('dimensionality').values())
@@ -1035,14 +952,14 @@ class Flux(_ObjectInstance):
             self.int_measure = sp.compartment.dx
         # volumetric flux (min dimension)
         elif flux_dim[1] == min_dim < max_dim:
-            if config.settings['ignore_surface_diffusion']:
+            if solver_system.ignore_surface_diffusion:
                 self.int_measure = sp.compartment.dP
             else:
                 self.int_measure = sp.compartment.dx
         else:
             raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
 
-    def get_ukeys(self, config):
+    def get_ukeys(self, solver_system):
         """
         Given the dimensionality of a flux (e.g. 2d surface to 3d vol) and the dimensionality
         of a species, determine which term of u should be used
@@ -1050,42 +967,13 @@ class Flux(_ObjectInstance):
         self.ukeys = {}
         flux_vars = [str(x) for x in self.symList if str(x) in self.involved_species]
         for var_name in flux_vars:
-            self.ukeys[var_name] = self.get_ukey(var_name, config)
+            self.ukeys[var_name] = self.get_ukey(var_name, solver_system)
 
-    def get_ukey(self, var_name, config):
+    def get_ukey(self, var_name, solver_system):
         sp = self.spDict[self.species_name]
         var = self.spDict[var_name]
 
-        # boundary fluxes (surface -> volume)
-        # # 
-        # if var.dimensionality < sp.compartment.dimensionality:
-        #     return 'u' # always true if operator splitting to decouple compartments
-
-        # if sp.name == var.parent_species:
-        #     return 'u'
-
-        # if config.solver['nonlinear'] == 'picard':# or 'IMEX':
-        #     # volume -> surface
-        #     if var.dimensionality > sp.dimensionality and config.settings['add_boundary_species']:
-        #         if self.is_linear_wrt_comp[var.compartment_name]:
-        #             return 'bt'
-        #         else:
-        #             return 'bk'
-
-        #     elif var.dimensionality > sp.dimensionality:
-        #         return 'b'+sp.compartment_name
-
-        #     # volumetric fluxes
-        #     elif var.compartment_name == self.destination_compartment:
-        #         if self.is_linear_wrt_comp[var.compartment_name]:
-        #             return 't'
-        #         #dynamic LHS
-        #         elif var.name == sp.name and self.is_linear_wrt[sp.name]:
-        #             return 't'
-        #         else:
-        #             return 'k'
-
-        if config.solver['nonlinear'] == 'newton':
+        if solver_system.nonlinear_solver.method == 'newton':
             # if var.dimensionality > sp.dimensionality:
             #     return 'b'+sp.compartment_name
             # else:
@@ -1099,8 +987,7 @@ class Flux(_ObjectInstance):
             else:
                 return 'u'
 
-
-        elif config.solver['nonlinear'] == 'IMEX':
+        elif solver_system.nonlinear_solver.method == 'IMEX':
             ## same compartment
             # dynamic LHS
             # if var.name == sp.name:
@@ -1120,36 +1007,12 @@ class Flux(_ObjectInstance):
                 return 'b'+sp.compartment_name
             # surface -> volume is covered by first if statement in get_ukey()
 
-
-
-
-            # if sp.dimensionality == 3: #TODO fix this
-            #     if var.compartment_name == sp.compartment_name and self.is_linear_wrt_comp[var.compartment_name]:
-            #         return 't'
-            #     else:
-            #         if var.name == sp.name and self.is_linear_wrt[sp.name]:
-            #             return 't'
-            #         else:
-            #             return 'k'
-            # # volume -> surface
-            # elif var.dimensionality > sp.dimensionality:
-            #     return 'b'+sp.compartment_name
-            # else:
-            #     if self.is_linear_wrt_comp[var.compartment_name]:
-            #         return 't'
-            #     else:
-            #         return 'k'
-
-        # elif config.solver['nonlinear'] == 'IMEX':
-        #     if
-        #     return 'n'
-
-        raise Exception("If you made it to this far in get_ukey() I missed some logic...")
+        raise Exception("Missing logic in get_ukey(); contact a developer...")
 
 
 
 
-    def flux_to_dolfin(self, config):
+    def flux_to_dolfin(self):
         value_dict = {}
 
         for var_name in [str(x) for x in self.symList]:
@@ -1162,14 +1025,6 @@ class Flux(_ObjectInstance):
             elif var_name in self.spDict.keys():
                 var = self.spDict[var_name]
                 ukey = self.ukeys[var_name]
-                # if ukey[0] == 'b' and config.settings['add_boundary_species']:
-                #     if not var.parent_species and config.settings['add_boundary_species']:
-                #         sub_species = var.sub_species[self.destination_compartment]
-                #         value_dict[var_name] = sub_species.u[ukey[1]]
-                #         Print("Species %s substituted for %s in flux %s" % (var_name, sub_species.name, self.name))
-                #     else:
-                #         value_dict[var_name] = var.u[ukey[1]]
-                # else:
                 value_dict[var_name] = var.u[ukey]
 
                 value_dict[var_name] *= var.concentration_units * 1

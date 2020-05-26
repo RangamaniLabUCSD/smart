@@ -16,6 +16,7 @@ from . import config
 from . import config_refactor
 from . import model_refactor
 from . import common
+from . import mesh
 
 
 # Handle versioneer

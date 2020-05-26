@@ -251,9 +251,9 @@ class Config(object):
         CD.extract_submeshes('cyto', False)
         CD.compute_scaling_factors()
 
-        num_species_per_compartment = RD.get_species_compartment_counts(SD, CD, self.settings)
+        num_species_per_compartment = RD.get_species_compartment_counts(SD, CD)
         CD.get_min_max_dim()
-        SD.assemble_compartment_indices(RD, CD, self.settings)
+        SD.assemble_compartment_indices(RD, CD)
         CD.add_property_to_all('is_in_a_reaction', False)
         CD.add_property_to_all('V', None)
 
@@ -261,7 +261,7 @@ class Config(object):
         #CD.Print()
 
         # # # dolfin
-        SD.assemble_dolfin_functions(RD, CD, self.settings)
+        SD.assemble_dolfin_functions(RD, CD)
         SD.assign_initial_conditions()
 
         RD.reaction_to_fluxes()

@@ -234,9 +234,9 @@ class Data(object):
 
     def initPlot(self, config, SD, FD):
         if rank==root:
-            if not os.path.exists(config.directory['plot']):
-                os.mkdir(config.directory['plot'])
-        Print("Created directory %s to store plots" % config.directory['plot'])
+            if not os.path.exists(config.directory['plots']):
+                os.mkdir(config.directory['plots'])
+        Print("Created directory %s to store plots" % config.directory['plots'])
 
         maxCols = 3
         # solution plots 
@@ -275,13 +275,11 @@ class Data(object):
                 for idx in range(numPlots):
                     self.plots['fluxes'].add_subplot(subplotRows,subplotCols,idx+1)
 
-
-
     def plotParameters(self, config, figsize=(120,40)):
         """
         Plots time dependent parameters
         """
-        plot_settings = config.plot
+        plot_settings = config.plot_settings
         dir_settings = config.directory
         if len(self.parameters.keys()) > 0:
             for idx, key in enumerate(sorted(self.parameters.keys())):
@@ -301,7 +299,7 @@ class Data(object):
 
             self.plots['parameters'].tight_layout()
             #plt.tight_layout()
-            self.plots['parameters'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_params', figsize=figsize,dpi=300)#,bbox_inches='tight')
+            self.plots['parameters'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_params', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
     def plotFluxes(self, config, figsize=(120,120)):
         """
@@ -309,7 +307,7 @@ class Data(object):
         Note: assemble(flux) (measure is a surface) [=]
         (vol_concentration*length/s)*length^2 * SCALING FACTOR [length^3*molecule/vol_concentration] -> molecules/s
         """
-        plot_settings = config.plot
+        plot_settings = config.plot_settings
         dir_settings = config.directory
 
         if len(self.fluxes.keys()) > 0:
@@ -332,11 +330,11 @@ class Data(object):
             self.plots['fluxes'].suptitle('Fluxes [molecules/s]', fontsize=plot_settings['fontsize_med'])
             self.plots['fluxes'].tight_layout()
             #plt.tight_layout()
-            self.plots['fluxes'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
+            self.plots['fluxes'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
     def plotSolutions(self, config, SD, figsize=(160,160)):
-        plot_settings = config.plot
+        plot_settings = config.plot_settings
         dir_settings = config.directory
 
         # plot solutions together by group
@@ -370,12 +368,12 @@ class Data(object):
 
         self.plots['solutions'].tight_layout()
         #plt.tight_layout()
-        self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
-        self.plots['solutions'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
+        self.plots['solutions'].savefig(dir_settings['plots']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
+        self.plots['solutions'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
     def plotSolverStatus(self, config, figsize=(85,40)):
-        plot_settings = config.plot
+        plot_settings = config.plot_settings
         dir_settings = config.directory
         nticks=14
         nround=3
@@ -410,7 +408,7 @@ class Data(object):
 
         plt.minorticks_off()
         plt.tight_layout()
-        self.plots['solver_status'].savefig(dir_settings['plot']+'/'+plot_settings['figname']+'_solver', figsize=figsize,dpi=300)
+        self.plots['solver_status'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_solver', figsize=figsize,dpi=300)
 
 
     def outputPickle(self, config):

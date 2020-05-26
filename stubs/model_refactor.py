@@ -1,42 +1,118 @@
+import dolfin as d
+from collections import defaultdict as ddict
+import petsc4py.PETSc as PETSc
+Print = PETSc.Sys.Print
+from termcolor import colored
+
+import stubs
+import stubs.model_assembly
+import stubs.common as common
+from stubs import unit as ureg
+color_print = common.color_print
+
+comm = d.MPI.comm_world
+rank = comm.rank
+size = comm.size
+root = 0
+
 class ModelRefactor(object):
-    def __init__(self, PD, SD, CD, RD, config, solver_system):
+    def __init__(self, PD, SD, CD, RD, config, solver_system, mesh=None):
         self.PD = PD
         self.SD = SD
         self.CD = CD
         self.RD = RD
         self.config = config
+        # Check that solver_system is valid
+        solver_system.check_solver_system_validity()
         self.solver_system = solver_system
+        self.solver_system.make_dolfin_parameter_dict()
 
-        # self.u = SD.u
-        # self.v = SD.v
-        # self.V = SD.V
+        self.mesh = mesh
+        self.params = ddict(list)
 
-        # self.params = ddict(list)
+        self.idx = 0
+        self.NLidx = 0 # nonlinear iterations
+        self.t = 0.0
+        self.dt = solver_system.initial_dt
+        self.T = d.Constant(self.t)
+        self.dT = d.Constant(self.dt)
+        self.final_t = solver_system.final_t
+        self.linear_iterations = None
+        self.reset_dt = False
 
-        # self.idx = 0
-        # self.NLidx = 0 # nonlinear iterations
-        # self.t = 0.0
-        # self.dt = config.solver['initial_dt']
-        # self.T = d.Constant(self.t)
-        # self.dT = d.Constant(self.dt)
-        # self.t_final = config.solver['T']
-        # self.linear_iterations = None
-        # self.reset_dt = False
+        self.timers = {}
+        self.timings = ddict(list)
 
-        # self.timers = {}
-        # self.timings = ddict(list)
+        self.Forms = stubs.model_assembly.FormContainer()
+        self.a = {}
+        self.L = {}
+        self.F = {}
+        self.nonlinear_solver = {}
+        self.linear_solver = {}
+        self.scipy_odes = {}
 
-        # self.Forms = FormContainer()
-        # self.a = {}
-        # self.L = {}
-        # self.F = {}
-        # self.nonlinear_solver = {}
-        # self.linear_solver = {}
-        # self.scipy_odes = {}
+        self.data = stubs.data_manipulation.Data(self)
 
-        # self.data = stubs.data_manipulation.Data(self)
+
     def initialize(self):
-        print("initialize")
+        # parameter/unit assembly
+        print("\n\n********** Model initialization (Part 1/6) **********")
+        print("Assembling parameters and units...\n")
+        self.PD.do_to_all('assemble_units', {'unit_name': 'unit'})
+        self.PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        self.PD.do_to_all('assembleTimeDependentParameters')
+        self.SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        self.SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        self.CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+        self.RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+
+        # linking containers with one another
+        print("\n\n********** Model initialization (Part 2/6) **********")
+        print("Linking different containers with one another...\n")
+        self.RD.link_object(self.PD,'paramDict','name','paramDictValues', value_is_key=True)
+        self.SD.link_object(self.CD,'compartment_name','name','compartment')
+        self.SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        self.RD.do_to_all('get_involved_species_and_compartments', {"SD": self.SD, "CD": self.CD})
+        self.RD.link_object(self.SD,'involved_species','name','involved_species_link')
+
+        # meshes
+        print("\n\n********** Model initialization (Part 3/6) **********")
+        print("Loading in mesh and computing statistics...\n")
+        setattr(self.CD, 'meshes', {self.mesh.name: self.mesh.mesh})
+        self.CD.extract_submeshes('cyto', save_to_file=False)
+        self.CD.compute_scaling_factors()
+
+        # Associate species and compartments
+        print("\n\n********** Model initialization (Part 4/6) **********")
+        print("Associating species with compartments...\n")
+        num_species_per_compartment = self.RD.get_species_compartment_counts(self.SD, self.CD)
+        self.CD.get_min_max_dim()
+        self.SD.assemble_compartment_indices(self.RD, self.CD)
+        self.CD.add_property_to_all('is_in_a_reaction', False)
+        self.CD.add_property_to_all('V', None)
+
+        # dolfin functions
+        print("\n\n********** Model initialization (Part 5/6) **********")
+        print("Creating dolfin functions and assinging initial conditions...\n")
+        self.SD.assemble_dolfin_functions(self.RD, self.CD)
+        self.SD.assign_initial_conditions()
+        self.u = self.SD.u
+        self.v = self.SD.v
+        self.V = self.SD.V
+
+        print("\n\n********** Model initialization (Part 6/6) **********")
+        print("Assembling reactive and diffusive fluxes...\n")
+        self.RD.reaction_to_fluxes()
+        self.RD.do_to_all('reaction_to_fluxes')
+        self.FD = self.RD.get_flux_container()
+        self.FD.do_to_all('get_additional_flux_properties', {"CD": self.CD, "solver_system": self.solver_system})
+        self.FD.do_to_all('flux_to_dolfin')
+ 
+        self.set_allow_extrapolation()
+        # Turn fluxes into fenics/dolfin expressions
+        self.assemble_reactive_fluxes()
+        self.assemble_diffusive_fluxes()
+        self.sort_forms()
 
 #===============================================================================
 #===============================================================================
@@ -113,7 +189,7 @@ class ModelRefactor(object):
             setattr(j, 'dolfin_flux', dolfin_flux)
 
             BRform = -prod*sp.v*j.int_measure # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
-            self.Forms.add(Form(BRform, sp, form_key, flux_name=j.name))
+            self.Forms.add(stubs.model_assembly.Form(BRform, sp, form_key, flux_name=j.name))
 
 
     def assemble_diffusive_fluxes(self):
@@ -123,32 +199,31 @@ class ModelRefactor(object):
 
         for sp_name, sp in self.SD.Dict.items():
             if sp.is_in_a_reaction:
-                if self.config.solver['nonlinear'] in ['picard', 'IMEX']:
+                if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
                     u = sp.u['t']
-                elif self.config.solver['nonlinear'] == 'newton':
+                elif self.solver_system.nonlinear_solver.method == 'newton':
                     u = sp.u['u']
                 un = sp.u['n']
                 v = sp.v
                 D = sp.D
 
                 if sp.dimensionality == max_dim and not sp.parent_species:
-                    #or not self.config.settings['ignore_surface_diffusion']:
                     dx = sp.compartment.dx
                     Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
-                    self.Forms.add(Form(Dform, sp, 'D'))
+                    self.Forms.add(stubs.model_assembly.Form(Dform, sp, 'D'))
                 elif sp.dimensionality < max_dim or sp.parent_species:
-                    if self.config.settings['ignore_surface_diffusion']:
+                    if self.solver_system.ignore_surface_diffusion:
                         dx=sp.compartment.dP
                     else:
                         dx = sp.compartment.dx
                         Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
-                        self.Forms.add(Form(Dform, sp, 'D'))
+                        self.Forms.add(stubs.model_assembly.Form(Dform, sp, 'D'))
 
                 # time derivative
                 Mform_u = u/dT * v * dx
                 Mform_un = -un/dT * v * dx
-                self.Forms.add(Form(Mform_u, sp, "Mu"))
-                self.Forms.add(Form(Mform_un, sp, "Mun"))
+                self.Forms.add(stubs.model_assembly.Form(Mform_u, sp, "Mu"))
+                self.Forms.add(stubs.model_assembly.Form(Mform_un, sp, "Mun"))
 
             else:
                 Print("Species %s is not in a reaction?" %  sp_name)
@@ -170,7 +245,7 @@ class ModelRefactor(object):
         self.split_forms = ddict(dict)
         form_types = set([f.form_type for f in self.Forms.form_list])
 
-        if self.config.solver['nonlinear'] == 'picard':
+        if self.solver_system.nonlinear_solver.method == 'picard':
             Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
             for comp in comp_list:
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
@@ -180,40 +255,28 @@ class ModelRefactor(object):
                                                      self.L[comp.name], self.u[comp.name]['u'], [])
                 self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
                 p = self.linear_solver[comp.name].parameters
-                p['linear_solver'] = self.config.solver['linear_solver']
-                p['krylov_solver'].update(self.config.dolfin_krylov_solver)
-                p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+                p['linear_solver'] = self.solver_system.linear_solver.method
+                if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
+                    p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
+                    p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
-        elif self.config.solver['nonlinear'] == 'newton':
+        elif self.solver_system.nonlinear_solver.method == 'newton':
             Print("Formulating problem as F(u;v) == 0 for newton iterations")
             for comp in comp_list:
                 comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
                 self.F[comp.name] = sum(comp_forms)
                 J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
 
-                # #debug
-                # print(comp.name)
-                # for dolfin_form in comp_forms:
-                #     d.assemble(dolfin_form)
-                # print("assembled dolfin forms individually...")
-
-                # Fassem = d.assemble(self.F[comp.name])
-                # print(Fassem.get_local().shape)
-                # Jassem = d.assemble(J)
-                # print(Jassem.array().shape)
-
                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
 
                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
                 p = self.nonlinear_solver[comp.name].parameters
                 p['nonlinear_solver'] = 'newton'
-
-                p['newton_solver'].update(self.config.dolfin_nonlinear_solver)
-                p['newton_solver']['krylov_solver'].update(self.config.dolfin_krylov_solver)
+                p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
+                p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
                 p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
-
-        elif self.config.solver['nonlinear'] == 'IMEX':
+        elif self.solver_system.nonlinear_solver.method == 'IMEX':
             raise Exception("IMEX functionality needs to be reviewed")
 #            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
 #            for comp in comp_list:
@@ -241,10 +304,10 @@ class ModelRefactor(object):
                 raise Exception("I don't know what operator splitting scheme to use")
 
             self.compute_statistics()
-            if self.idx % plot_period == 0 or self.t >= self.config.solver['T']:
+            if self.idx % plot_period == 0 or self.t >= self.final_t:
                 self.plot_solution()
                 self.plot_solver_status()
-            if self.t >= self.config.solver['T']:
+            if self.t >= self.final_t:
                 break
 
         self.stopwatch("Total simulation", stop=True)
@@ -269,40 +332,30 @@ class ModelRefactor(object):
         checkpoint. At these checkpoints dt is reset to some value
         (e.g. to force smaller sampling during fast events)
         """
+        # check that there are reset times specified
+        if self.solver_system.adjust_dt is None or len(self.solver_system.adjust_dt) == 0:
+            return
 
         # if last time-step we passed a reset dt checkpoint then reset it now
         if self.reset_dt:
-            new_dt = self.config.advanced['reset_dt'][0]
+            new_dt = self.solver_system.adjust_dt[0][1]
             color_print("(!!!) Adjusting time-step (dt = %f -> %f) to match config specified value" % (self.dt, new_dt), 'green')
             self.set_time(self.t, dt = new_dt)
-            self.config.advanced['reset_dt'] = self.config.advanced['reset_dt'][1:]
+            del(self.solver_system.adjust_dt[0])
             self.reset_dt = False
-            return
-
-        # check that there are reset times specified
-        if hasattr(self.config, 'advanced'):
-            if 'reset_times' in self.config.advanced.keys():
-                if len(self.config.advanced['reset_times'])!=len(self.config.advanced['reset_dt']):
-                    raise Exception("The number of times to reset dt must be equivalent to the length of the list of dts to reset to.")
-                if len(self.config.advanced['reset_times']) == 0:
-                    return
-            else:
-                return
-        else:
             return
 
         # check if we pass a reset dt checkpoint
         t0 = self.t # original time
         potential_t = t0 + self.dt # the final time if dt is not reset
-        next_reset_time = self.config.advanced['reset_times'][0] # the next time value to reset dt at
-        next_reset_dt = self.config.advanced['reset_dt'][0] # next value of dt to reset to
+        next_reset_time = self.solver_system.adjust_dt[0][0] # the next time value to reset dt at
+        next_reset_dt = self.solver_system.adjust_dt[0][1] # the next value of dt to reset to
         if next_reset_time<t0:
             raise Exception("Next reset time is less than time at beginning of time-step.")
         if t0 < next_reset_time <= potential_t: # check if the full time-step would pass a reset dt checkpoint
             new_dt = max([next_reset_time - t0, next_reset_dt]) # this is needed otherwise very small time-steps might be taken which wont converge
             color_print("(!!!) Adjusting time-step (dt = %f -> %f) to avoid passing reset dt checkpoint" % (self.dt, new_dt), 'blue')
             self.set_time(self.t, dt=new_dt)
-            self.config.advanced['reset_times'] = self.config.advanced['reset_times'][1:]
             # set a flag to change dt to the config specified value
             self.reset_dt = True
 
@@ -400,7 +453,7 @@ class ModelRefactor(object):
         Resets the time back to what it was before the time-step. Optionally, input a list of compartments
         to have their function values reset (['n'] value will be assigned to ['u'] function).
         """
-        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_factor'])
+        self.set_time(self.t - self.dt, self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
         Print("Resetting time-step and decreasing step size")
         for comp_name in comp_list:
             self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
@@ -454,9 +507,9 @@ class ModelRefactor(object):
         """
         A switch for choosing a nonlinear solver
         """
-        if self.config.solver['nonlinear'] == 'newton':
+        if self.solver_system.nonlinear_solver.method == 'newton':
             self.NLidx, success = self.newton_iter(comp_name, factor=factor)
-        elif self.config.solver['nonlinear'] == 'picard':
+        elif self.solver_system.nonlinear_solver.method == 'picard':
             self.NLidx, success = self.picard_loop(comp_name, factor=factor)
 
         return self.NLidx, success
@@ -497,11 +550,11 @@ class ModelRefactor(object):
         self.update_solution_volume_to_boundary()
 
         # check if time step should be changed
-        if self.NLidx <= self.config.solver['min_newton']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+        if self.NLidx <= self.solver_system.nonlinear_solver.min_nonlinear:
+            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
             Print("Increasing step size")
-        if self.NLidx > self.config.solver['max_newton']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+        if self.NLidx > self.solver_system.nonlinear_solver.max_nonlinear:
+            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
             Print("Decreasing step size")
 
         self.stopwatch("Total time step", stop=True, color='cyan')
@@ -531,11 +584,11 @@ class ModelRefactor(object):
         self.update_solution_boundary_to_volume()
 
         # check if time step should be changed
-        if self.NLidx <= self.config.solver['min_newton']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_increase_factor'])
+        if self.NLidx <= self.solver_system.nonlinear_solver.min_nonlinear:
+            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
             Print("Increasing step size")
-        if self.NLidx > self.config.solver['max_newton']:
-            self.set_time(self.t, dt=self.dt*self.config.solver['dt_decrease_factor'])
+        if self.NLidx > self.solver_system.nonlinear_solver.max_nonlinear:
+            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
             Print("Decreasing step size")
 
         self.stopwatch("Total time step", stop=True, color='cyan')
@@ -592,12 +645,12 @@ class ModelRefactor(object):
             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
 
             # update temporary value of u
-            self.data.computeError(self.u, comp_name, self.config.solver['norm'])
+            self.data.computeError(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
             # Exit if error tolerance or max iterations is reached
             Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.config.solver['picard_abstol']:
+            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.solver_system.nonlinear_solver.absolute_tolerance:
                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
                 break
@@ -606,7 +659,7 @@ class ModelRefactor(object):
 #                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
 #                break
 
-            if self.pidx >= self.config.solver['max_picard']:
+            if self.pidx >= self.solver_system.nonlinear_solver.maximum_iterations:
                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
                 success = False

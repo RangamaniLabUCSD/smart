@@ -5,8 +5,15 @@ import dolfin as d
 import numpy as np
 import scipy.interpolate as interp
 import os
-import stubs.model_assembly as model_assembly
+import re
+from termcolor import colored
+import stubs
 from pandas import read_json
+
+comm = d.MPI.comm_world
+rank = comm.rank
+size = comm.size
+root = 0
 
 # pandas
 class ref:
@@ -181,13 +188,13 @@ def json_to_ObjectContainer(json_file_name, data_type=None):
     df = read_json(json_file_name).sort_index()
     df = nan_to_none(df)
     if data_type in ['parameters', 'parameter', 'param', 'p']:
-        return model_assembly.ParameterContainer(df)
+        return stubs.model_assembly.ParameterContainer(df)
     elif data_type in ['species', 'sp', 'spec', 's']:
-        return model_assembly.SpeciesContainer(df)
+        return stubs.model_assembly.SpeciesContainer(df)
     elif data_type in ['compartments', 'compartment', 'comp', 'c']:
-        return model_assembly.CompartmentContainer(df)
+        return stubs.model_assembly.CompartmentContainer(df)
     elif data_type in ['reactions', 'reaction', 'r', 'rxn']:
-        return model_assembly.ReactionContainer(df)
+        return stubs.model_assembly.ReactionContainer(df)
     else:
         raise Exception("I don't know what kind of ObjectContainer this .json file should be")
 
@@ -199,8 +206,13 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
     for idx, val in enumerate(mesh_function.array()):
         md.set_marker((idx,val), mf_dim)
 
-
-
-
+def color_print(full_text, color):
+    if rank==root:
+        split_text = [s for s in re.split('(\n)', full_text) if s] # colored doesn't like newline characters
+        for text in split_text:
+            if text == '\n':
+                print()
+            else:
+                print(colored(text, color=color))
 
 

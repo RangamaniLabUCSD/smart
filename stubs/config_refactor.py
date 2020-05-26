@@ -26,11 +26,9 @@ class ConfigRefactor(object):
          - mesh
          - plot settings
     """
-    def __init__(self, mesh_filename=None):
-        self.mesh_filename      = mesh_filename
+    def __init__(self):
 
         # initialize with default values
-
         self.directory          = {'parent': 'results',
                                    'solutions': 'solutions',
                                    'plots': 'plots',
@@ -53,93 +51,12 @@ class ConfigRefactor(object):
                                    'prescribed_leak': 'k*(1-u/umax)'}
 
     def check_config_validity(self):
-        if self.mesh_filename is None:
-            raise TypeError("mesh_filename must be provided in the configuration file.")
-
-    def generate_model(self):
-
-        if not all([x in self.model.keys() for x in ['parameters', 'species', 'compartments', 'reactions']]):
-            raise Exception("Parameters, species, compartments, and reactions must all be specified.")
-        PD = self._json_to_ObjectContainer(self.model['parameters'], 'parameters')
-        SD = self._json_to_ObjectContainer(self.model['species'], 'species')
-        CD = self._json_to_ObjectContainer(self.model['compartments'], 'compartments')
-        RD = self._json_to_ObjectContainer(self.model['reactions'], 'reactions')
-
-        # parameter/unit assembly
-        PD.do_to_all('assemble_units', {'unit_name': 'unit'})
-        PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        PD.do_to_all('assembleTimeDependentParameters')
-        SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-        SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
-        CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-        RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.reaction_database})
-
-
-        # linking containers with one another
-        RD.link_object(PD,'paramDict','name','paramDictValues', value_is_key=True)
-        SD.link_object(CD,'compartment_name','name','compartment')
-        SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        RD.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
-        RD.link_object(SD,'involved_species','name','involved_species_link')
-        #RD.do_to_all('combineDicts', {'dict1': 'paramDictValues', 'dict2': 'involved_species_link', 'new_dict_name': 'varDict'})
-
-        # meshes
-        CD.add_property('meshes', self.mesh)
-        CD.load_mesh('cyto', self.mesh['cyto'])
-        CD.extract_submeshes('cyto', False)
-        CD.compute_scaling_factors()
-
-        num_species_per_compartment = RD.get_species_compartment_counts(SD, CD, self.settings)
-        CD.get_min_max_dim()
-        SD.assemble_compartment_indices(RD, CD, self.settings)
-        CD.add_property_to_all('is_in_a_reaction', False)
-        CD.add_property_to_all('V', None)
-
-        #RD.replace_sub_species_in_reactions(SD)
-        #CD.Print()
-
-        # # # dolfin
-        SD.assemble_dolfin_functions(RD, CD, self.settings)
-        SD.assign_initial_conditions()
-
-        RD.reaction_to_fluxes()
-        RD.do_to_all('reaction_to_fluxes')
-        FD = RD.get_flux_container()
-        FD.do_to_all('get_additional_flux_properties', {"CD": CD, "config": self})
-
-        # # opportunity to make custom changes
-
-        FD.do_to_all('flux_to_dolfin', {"config": self})
-        FD.check_and_replace_sub_species(SD, CD, self)
-
-        model = model_assembly.Model(PD, SD, CD, RD, FD, self)
-
-        # to deal with possible floating point error in mesh coordinates
-        model.set_allow_extrapolation()
-        # Turn fluxes into fenics/dolfin expressions
-        model.assemble_reactive_fluxes()
-        model.assemble_diffusive_fluxes()
-        #model.establish_mappings()
-
-
-        # # debug
-        # model.PD.print()
-        # model.SD.print()
-        # model.CD.print()
-        # model.RD.print()
-        # model.FD.print()
-        # return model
-
-        # Sort forms by type (diffusive, time derivative, etc.)
-        model.sort_forms()
-
-        if rank==root:
-            Print("Model created succesfully! :)")
-            model.PD.print()
-            model.SD.print()
-            model.CD.print()
-            model.RD.print()
-            model.FD.print()
-
-        return model
+        if type(self.probe_plot['species']) != list:
+            raise TypeError("probe_plot['species'] must be a list of strings referring to species to capture values of.")
+        for x in self.probe_plot['species']:
+            if type(x) != str:
+                raise TypeError("probe_plot['species'] must be a list of strings referring to species to capture values of.")
+        valid_filetypes = ['xdmf', 'vtk']
+        if self.output_type not in valid_filetypes:
+            raise ValueError(f"Only filetypes: '{valid_filetypes}' are supported.")
 
