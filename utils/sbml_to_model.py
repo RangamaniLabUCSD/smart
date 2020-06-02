@@ -77,9 +77,9 @@ def sbml_to_species(document, species_df):
         # Convert to SI units
         init_cond *= units.magnitude
         group = species.getNotesString()
-        
-        # eventually determine diffusion and diffusion coefficients
-        species_df.append(s_id, group, units.units, init_cond, 0, '', comp_name)
+
+        species_df.append(s_id, group, units.units, init_cond, 10, (
+                            unit.um ** 2) / unit.s, comp_name)
     pass
 
 
