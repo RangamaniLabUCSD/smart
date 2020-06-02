@@ -80,7 +80,7 @@ def sbml_to_species(document, species_df):
 
         species_df.append(s_id, group, units.units, init_cond, 10, (
                             unit.um ** 2) / unit.s, comp_name)
-    pass
+    return
 
 
 
