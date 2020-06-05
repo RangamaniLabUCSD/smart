@@ -60,7 +60,6 @@ def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh_emap_0, V, submesh_species_
     return idx
 
 
-
 # dolfin DOF indices are not guaranteed to be equivalent to the vertex indices of the corresponding mesh
 def submesh_dof_to_vertex(Vsubmesh, species_index, index=None):
     num_species = Vsubmesh.num_sub_spaces()
@@ -169,36 +168,6 @@ def np_smart_hstack(x1, x2):
 
     return np.hstack([x1.reshape(-1,1), x2.reshape(-1,1)])
 
-def mark_boundaries(mesh, marker_value, func):
-    """
-    Args:
-        mesh (dolfin mesh): Description
-        marker_value (int): Integer 
-        func (lambda function): Function that takes in a dolfin face and
-        returns true if it should be marked.
-    TODO
-    """
-
-
-def json_to_ObjectContainer(json_file_name, data_type=None):
-    if not data_type:
-        raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
-    if not os.path.exists(json_file_name):
-        raise Exception("Cannot find JSON file, %s"%json_file_name)
-    df = read_json(json_file_name).sort_index()
-    df = nan_to_none(df)
-    if data_type in ['parameters', 'parameter', 'param', 'p']:
-        return stubs.model_assembly.ParameterContainer(df)
-    elif data_type in ['species', 'sp', 'spec', 's']:
-        return stubs.model_assembly.SpeciesContainer(df)
-    elif data_type in ['compartments', 'compartment', 'comp', 'c']:
-        return stubs.model_assembly.CompartmentContainer(df)
-    elif data_type in ['reactions', 'reaction', 'r', 'rxn']:
-        return stubs.model_assembly.ReactionContainer(df)
-    else:
-        raise Exception("I don't know what kind of ObjectContainer this .json file should be")
-
-
 def append_meshfunction_to_meshdomains(mesh, mesh_function):
     md = mesh.domains()
     mf_dim = mesh_function.dim()
@@ -214,5 +183,144 @@ def color_print(full_text, color):
                 print()
             else:
                 print(colored(text, color=color))
+
+# ====================================================
+# I/O
+
+def json_to_ObjectContainer(json_str, data_type=None):
+    """
+    Converts a json_str (either a string of the json itself, or a filepath to
+    the json)
+    """
+    if not data_type:
+        raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
+
+    if json_str[-5:] == '.json':
+        if not os.path.exists(json_str):
+            raise Exception("Cannot find JSON file, %s"%json_str)   
+
+    df = read_json(json_str).sort_index()
+    df = nan_to_none(df)
+    if data_type in ['parameters', 'parameter', 'param', 'p']:
+        return stubs.model_assembly.ParameterContainer(df)
+    elif data_type in ['species', 'sp', 'spec', 's']:
+        return stubs.model_assembly.SpeciesContainer(df)
+    elif data_type in ['compartments', 'compartment', 'comp', 'c']:
+        return stubs.model_assembly.CompartmentContainer(df)
+    elif data_type in ['reactions', 'reaction', 'r', 'rxn']:
+        return stubs.model_assembly.ReactionContainer(df)
+    else:
+        raise Exception("I don't know what kind of ObjectContainer this .json file should be")
+
+
+
+def write_smodel(filepath, pdf, sdf, cdf, rdf):
+    """
+    Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
+    a .smodel file (a convenient concatenation of .json files with syntax
+    similar to .xml)
+    """
+    f = open(filepath, "w")
+
+    f.write("<smodel>\n")
+    # parameters
+    f.write("<parameters>\n")
+    pdf.df.to_json(f)
+    f.write("\n</parameters>\n")
+    # species
+    f.write("<species>\n")
+    sdf.df.to_json(f)
+    f.write("\n</species>\n")
+    # compartments
+    f.write("<compartments>\n")
+    cdf.df.to_json(f)
+    f.write("\n</compartments>\n")
+    # reactions
+    f.write("<reactions>\n")
+    rdf.df.to_json(f)
+    f.write("\n</reactions>\n")
+
+    f.write("</smodel>\n")
+    f.close()
+    print(f"Smodel file saved successfully as {filepath}!")
+
+def read_smodel(filepath):
+    f = open(filepath, "r")
+    lines = f.read().splitlines()
+    if lines[0] != "<smodel>":
+        raise Exception(f"Is {filepath} a valid .smodel file?")
+
+    p_string = []
+    c_string = []
+    s_string = []
+    r_string = []
+    line_idx = 0
+
+    while True:
+        if line_idx >= len(lines):
+            break
+        line = lines[line_idx]
+        if line == '</smodel>':
+            print("Finished reading in smodel file")
+            break
+
+        if line == '<parameters>':
+            print("Reading in parameters")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == '</parameters>':
+                    break
+                p_string.append(lines[line_idx])
+
+        if line == '<species>':
+            print("Reading in species")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == '</species>':
+                    break
+                s_string.append(lines[line_idx])
+
+        if line == '<compartments>':
+            print("Reading in compartments")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == '</compartments>':
+                    break
+                c_string.append(lines[line_idx])
+
+        if line == '<reactions>':
+            print("Reading in reactions")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == '</reactions>':
+                    break
+                r_string.append(lines[line_idx])
+
+        line_idx += 1
+
+    pdf = pd.read_json(''.join(p_string)).sort_index()
+    sdf = pd.read_json(''.join(s_string)).sort_index()
+    cdf = pd.read_json(''.join(c_string)).sort_index()
+    rdf = pd.read_json(''.join(r_string)).sort_index()
+    PD = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
+    SD = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
+    CD = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
+    RD = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
+
+    return PD, SD, CD, RD
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

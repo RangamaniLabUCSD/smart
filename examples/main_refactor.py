@@ -13,29 +13,23 @@ nprocs = comm.size
 
 # Load in model and settings
 config = stubs.config_refactor.ConfigRefactor()
-PD = stubs.common.json_to_ObjectContainer('toy_model_2d/parameters.json', 'parameters')
-SD = stubs.common.json_to_ObjectContainer('toy_model_2d/species.json', 'species')
-CD = stubs.common.json_to_ObjectContainer('toy_model_2d/compartments.json', 'compartments')
-RD = stubs.common.json_to_ObjectContainer('toy_model_2d/reactions.json', 'reactions')
+#PD = stubs.common.json_to_ObjectContainer('toy_model_2d/parameters.json', 'parameters')
+#SD = stubs.common.json_to_ObjectContainer('toy_model_2d/species.json', 'species')
+#CD = stubs.common.json_to_ObjectContainer('toy_model_2d/compartments.json', 'compartments')
+#RD = stubs.common.json_to_ObjectContainer('toy_model_2d/reactions.json', 'reactions')
+PD, SD, CD, RD = stubs.common.read_smodel('toy_model_2d/test.smodel')
 
 # Define solvers
 mps = stubs.solvers.MultiphysicsSolver('iterative')
-nls = stubs.solvers.NonlinearNewtonSolver(relative_tolerance=1e-6, absolute_tolerance=1e-8, dt_increase_factor=1.05, dt_decrease_factor=0.7)
+nls = stubs.solvers.NonlinearNewtonSolver(relative_tolerance=1e-6, absolute_tolerance=1e-8,
+                                          dt_increase_factor=1.05, dt_decrease_factor=0.7)
 ls = stubs.solvers.DolfinKrylovSolver(method = 'bicgstab', preconditioner='hypre_amg')
 solver_system = stubs.solvers.SolverSystem(final_t = 0.4, initial_dt = 0.01, adjust_dt = [(0.2, 0.02)],
                                            multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
-cyto_mesh = stubs.mesh.Mesh(mesh_filename='/home/justin/gitrepos/stubs/examples/toy_model_2d/square_50.xml', name='cyto')
+cyto_mesh = stubs.mesh.Mesh(mesh_filename='/Users/justin/gitrepos/stubs/examples/toy_model_2d/square_50.xml', name='cyto')
 
 model = stubs.model_refactor.ModelRefactor(PD, SD, CD, RD, config, solver_system, cyto_mesh)
 model.initialize()
 
 # solve system
 model.solve()
-
-
-#settings = stubs.config.Config('main.config')
-#model = settings.generate_model()
-
-
-#model.solve()
-

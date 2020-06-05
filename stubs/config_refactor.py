@@ -23,8 +23,8 @@ class ConfigRefactor(object):
     """
     Refactored config 
          - directories
-         - mesh
          - plot settings
+         - reactions 
     """
     def __init__(self):
 
