@@ -169,20 +169,28 @@ class Data(object):
         Computes the values of functions at various coordinates
         TODO: refactor
         """
+        x_list = self.config.output['points_x']
+        y_list = self.config.output['points_y']
+
+        if CD.max_dim == 3:
+            z_list = self.config.output['points_z']
+            key_list = ['species', 'points_x', 'points_y', 'points_z']
+            if not (len(x_list) == len(y_list) == len(z_list)):
+                raise Exception("Specify the same number of coordinates in x,y,z")
+            coord_list = [(x_list[idx],y_list[idx],z_list[idx]) for idx in range(len(x_list))]
+        elif CD.max_dim == 2:
+            key_list = ['species', 'points_x', 'points_y']
+            if not (len(x_list) == len(y_list)):
+                raise Exception("Specify the same number of coordinates in x,y,z")
+            coord_list = [(x_list[idx],y_list[idx]) for idx in range(len(x_list))]
+        else:
+            raise Exception(f"Maximum compartment dimension of {CD.max_dim} is not supported.")
 
         # check data is in correct form
         if not all(key in self.config.output.keys() for key in
-            ['species', 'points_x', 'points_y', 'points_z']):
+            key_list):
             Print("Specify species and coordinates to compute a probe plot.")
             return
-
-        x_list = self.config.output['points_x']
-        y_list = self.config.output['points_y']
-        z_list = self.config.output['points_z']
-        if not (len(x_list) == len(y_list) == len(z_list)):
-            raise Exception("Specify the same number of coordinates in x,y,z")
-        coord_list = [(x_list[idx],y_list[idx],z_list[idx]) for idx in range(len(x_list))]
-
 
         for sp_name in self.config.output['species']:
             comp = self.model.SD.Dict[sp_name].compartment
@@ -200,6 +208,8 @@ class Data(object):
                     u_eval = u_coords
 
                 self.probe_solutions[sp_name][coords].append(u_eval)
+
+        print("TESTING!!!!!!!!!!!!!!!!!!!!!!!")
 
 
     def computeError(self, u, comp_name, errorNormKey):
@@ -452,7 +462,7 @@ class Data(object):
         if not os.path.exists(data_dir):
             os.mkdir(data_dir)
 
-        # save to file
+        # statistics over entire domain
         saveKeys = ['min', 'max', 'mean', 'std']
         for sp_name in self.solutions.keys():
             #for key in self.solutions[sp_name].keys():
@@ -461,9 +471,18 @@ class Data(object):
                            self.solutions[sp_name][key], delimiter=',')
         np.savetxt(data_dir+'/'+'tvec'+'.csv', self.tvec, delimiter=',')
 
+        # fluxes
         for flux_name in self.fluxes.keys():
             np.savetxt(data_dir+'/'+flux_name+'.csv', 
                        self.fluxes[flux_name], delimiter=',')
+
+        # solutions at specific coordinates
+        for sp_name in self.probe_solutions.keys():
+            for coord, val in self.probe_solutions[sp_name].items():
+                coord_str = str(coord).replace(', ','_').replace('.',',')
+                np.savetxt(data_dir+'/'+sp_name+'_'+coord_str+'.csv', 
+                           val, delimiter=',')
+
 
 
         Print('Solutions dumped into CSV.')
