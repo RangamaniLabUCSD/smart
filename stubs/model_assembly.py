@@ -1621,8 +1621,8 @@ class Model(object):
 
             param.value = newValue
             param.dolfinConstant.assign(newValue)
-            Print('%f assigned to time-dependent parameter %s'
-                  % (newValue, param.name))
+            Print('%f assigned to time-dependent parameter %s (time = %f)'
+                  % (newValue, param.name, t))
             self.params[param_name].append((t,newValue))
 
 
@@ -1660,7 +1660,7 @@ class Model(object):
 
         for n in range(nsubsteps):
             self.forward_time_step(factor=factor/nsubsteps)
-            self.updateTimeDependentParameters(t0=self.t)
+            #self.updateTimeDependentParameters(t0=self.t)
             for comp_name, comp in self.CD.Dict.items():
                 if comp.dimensionality < self.CD.max_dim:
                     self.nonlinear_solve(comp_name, factor=factor)
@@ -1871,7 +1871,7 @@ class Model(object):
     def compute_statistics(self):
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         # debug
-        #self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
         self.data.outputCSV(self.config)
 
