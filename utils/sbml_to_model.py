@@ -9,13 +9,13 @@ import stubs
 unit = stubs.unit
 
 # taken from https://www.ebi.ac.uk/biomodels/BIOMD0000000932#Files
-fp = "models/Garde2020.xml"
+# fp = "models/Garde2020.xml"
 
 # taken from https://www.ebi.ac.uk/biomodels/BIOMD0000000448#Files
 # fp = "models/BIOMD0000000448_url.xml"
 
 # taken from https://www.ebi.ac.uk/biomodels/BIOMD0000000931#Files
-# fp = "models/Voliotis2019.xml"
+fp = "models/Voliotis2019.xml"
 
 doc = readSBML(fp)
 if doc.getNumErrors() > 0:
@@ -78,19 +78,19 @@ def sbml_to_species(document, species_df):
         init_cond *= units.magnitude
         group = species.getNotesString()
 
-        species_df.append(s_id, group, units.units, init_cond, 10, (
-                            unit.um ** 2) / unit.s, comp_name)
+        species_df.append(s_id, group, units.units, init_cond, 10, 
+                            (unit.um ** 2) / unit.s, comp_name)
     return
 
 
 
-sbml_to_compartments(doc, c_df)
-sbml_to_parameters(doc, p_df)
-# sbml_to_reactions(doc, r_df)
-sbml_to_species(doc, s_df)
+# sbml_to_compartments(doc, c_df)
+# sbml_to_parameters(doc, p_df)
+sbml_to_reactions(doc, r_df)
+# sbml_to_species(doc, s_df)
 
-c_df.df.to_json(fp.split(".xml")[0] + "_compartments.json")
-p_df.df.to_json(fp.split(".xml")[0] + "_parameters.json")
-# r_df.df.to_json(fp.split(".xml")[0] + "_reactions.json")
-s_df.df.to_json(fp.split(".xml")[0] + "_species.json")
+# c_df.df.to_json(fp.split(".xml")[0] + "_compartments.json")
+# p_df.df.to_json(fp.split(".xml")[0] + "_parameters.json")
+r_df.df.to_json(fp.split(".xml")[0] + "_reactions.json")
+# s_df.df.to_json(fp.split(".xml")[0] + "_species.json")
 
