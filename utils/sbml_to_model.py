@@ -53,14 +53,27 @@ def sbml_to_parameters(document, parameter_df):
         parameter_df.append(s_id, value, units.units, notes)
     return
 
-def sbml_to_reactions(document, reaction_df):
+def sbml_to_reactions(document, reaction_df, func_defs=None):
     model = document.getModel()
     reactions = model.getListOfReactions()
+    # Create a dictionary of FunctionDefinition to replace during string conversion
+    func_dict = {}
+    for fd in model.getListOfFunctionDefinitions():
+        func_dict[fd.getId()] = fd.getMath()
+    # Do the same for species and parameters
+    par_df = stubs.model_building.ParameterDF()
+    sbml_to_parameters(doc, par_df)
+    spec_df = stubs.model_building.SpeciesDF()
+    sbml_to_species(doc, spec_df)
+
     for reaction in reactions:
         s_id = reaction.getId()
         klaw = reaction.getKineticLaw()
         klaw_math = klaw.getMath()
-        print(formulaToString(klaw_math))
+        r_str = formulaToString(klaw_math)
+        for fd_id, fd in func_dict.items():
+            r_str.replace(fd_id, fd)
+        reaction_df.append(s_id, )
         # Relies on species; MathML doesn't type so you have to decide which
         # leaf nodes of the AST are species, params, etc.
     return
