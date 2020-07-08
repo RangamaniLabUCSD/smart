@@ -3,6 +3,7 @@ from collections import defaultdict as ddict
 import petsc4py.PETSc as PETSc
 Print = PETSc.Sys.Print
 from termcolor import colored
+import numpy as np
 
 import stubs
 import stubs.model_assembly
@@ -15,6 +16,13 @@ rank = comm.rank
 size = comm.size
 root = 0
 
+
+
+# ==============================================================================
+# ==============================================================================
+# Model class. Consists of parameters, species, etc. and is used for simulation
+# ==============================================================================
+# ==============================================================================
 class ModelRefactor(object):
     def __init__(self, PD, SD, CD, RD, config, solver_system, mesh=None):
         self.PD = PD
@@ -383,15 +391,30 @@ class ModelRefactor(object):
             return elapsed_time
 
     def updateTimeDependentParameters(self, t=None, t0=None, dt=None):
-        if not t:
+        """ Updates all time dependent parameters. Time-dependent parameters are 
+        either defined either symbolically or through a data file, and each of 
+        these can either be defined as a direct function of t, p(t), or a 
+        "pre-integrated expression", \int_{0}^{t} P(x) dx, which allows for 
+        exact integration when the expression the parameter appears in is purely
+        time-dependent.
+        
+        Args:
+            t (float, optional): Current time in the simulation to update parameters to 
+            t0 (float, optional): Previous time value (i.e. t0 == t-dt)
+            dt (float, optional): Time step
+        
+        Raises:
+            Exception: Description
+        """
+        if t is None:
             t = self.t
-        if t0 and dt:
+        if t0 is not None and dt is not None:
             raise Exception("Specify either t0 or dt, not both.")
-        elif t0 != None:
+        elif t0 is not None:
             dt = t-t0
-        elif dt != None:
+        elif dt is not None:
             t0 = t-dt
-        if t0 != None:
+        if t0 is not None:
             if t0<0 or dt<0:
                 raise Exception("Either t0 or dt is less than 0, is this the desired behavior?")
 
@@ -409,7 +432,7 @@ class ModelRefactor(object):
             # calculate a preintegrated expression by subtracting previous value
             # and dividing by time-step
             if param.symExpr and param.preintegrated_symExpr:
-                if t0 == None:
+                if t0 is None:
                     raise Exception("Must provide a time interval for"\
                                     "pre-integrated variables.")
                 newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf()
@@ -463,7 +486,7 @@ class ModelRefactor(object):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
                 if key[0] == 'v': # fixme
-                    self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
+                    d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
                     parent_comp_name = key[1:]
                     Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
 
@@ -474,7 +497,6 @@ class ModelRefactor(object):
                     self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
                     sub_comp_name = key[1:]
                     Print("Projected values from volume %s to surface %s" % (comp_name, sub_comp_name))
-
 
     def boundary_reactions_forward(self, factor=1, bcs=[], key='n'):
         self.stopwatch("Boundary reactions forward")
@@ -680,8 +702,8 @@ class ModelRefactor(object):
 #===============================================================================
 #===============================================================================
     def init_solver_and_plots(self):
-        self.data.initSolutionFiles(self.SD, write_type='xdmf')
-        self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
+        self.data.initSolutionFiles(self.SD, output_type=self.config.output_type)
+        self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.initPlot(self.config, self.SD, self.FD)
 
@@ -693,12 +715,12 @@ class ModelRefactor(object):
     def compute_statistics(self):
         self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         # debug
-        #self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.outputPickle(self.config)
         self.data.outputCSV(self.config)
 
     def plot_solution(self):
-        self.data.storeSolutionFiles(self.u, self.t, write_type='xdmf')
+        self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
         self.data.plotParameters(self.config)
         self.data.plotSolutions(self.config, self.SD)
         self.data.plotFluxes(self.config)

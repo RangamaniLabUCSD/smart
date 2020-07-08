@@ -29,10 +29,8 @@ class ConfigRefactor(object):
     def __init__(self):
 
         # initialize with default values
-        self.directory          = {'parent': 'results',
-                                   'solutions': 'solutions',
-                                   'plots': 'plots',
-                                   'relative': True}
+        self.directory          = {'solutions': 'solutions',
+                                   'plots': 'plots'}
 
         self.output_type        =  'xdmf'
 
@@ -43,20 +41,16 @@ class ConfigRefactor(object):
                                    'fontsize_med': 4.5,
                                    'figname': 'figure'}
 
-        self.probe_plot         = {'species': [],
-                                   'coords': [(0.5, 0.5, 0.5)]}
+        #self.probe_plot         = {'species': [],
+        #                           'coords': [(0.5, 0.5, 0.5)]}
+        self.probe_plot         = {'A': [(0.5,0.0), (1.0,0.0)]}
 
         self.reaction_database  = {'prescribed': 'k',
                                    'prescribed_linear': 'k*u',
                                    'prescribed_leak': 'k*(1-u/umax)'}
 
     def check_config_validity(self):
-        if type(self.probe_plot['species']) != list:
-            raise TypeError("probe_plot['species'] must be a list of strings referring to species to capture values of.")
-        for x in self.probe_plot['species']:
-            if type(x) != str:
-                raise TypeError("probe_plot['species'] must be a list of strings referring to species to capture values of.")
-        valid_filetypes = ['xdmf', 'vtk']
+        valid_filetypes = ['xdmf', 'vtk', None]
         if self.output_type not in valid_filetypes:
             raise ValueError(f"Only filetypes: '{valid_filetypes}' are supported.")
 

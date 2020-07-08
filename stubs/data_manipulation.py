@@ -47,7 +47,7 @@ class Data(object):
 
         self.timer = d.Timer()
 
-    def initSolutionFiles(self, SD, write_type='vtk'):
+    def initSolutionFiles(self, SD, output_type='vtk'):
         for sp_name, sp in SD.Dict.items():
             self.solutions[sp_name] = {}
 
@@ -56,39 +56,42 @@ class Data(object):
             self.solutions[sp_name]['comp_idx'] = int(sp.compartment_index)
             self.solutions[sp_name]['concentration_units'] = sp.concentration_units
 
-            if write_type=='vtk':
+            if output_type=='vtk':
                 file_str = self.config.directory['solutions'] + '/' + sp_name + '.pvd'
-                self.solutions[sp_name][write_type] = d.File(file_str)
-            elif write_type=='xdmf':
-                #pass
+                self.solutions[sp_name][output_type] = d.File(file_str)
+            elif output_type=='xdmf':
                 file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                self.solutions[sp_name][write_type] = d.XDMFFile(comm,file_str)
+                self.solutions[sp_name][output_type] = d.XDMFFile(comm,file_str)
+            elif output_type==None:
+                self.solutions[sp_name][output_type] = None
 
 
-    def storeSolutionFiles(self, u, t, write_type='vtk'):
+    def storeSolutionFiles(self, u, t, output_type='vtk'):
+        if output_type==None:
+            return
         for sp_name in self.solutions.keys():
             comp_name = self.solutions[sp_name]['comp_name']
             comp_idx = self.solutions[sp_name]['comp_idx']
             #print("spname: %s" % sp_name)
 
             if self.solutions[sp_name]['num_species'] == 1:
-                if write_type=='vtk':
+                if output_type=='vtk':
                     self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
-                elif write_type=='xdmf':
+                elif output_type=='xdmf':
                     #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
                     #with d.XDMFFile(file_str) as xdmf:
                     #    xdmf.write(u[comp_name]['u'], t)
-                    self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
-                    self.solutions[sp_name][write_type].close()
+                    self.solutions[sp_name][output_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
+                    self.solutions[sp_name][output_type].close()
             else:
-                if write_type=='vtk':
+                if output_type=='vtk':
                     self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
-                elif write_type=='xdmf':
+                elif output_type=='xdmf':
                     # writing xdmf on submeshes fails in parallel
                     # TODO: fix me
                     if comp_name=='cyto':
-                        self.solutions[sp_name][write_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
-                        self.solutions[sp_name][write_type].close()
+                        self.solutions[sp_name][output_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
+                        self.solutions[sp_name][output_type].close()
 
         self.append_flag = True # append to xmdf files rather than write over
 
@@ -167,34 +170,13 @@ class Data(object):
     def computeProbeValues(self, u, t, dt, SD, PD, CD, FD, NLidx):
         """
         Computes the values of functions at various coordinates
-        TODO: refactor
         """
-        x_list = self.config.output['points_x']
-        y_list = self.config.output['points_y']
+        #x_list = self.config.output['points_x']
+        #y_list = self.config.output['points_y']
 
-        if CD.max_dim == 3:
-            z_list = self.config.output['points_z']
-            key_list = ['species', 'points_x', 'points_y', 'points_z']
-            if not (len(x_list) == len(y_list) == len(z_list)):
-                raise Exception("Specify the same number of coordinates in x,y,z")
-            coord_list = [(x_list[idx],y_list[idx],z_list[idx]) for idx in range(len(x_list))]
-        elif CD.max_dim == 2:
-            key_list = ['species', 'points_x', 'points_y']
-            if not (len(x_list) == len(y_list)):
-                raise Exception("Specify the same number of coordinates in x,y,z")
-            coord_list = [(x_list[idx],y_list[idx]) for idx in range(len(x_list))]
-        else:
-            raise Exception(f"Maximum compartment dimension of {CD.max_dim} is not supported.")
-
-        # check data is in correct form
-        if not all(key in self.config.output.keys() for key in
-            key_list):
-            Print("Specify species and coordinates to compute a probe plot.")
-            return
-
-        for sp_name in self.config.output['species']:
-            comp = self.model.SD.Dict[sp_name].compartment
-            sp_idx = self.model.SD.Dict[sp_name].compartment_index
+        for sp_name, coord_list in self.config.probe_plot.items():
+            comp = SD.Dict[sp_name].compartment
+            sp_idx = SD.Dict[sp_name].compartment_index
             if sp_name not in self.probe_solutions.keys():
                 self.probe_solutions[sp_name] = {}
             for coords in coord_list:
@@ -208,8 +190,6 @@ class Data(object):
                     u_eval = u_coords
 
                 self.probe_solutions[sp_name][coords].append(u_eval)
-
-        print("TESTING!!!!!!!!!!!!!!!!!!!!!!!")
 
 
     def computeError(self, u, comp_name, errorNormKey):
@@ -245,7 +225,7 @@ class Data(object):
     def initPlot(self, config, SD, FD):
         if rank==root:
             if not os.path.exists(config.directory['plots']):
-                os.mkdir(config.directory['plots'])
+                os.makedirs(config.directory['plots'])
         Print("Created directory %s to store plots" % config.directory['plots'])
 
         maxCols = 3
@@ -448,7 +428,7 @@ class Data(object):
         # pickle file
         data_dir = config.directory['solutions']+'/stats'
         if not os.path.exists(data_dir):
-            os.mkdir(data_dir)
+            os.makedirs(data_dir)
         with open(data_dir+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
             pickle.dump(newDict, pickle_file)
 
@@ -460,7 +440,7 @@ class Data(object):
         """
         data_dir = config.directory['solutions']+'/stats'
         if not os.path.exists(data_dir):
-            os.mkdir(data_dir)
+            os.makedirs(data_dir)
 
         # statistics over entire domain
         saveKeys = ['min', 'max', 'mean', 'std']
@@ -479,6 +459,13 @@ class Data(object):
         # solutions at specific coordinates
         for sp_name in self.probe_solutions.keys():
             for coord, val in self.probe_solutions[sp_name].items():
+                if len(coord) == 2:
+                    coord_str = "({coord[0]:.3f}_{coord[1]:.3f})".replace('.',',')
+                elif len(coord) == 3:
+                    coord_str = "({coord[0]:.3f}_{coord[1]:.3f}_{coord[2]:.3f})".replace('.',',')
+                else: 
+                    raise Exception("Coordinates must be in two or three dimensions.")
+
                 coord_str = str(coord).replace(', ','_').replace('.',',')
                 np.savetxt(data_dir+'/'+sp_name+'_'+coord_str+'.csv', 
                            val, delimiter=',')
