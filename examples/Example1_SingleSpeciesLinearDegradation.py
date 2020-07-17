@@ -17,7 +17,7 @@ r = stubs.model_building.ReactionDF()
 
 ### define parameters
 # name, value, unit, notes
-p.append('kdeg', 5.0, 1/(unit.uM*unit.s), 'degradation rate')
+p.append('kdeg', 5.0, 1/(unit.s), 'degradation rate')
 
 ### define species
 # name, plot group, concentration units, initial condition, diffusion

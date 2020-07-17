@@ -23,7 +23,7 @@ root = 0
 # Model class. Consists of parameters, species, etc. and is used for simulation
 # ==============================================================================
 # ==============================================================================
-class ModelRefactor(object):
+class Model(object):
     def __init__(self, PD, SD, CD, RD, config, solver_system, mesh=None):
         self.PD = PD
         self.SD = SD

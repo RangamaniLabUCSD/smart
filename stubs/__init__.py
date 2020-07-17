@@ -13,8 +13,7 @@ from . import model_building
 from . import sweep
 from . import solvers
 from . import config
-from . import config_refactor
-from . import model_refactor
+from . import model
 from . import common
 from . import mesh
 
