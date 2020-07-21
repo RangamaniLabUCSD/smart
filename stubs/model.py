@@ -299,6 +299,35 @@ class Model(object):
 # SOLVING
 #===============================================================================
 #===============================================================================
+    def solve_test(self, op_split_scheme = "DRD", plot_period=1):
+        ## solve
+        self.init_solver_and_plots()
+        self.t_list=[]
+        self.errors=[]
+        self.stopwatch("Total simulation")
+        while True:
+            self.t_list.append(self.t)
+            self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
+            # Solve using specified operator-splitting scheme (just DRD for now)
+            if op_split_scheme == "DRD":
+                self.DRD_solve(boundary_method='RK45')
+            elif op_split_scheme == "DR":
+                self.DR_solve(boundary_method='RK45')
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
+
+            self.compute_statistics()
+            if self.idx % plot_period == 0 or self.t >= self.final_t:
+                self.plot_solution()
+                self.plot_solver_status()
+            if self.t >= self.final_t:
+                self.t_list.append(self.t)
+                self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
+                break
+
+        self.stopwatch("Total simulation", stop=True)
+        Print("Solver finished with %d total time steps." % self.idx)
+
     def solve(self, plot_period=1):
         ## solve
         self.init_solver_and_plots()
