@@ -165,7 +165,10 @@ class Data(object):
 
         self.tvec.append(t)
         self.dtvec.append(dt)
-        self.NLidxvec.append(NLidx)
+        if len(NLidx.values()) == 0:
+            self.NLidxvec.append(0)
+        else:
+            self.NLidxvec.append(max(NLidx.values()))
 
     def computeProbeValues(self, u, t, dt, SD, PD, CD, FD, NLidx):
         """

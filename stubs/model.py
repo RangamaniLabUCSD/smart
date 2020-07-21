@@ -39,7 +39,9 @@ class Model(object):
         self.params = ddict(list)
 
         self.idx = 0
-        self.NLidx = 0 # nonlinear iterations
+        self.NLidx = {} # dictionary: compartment name -> # of nonlinear iterations needed
+        self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
+        self.stopping_conditions = {}
         self.t = 0.0
         self.dt = solver_system.initial_dt
         self.T = d.Constant(self.t)
@@ -297,17 +299,15 @@ class Model(object):
 # SOLVING
 #===============================================================================
 #===============================================================================
-    def solve(self, op_split_scheme = "DRD", plot_period=1):
+    def solve(self, plot_period=1):
         ## solve
         self.init_solver_and_plots()
 
         self.stopwatch("Total simulation")
         while True:
             # Solve using specified operator-splitting scheme (just DRD for now)
-            if op_split_scheme == "DRD":
-                self.DRD_solve(boundary_method='RK45')
-            elif op_split_scheme == "DR":
-                self.DR_solve(boundary_method='RK45')
+            if self.solver_system.multiphysics_solver.method == "iterative":
+                self.iterative_mpsolve()
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
 
@@ -368,12 +368,13 @@ class Model(object):
             self.reset_dt = True
 
 
-    def forward_time_step(self, factor=1):
+    def forward_time_step(self, dt_factor=1):
 
-        self.dT.assign(float(self.dt*factor))
-        self.t = float(self.t+self.dt*factor)
+        self.dT.assign(float(self.dt*dt_factor))
+        self.t = float(self.t+self.dt*dt_factor)
         self.T.assign(self.t)
-        #print("t: %f , dt: %f" % (self.t, self.dt*factor))
+        self.updateTimeDependentParameters(t0=self.t)
+        Print("t: %f , dt: %f" % (self.t, self.dt*dt_factor))
 
     def stopwatch(self, key, stop=False, color='cyan'):
         if key not in self.timers.keys():
@@ -476,7 +477,7 @@ class Model(object):
         Resets the time back to what it was before the time-step. Optionally, input a list of compartments
         to have their function values reset (['n'] value will be assigned to ['u'] function).
         """
-        self.set_time(self.t - self.dt, self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
+        self.set_time(self.t - self.dt, self.dt*self.solver_system.nonlinear_solver.dt_decrease_dt_factor)
         Print("Resetting time-step and decreasing step size")
         for comp_name in comp_list:
             self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
@@ -485,62 +486,77 @@ class Model(object):
     def update_solution_boundary_to_volume(self):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
-                if key[0] == 'v': # fixme
+                if key[0] == '_v': # fixme
                     d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
-                    parent_comp_name = key[1:]
+                    parent_comp_name = key[2:]
                     Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
 
     def update_solution_volume_to_boundary(self):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
-                if key[0] == 'b': # fixme
-                    self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
-                    sub_comp_name = key[1:]
+                if key[0] == '_b': # fixme
+                    #self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
+                    d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
+                    sub_comp_name = key[2:]
                     Print("Projected values from volume %s to surface %s" % (comp_name, sub_comp_name))
 
-    def boundary_reactions_forward(self, factor=1, bcs=[], key='n'):
+    def boundary_reactions_forward(self, dt_factor=1, bcs=[]):
         self.stopwatch("Boundary reactions forward")
-        nsubsteps = 1#int(self.config.solver['reaction_substeps'])
 
-        for n in range(nsubsteps):
-            self.forward_time_step(factor=factor/nsubsteps)
-            self.updateTimeDependentParameters(t0=self.t)
-            for comp_name, comp in self.CD.Dict.items():
-                if comp.dimensionality < self.CD.max_dim:
-                    self.nonlinear_solve(comp_name, factor=factor)
-                    self.set_time(self.t-self.dt)
-                    self.u[comp_name][key].assign(self.u[comp_name]['u'])
+        # solve boundary problem(s)
+        for comp_name, comp in self.CD.Dict.items():
+            if comp.dimensionality < self.CD.max_dim:
+                self.nonlinear_solve(comp_name, dt_factor=dt_factor)
         self.stopwatch("Boundary reactions forward", stop=True)
 
-    # def diffusion_forward(self, comp_name, factor=1, bcs=[]):
-    #     self.stopwatch("Diffusion step ["+comp_name+"]")
-    #     t0 = self.t
-    #     self.forward_time_step(factor=factor)
-    #     self.updateTimeDependentParameters(t0=t0)
-    #     if self.config.solver['nonlinear'] == 'picard':
-    #         self.picard_loop(comp_name, bcs)
-    #     elif self.config.solver['nonlinear'] == 'newton':
-    #         self.newton_iter(comp_name)
-    #     self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-    #     self.stopwatch("Diffusion step ["+comp_name+"]", stop=True)
+    def volume_reactions_forward(self, dt_factor=1, bcs=[], time_step=True):
+        self.stopwatch("Volume reactions forward")
 
+        # solve volume problem(s)
+        for comp_name, comp in self.CD.Dict.items():
+            if comp.dimensionality == self.CD.max_dim:
+                self.nonlinear_solve(comp_name, dt_factor=dt_factor)
+        self.stopwatch("Volume reactions forward", stop=True)
 
-    def nonlinear_solve(self, comp_name, factor=1.0):
+    def nonlinear_solve(self, comp_name, dt_factor=1.0):
         """
         A switch for choosing a nonlinear solver
         """
+
         if self.solver_system.nonlinear_solver.method == 'newton':
-            self.NLidx, success = self.newton_iter(comp_name, factor=factor)
-        elif self.solver_system.nonlinear_solver.method == 'picard':
-            self.NLidx, success = self.picard_loop(comp_name, factor=factor)
+            self.stopwatch("Newton's method [%s]" % comp_name)
+            self.NLidx[comp_name], self.success[comp_name] = self.nonlinear_solver[comp_name].solve()
+            self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
+            Print(f"{self.NLidx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
+        # elif self.solver_system.nonlinear_solver.method == 'picard':
+        #     self.stopwatch("Picard iteration method [%s]" % comp_name)
+        #     self.NLidx[comp_name], self.success[comp_name] = self.picard_loop(comp_name, dt_factor=dt_factor)
+        #     self.stopwatch("Picard iteration method [%s]" % comp_name)
+        #     Print(f"{self.NLidx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
+        else:
+            raise ValueError("Unknown nonlinear solver method")
 
-        return self.NLidx, success
+    def adjust_dt(self):
+        # check if time step should be changed
+        if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.NLidx.values()]):
+            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
+            Print("Increasing step size")
+        elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.NLidx.values()]):
+            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
+            Print("Decreasing step size")
 
-
-    def DRD_solve(self, bcs=[], boundary_method='RK45'):
+    def assign_un(self):
         """
-        General DRD operator splitting. Can be used with different non-linear
-        solvers
+        After finishing a time step, assign all the most recently computed solutions as 
+        the solutions for the previous time step.
+        """
+        for comp_name in self.CD.Dict.keys():
+            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+
+    def iterative_mpsolve(self, bcs=[]):
+        """
+        Iterate between boundary and volume problems until convergence
         """
         Print('\n\n\n')
         self.idx += 1
@@ -549,73 +565,21 @@ class Model(object):
 
         self.stopwatch("Total time step")
 
-        # solve volume problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality == self.CD.max_dim:
-                #self.NLidx, success = self.newton_iter(comp_name, factor=0.5)
-                self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
-                self.set_time(self.t-self.dt/2) # reset time back to t=t0
-        self.update_solution_volume_to_boundary()
+        self.forward_time_step()
 
-        # single iteration
-        # solve boundary problem(s)
-        self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
-        self.update_solution_boundary_to_volume()
-        self.set_time(self.t-self.dt/2) # perform the second half-step
+        kidx = 0
+        while kidx<=3: #temp
+            # solve volume problem(s)
+            self.volume_reactions_forward()
+            self.update_solution_volume_to_boundary()
+            self.boundary_reactions_forward()
+            self.update_solution_boundary_to_volume()
 
-        # solve volume problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.nonlinear_solve(comp_name, factor=0.5)
-                self.set_time(self.t-self.dt/2)
-        self.set_time(self.t+self.dt/2)
-        self.update_solution_volume_to_boundary()
+            kidx += 1
 
-        # check if time step should be changed
-        if self.NLidx <= self.solver_system.nonlinear_solver.min_nonlinear:
-            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
-            Print("Increasing step size")
-        if self.NLidx > self.solver_system.nonlinear_solver.max_nonlinear:
-            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
-            Print("Decreasing step size")
-
+        self.assign_un
+        self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
         self.stopwatch("Total time step", stop=True, color='cyan')
-
-    def DR_solve(self, bcs=[], boundary_method='RK45'):
-        """
-        General DR operator splitting. Can be used with different non-linear
-        solvers
-        """
-        Print('\n\n\n')
-        self.idx += 1
-        self.check_dt_resets()
-        color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
-
-        self.stopwatch("Total time step")
-
-        # solve volume problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality == self.CD.max_dim:
-                self.NLidx, success = self.nonlinear_solve(comp_name, factor=1.0)
-                self.set_time(self.t-self.dt) # reset time back to t=t0
-        self.update_solution_volume_to_boundary()
-
-        # single iteration
-        # solve boundary problem(s)
-        self.boundary_reactions_forward(factor=1) # t from [t0, t+dt]. automatically resets time back to t0
-        self.update_solution_boundary_to_volume()
-
-        # check if time step should be changed
-        if self.NLidx <= self.solver_system.nonlinear_solver.min_nonlinear:
-            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
-            Print("Increasing step size")
-        if self.NLidx > self.solver_system.nonlinear_solver.max_nonlinear:
-            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
-            Print("Decreasing step size")
-
-        self.stopwatch("Total time step", stop=True, color='cyan')
-
-
 
 #===============================================================================
 #===============================================================================
@@ -627,73 +591,53 @@ class Model(object):
 #===============================================================================
 #===============================================================================
 
-    def newton_iter(self, comp_name, factor=1, bcs=[], assign_to_n=True):
-        """
-        A single iteration of Newton's method for a single component.
-        """
-        self.stopwatch("Newton's method [%s]" % comp_name)
-        t0 = self.t
-        self.forward_time_step(factor=factor) # increment time afterwards
-        self.updateTimeDependentParameters(t0=t0)
 
-        idx, success = self.nonlinear_solver[comp_name].solve()
 
-        if assign_to_n:
-            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+#     def picard_loop(self, comp_name, dt_factor=1, bcs=[]):
+#         """
+#         Continue picard iterations until a specified tolerance or count is
+#         reached.
+#         """
+#         self.stopwatch("Picard loop [%s]" % comp_name)
+#         t0 = self.t
+#         self.forward_time_step(dt_factor=dt_factor) # increment time afterwards
+#         self.pidx = 0 # count the number of picard iterations
+#         success = True
 
-        self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
-        Print("%d Newton iterations required for convergence." % idx)
-        return idx, success
+#         # main loop
+#         while True:
+#             self.pidx += 1
+#             #linear_solver_settings = self.config.dolfin_krylov_solver
 
-    def picard_loop(self, comp_name, factor=1, bcs=[], assign_to_n=True):
-        """
-        Continue picard iterations until a specified tolerance or count is
-        reached.
-        """
-        self.stopwatch("Picard loop [%s]" % comp_name)
-        t0 = self.t
-        self.forward_time_step(factor=factor) # increment time afterwards
-        self.updateTimeDependentParameters(t0=t0)
-        self.pidx = 0 # count the number of picard iterations
-        success = True
+#             # solve
+#             self.linear_solver[comp_name].solve()
+#             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
 
-        # main loop
-        while True:
-            self.pidx += 1
-            #linear_solver_settings = self.config.dolfin_krylov_solver
+#             # update temporary value of u
+#             self.data.computeError(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
+#             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
-            # solve
-            self.linear_solver[comp_name].solve()
-            #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+#             # Exit if error tolerance or max iterations is reached
+#             Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+#             if self.data.errors[comp_name]['Linf']['abs'][-1] < self.solver_system.nonlinear_solver.absolute_tolerance:
+#                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
+#                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
+#                 break
+# #            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
+# #                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
+# #                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
+# #                break
 
-            # update temporary value of u
-            self.data.computeError(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
-            self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+#             if self.pidx >= self.solver_system.nonlinear_solver.maximum_iterations:
+#                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
+#                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+#                 success = False
+#                 break
 
-            # Exit if error tolerance or max iterations is reached
-            Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-            if self.data.errors[comp_name]['Linf']['abs'][-1] < self.solver_system.nonlinear_solver.absolute_tolerance:
-                #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
-                 #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
-                break
-#            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
-#                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
-#                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
-#                break
+#         self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
 
-            if self.pidx >= self.solver_system.nonlinear_solver.maximum_iterations:
-                Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
-                (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-                success = False
-                break
-
-        self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
-
-        if assign_to_n:
-            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
-
-        Print("%d Picard iterations required for convergence." % self.pidx)
-        return self.pidx, success
+#         Print("%d Picard iterations required for convergence." % self.pidx)
+#         return self.pidx, success
 
 
 #===============================================================================

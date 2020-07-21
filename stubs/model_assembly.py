@@ -981,9 +981,9 @@ class Flux(_ObjectInstance):
 
             # Testing volume interpolated functions
             if var.dimensionality > sp.dimensionality:
-                return 'b'+sp.compartment_name
+                return '_b'+sp.compartment_name
             elif var.dimensionality < sp.dimensionality:
-                return 'v'+sp.compartment_name
+                return '_v'+sp.compartment_name
             else:
                 return 'u'
 
@@ -1004,7 +1004,7 @@ class Flux(_ObjectInstance):
             ## different compartments
             # volume -> surface
             if var.dimensionality > sp.dimensionality:
-                return 'b'+sp.compartment_name
+                return '_b'+sp.compartment_name
             # surface -> volume is covered by first if statement in get_ukey()
 
         raise Exception("Missing logic in get_ukey(); contact a developer...")
