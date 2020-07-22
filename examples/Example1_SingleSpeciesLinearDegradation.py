@@ -22,7 +22,7 @@ p.append('kdeg', 5.0, 1/(unit.s), 'degradation rate')
 ### define species
 # name, plot group, concentration units, initial condition, diffusion
 # coefficient, diffusion coefficient units, compartment
-s.append('A', 'cytosolic', unit.uM, 10, 1, unit.um**2/unit.s, 'cyto')
+s.append('B', 'cytosolic', unit.uM, 10, 1, unit.um**2/unit.s, 'cyto')
 
 ### define compartments
 # name, geometric dimensionality, length scale units, marker value
@@ -31,7 +31,7 @@ c.append('cyto', 3, unit.um, 1)
 ### define reactions
 # name, notes, left hand side of reaction, right hand side of reaction, kinetic
 # parameters
-r.append('A linear degredation', 'example reaction', ['A'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
+r.append('B linear degredation', 'example reaction', ['B'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
 
 
 # write out to file

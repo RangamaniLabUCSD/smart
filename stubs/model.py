@@ -41,7 +41,7 @@ class Model(object):
         self.idx = 0
         self.NLidx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
-        self.stopping_conditions = {}
+        self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
         self.t = 0.0
         self.dt = solver_system.initial_dt
         self.T = d.Constant(self.t)
@@ -256,19 +256,20 @@ class Model(object):
         form_types = set([f.form_type for f in self.Forms.form_list])
 
         if self.solver_system.nonlinear_solver.method == 'picard':
-            Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.a[comp.name] = d.lhs(sum(comp_forms))
-                self.L[comp.name] = d.rhs(sum(comp_forms))
-                problem = d.LinearVariationalProblem(self.a[comp.name],
-                                                     self.L[comp.name], self.u[comp.name]['u'], [])
-                self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
-                p = self.linear_solver[comp.name].parameters
-                p['linear_solver'] = self.solver_system.linear_solver.method
-                if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
-                    p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
-                    p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+            raise Exception("Picard functionality needs to be reviewed")
+            # Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+            # for comp in comp_list:
+            #     comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+            #     self.a[comp.name] = d.lhs(sum(comp_forms))
+            #     self.L[comp.name] = d.rhs(sum(comp_forms))
+            #     problem = d.LinearVariationalProblem(self.a[comp.name],
+            #                                          self.L[comp.name], self.u[comp.name]['u'], [])
+            #     self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
+            #     p = self.linear_solver[comp.name].parameters
+            #     p['linear_solver'] = self.solver_system.linear_solver.method
+            #     if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
+            #         p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
+            #         p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
         elif self.solver_system.nonlinear_solver.method == 'newton':
             Print("Formulating problem as F(u;v) == 0 for newton iterations")
@@ -299,13 +300,41 @@ class Model(object):
 # SOLVING
 #===============================================================================
 #===============================================================================
+
+    def solve_test(self, plot_period=1):
+        ## solve
+        self.init_solver_and_plots()
+        self.t_list=[]
+        self.errors=[]
+        self.stopwatch("Total simulation")
+        while True:
+            self.t_list.append(self.t)
+            self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
+            # Solve using specified multiphysics scheme 
+            if self.solver_system.multiphysics_solver.method == "iterative":
+                self.iterative_mpsolve()
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
+
+            self.compute_statistics()
+            if self.idx % plot_period == 0 or self.t >= self.final_t:
+                self.plot_solution()
+                self.plot_solver_status()
+            if self.t >= self.final_t:
+                self.t_list.append(self.t)
+                self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
+                break
+
+        self.stopwatch("Total simulation", stop=True)
+        Print("Solver finished with %d total time steps." % self.idx)
+
     def solve(self, plot_period=1):
         ## solve
         self.init_solver_and_plots()
 
         self.stopwatch("Total simulation")
         while True:
-            # Solve using specified operator-splitting scheme (just DRD for now)
+            # Solve using specified multiphysics scheme 
             if self.solver_system.multiphysics_solver.method == "iterative":
                 self.iterative_mpsolve()
             else:
@@ -550,8 +579,13 @@ class Model(object):
         After finishing a time step, assign all the most recently computed solutions as 
         the solutions for the previous time step.
         """
-        for comp_name in self.CD.Dict.keys():
+        for comp_name in self.u.keys():
             self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+
+    def compute_stopping_conditions(self, norm_type='linf'):
+        for comp_name in self.u.keys():
+            FIXME
+            self.stopping_conditions['F_abs'] = {}
 
 
     def iterative_mpsolve(self, bcs=[]):
@@ -568,7 +602,7 @@ class Model(object):
         self.forward_time_step()
 
         kidx = 0
-        while kidx<=3: #temp
+        while kidx<=3: 
             # solve volume problem(s)
             self.volume_reactions_forward()
             self.update_solution_volume_to_boundary()
@@ -577,7 +611,7 @@ class Model(object):
 
             kidx += 1
 
-        self.assign_un
+        self.assign_un()
         self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
         self.stopwatch("Total time step", stop=True, color='cyan')
 
