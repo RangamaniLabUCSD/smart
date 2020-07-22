@@ -101,9 +101,10 @@ class Solver(object):
 
 # Base MultiphysicsSolver class
 class MultiphysicsSolver(Solver):
-    def __init__(self, method='iterative'):
+    def __init__(self, method='iterative', eps_Fabs=1e-8):
         super().__init__()
         self.method = method
+        self.eps_Fabs = eps_Fabs
     
     def check_validity(self):
         super().check_validity()

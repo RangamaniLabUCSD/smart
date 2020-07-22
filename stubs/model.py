@@ -328,7 +328,7 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
-    def solve(self, plot_period=1):
+    def solve(self, plot_period=1, store_solutions=True):
         ## solve
         self.init_solver_and_plots()
 
@@ -342,7 +342,7 @@ class Model(object):
 
             self.compute_statistics()
             if self.idx % plot_period == 0 or self.t >= self.final_t:
-                self.plot_solution()
+                self.plot_solution(store_solutions=store_solutions)
                 self.plot_solver_status()
             if self.t >= self.final_t:
                 break
@@ -583,9 +583,11 @@ class Model(object):
             self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
 
     def compute_stopping_conditions(self, norm_type='linf'):
+
         for comp_name in self.u.keys():
-            FIXME
-            self.stopping_conditions['F_abs'] = {}
+            Fabs = d.norm(d.assemble(self.F[comp_name]), norm_type)
+            self.stopping_conditions['F_abs'].update({comp_name: Fabs})
+            color_print(f"Computed F_abs for component {comp_name}: {Fabs}\n", color='green')
 
 
     def iterative_mpsolve(self, bcs=[]):
@@ -601,15 +603,18 @@ class Model(object):
 
         self.forward_time_step()
 
-        kidx = 0
-        while kidx<=3: 
+        while True: 
             # solve volume problem(s)
             self.volume_reactions_forward()
             self.update_solution_volume_to_boundary()
             self.boundary_reactions_forward()
             self.update_solution_boundary_to_volume()
 
-            kidx += 1
+            self.compute_stopping_conditions()
+
+            if all([x<self.solver_system.multiphysics_solver.eps_Fabs for x in self.stopping_conditions['F_abs'].values()]):
+                color_print(f"All F_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_Fabs}. Exiting multiphysics loop.\n", color='green')
+                break
 
         self.assign_un()
         self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
@@ -697,8 +702,9 @@ class Model(object):
         self.data.outputPickle(self.config)
         self.data.outputCSV(self.config)
 
-    def plot_solution(self):
-        self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
+    def plot_solution(self, store_solutions=True):
+        if store_solutions:
+            self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
         self.data.plotParameters(self.config)
         self.data.plotSolutions(self.config, self.SD)
         self.data.plotFluxes(self.config)

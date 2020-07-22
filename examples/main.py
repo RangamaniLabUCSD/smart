@@ -32,4 +32,4 @@ model = stubs.model.Model(PD, SD, CD, RD, config, solver_system, cyto_mesh)
 model.initialize()
 
 # solve system
-model.solve()
+model.solve(store_solutions=False)
