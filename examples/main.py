@@ -20,7 +20,7 @@ config = stubs.config.Config()
 PD, SD, CD, RD = stubs.common.read_smodel('cell2013_3d/cell2013_3d.smodel')
 
 # Define solvers
-mps = stubs.solvers.MultiphysicsSolver('iterative')
+mps = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)
 nls = stubs.solvers.NonlinearNewtonSolver(relative_tolerance=1e-6, absolute_tolerance=1e-8,
                                           dt_increase_factor=1.05, dt_decrease_factor=0.7)
 ls = stubs.solvers.DolfinKrylovSolver(method = 'bicgstab', preconditioner='hypre_amg')

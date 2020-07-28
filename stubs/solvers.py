@@ -101,11 +101,18 @@ class Solver(object):
 
 # Base MultiphysicsSolver class
 class MultiphysicsSolver(Solver):
-    def __init__(self, method='iterative', eps_Fabs=1e-8):
+    def __init__(self, method='iterative', eps_Fabs=1e-6, eps_udiff_abs=1e-8, eps_udiff_rel=1e-5,
+                 min_multiphysics=2, max_multiphysics=6, dt_increase_factor=1.0, dt_decrease_factor=0.8):
         super().__init__()
-        self.method = method
-        self.eps_Fabs = eps_Fabs
-    
+        self.method             = method
+        self.eps_Fabs           = eps_Fabs
+        self.eps_udiff_abs      = eps_udiff_abs
+        self.eps_udiff_rel      = eps_udiff_rel
+        self.min_multiphysics   = min_multiphysics
+        self.max_multiphysics   = max_multiphysics
+        self.dt_increase_factor = dt_increase_factor
+        self.dt_decrease_factor = dt_decrease_factor
+
     def check_validity(self):
         super().check_validity()
         if self.method not in ['iterative', 'monolithic']:
