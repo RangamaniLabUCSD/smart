@@ -4,6 +4,7 @@ import petsc4py.PETSc as PETSc
 Print = PETSc.Sys.Print
 from termcolor import colored
 import numpy as np
+import operator
 
 import stubs
 import stubs.model_assembly
@@ -41,7 +42,7 @@ class Model(object):
         self.idx = 0
         self.NLidx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
-        self.stopping_conditions = {}
+        self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
         self.t = 0.0
         self.dt = solver_system.initial_dt
         self.T = d.Constant(self.t)
@@ -61,7 +62,7 @@ class Model(object):
         self.linear_solver = {}
         self.scipy_odes = {}
 
-        self.data = stubs.data_manipulation.Data(self)
+        self.data = stubs.data_manipulation.Data(self, config)
 
 
     def initialize(self):
@@ -105,10 +106,10 @@ class Model(object):
         print("\n\n********** Model initialization (Part 5/6) **********")
         print("Creating dolfin functions and assinging initial conditions...\n")
         self.SD.assemble_dolfin_functions(self.RD, self.CD)
-        self.SD.assign_initial_conditions()
         self.u = self.SD.u
         self.v = self.SD.v
         self.V = self.SD.V
+        self.assign_initial_conditions()
 
         print("\n\n********** Model initialization (Part 6/6) **********")
         print("Assembling reactive and diffusive fluxes...\n")
@@ -256,19 +257,20 @@ class Model(object):
         form_types = set([f.form_type for f in self.Forms.form_list])
 
         if self.solver_system.nonlinear_solver.method == 'picard':
-            Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.a[comp.name] = d.lhs(sum(comp_forms))
-                self.L[comp.name] = d.rhs(sum(comp_forms))
-                problem = d.LinearVariationalProblem(self.a[comp.name],
-                                                     self.L[comp.name], self.u[comp.name]['u'], [])
-                self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
-                p = self.linear_solver[comp.name].parameters
-                p['linear_solver'] = self.solver_system.linear_solver.method
-                if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
-                    p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
-                    p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+            raise Exception("Picard functionality needs to be reviewed")
+            # Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+            # for comp in comp_list:
+            #     comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
+            #     self.a[comp.name] = d.lhs(sum(comp_forms))
+            #     self.L[comp.name] = d.rhs(sum(comp_forms))
+            #     problem = d.LinearVariationalProblem(self.a[comp.name],
+            #                                          self.L[comp.name], self.u[comp.name]['u'], [])
+            #     self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
+            #     p = self.linear_solver[comp.name].parameters
+            #     p['linear_solver'] = self.solver_system.linear_solver.method
+            #     if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
+            #         p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
+            #         p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
         elif self.solver_system.nonlinear_solver.method == 'newton':
             Print("Formulating problem as F(u;v) == 0 for newton iterations")
@@ -299,7 +301,8 @@ class Model(object):
 # SOLVING
 #===============================================================================
 #===============================================================================
-    def solve_test(self, op_split_scheme = "DRD", plot_period=1):
+
+    def solve_test(self, plot_period=1):
         ## solve
         self.init_solver_and_plots()
         self.t_list=[]
@@ -308,11 +311,9 @@ class Model(object):
         while True:
             self.t_list.append(self.t)
             self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
-            # Solve using specified operator-splitting scheme (just DRD for now)
-            if op_split_scheme == "DRD":
-                self.DRD_solve(boundary_method='RK45')
-            elif op_split_scheme == "DR":
-                self.DR_solve(boundary_method='RK45')
+            # Solve using specified multiphysics scheme 
+            if self.solver_system.multiphysics_solver.method == "iterative":
+                self.iterative_mpsolve()
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
 
@@ -328,22 +329,25 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
-    def solve(self, plot_period=1):
+    def solve(self, plot_period=1, store_solutions=True):
         ## solve
         self.init_solver_and_plots()
 
         self.stopwatch("Total simulation")
         while True:
-            # Solve using specified operator-splitting scheme (just DRD for now)
+            # Solve using specified multiphysics scheme 
             if self.solver_system.multiphysics_solver.method == "iterative":
                 self.iterative_mpsolve()
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
 
+            # post processing
             self.compute_statistics()
             if self.idx % plot_period == 0 or self.t >= self.final_t:
-                self.plot_solution()
+                self.plot_solution(store_solutions=store_solutions)
                 self.plot_solver_status()
+
+            # if we've reached final time
             if self.t >= self.final_t:
                 break
 
@@ -396,13 +400,22 @@ class Model(object):
             # set a flag to change dt to the config specified value
             self.reset_dt = True
 
+    def check_dt_pass_tfinal(self):
+        """
+        Check that t+dt is not > t_final
+        """
+        potential_t = self.t + self.dt
+        if potential_t > self.final_t:
+            new_dt = self.final_t - self.t 
+            color_print("(!!!) Adjusting time-step (dt = %f -> %f) to avoid passing final time" % (self.dt, new_dt), 'blue')
+            self.set_time(self.t, dt=new_dt)
 
     def forward_time_step(self, dt_factor=1):
 
         self.dT.assign(float(self.dt*dt_factor))
         self.t = float(self.t+self.dt*dt_factor)
         self.T.assign(self.t)
-        self.updateTimeDependentParameters(t0=self.t)
+        self.updateTimeDependentParameters(dt=self.dt*dt_factor)
         Print("t: %f , dt: %f" % (self.t, self.dt*dt_factor))
 
     def stopwatch(self, key, stop=False, color='cyan'):
@@ -445,8 +458,8 @@ class Model(object):
         elif dt is not None:
             t0 = t-dt
         if t0 is not None:
-            if t0<0 or dt<0:
-                raise Exception("Either t0 or dt is less than 0, is this the desired behavior?")
+            if t0<0 or dt<=0:
+                raise Exception("Either t0<0 or dt<=0, is this the desired behavior?")
 
         # Update time dependent parameters
         for param_name, param in self.PD.Dict.items():
@@ -456,8 +469,9 @@ class Model(object):
                 continue
             # use value by evaluating symbolic expression
             if param.symExpr and not param.preintegrated_symExpr:
-                newValue = param.symExpr.subs({'t': t}).evalf()
+                newValue = float(param.symExpr.subs({'t': t}).evalf())
                 value_assigned += 1
+                print(f"Parameter {param_name} assigned by symbolic expression")
 
             # calculate a preintegrated expression by subtracting previous value
             # and dividing by time-step
@@ -465,9 +479,11 @@ class Model(object):
                 if t0 is None:
                     raise Exception("Must provide a time interval for"\
                                     "pre-integrated variables.")
-                newValue = (param.preintegrated_symExpr.subs({'t': t}).evalf()
-                            - param.preintegrated_symExpr.subs({'t': t0}).evalf())/dt
+                a = param.preintegrated_symExpr.subs({'t': t0}).evalf()
+                b = param.preintegrated_symExpr.subs({'t': t}).evalf()
+                newValue = float((b-a)/dt)
                 value_assigned += 1
+                print(f"Parameter {param_name} assigned by preintegrated symbolic expression")
 
             # if parameter is given by data
             if param.sampling_data is not None and param.preint_sampling_data is None:
@@ -477,27 +493,34 @@ class Model(object):
                     raise Exception("Parameter cannot be extrapolated beyond"\
                                     "provided data.")
                 # Just in case... return a nan if value is outside of bounds
-                newValue = np.interp(t, data[:,0], data[:,1],
-                                     left=np.nan, right=np.nan)
+                newValue = float(np.interp(t, data[:,0], data[:,1],
+                                     left=np.nan, right=np.nan))
                 value_assigned += 1
+                print(f"Parameter {param_name} assigned by sampling data")
 
             # if parameter is given by data and it has been pre-integrated
             if param.sampling_data is not None and param.preint_sampling_data is not None:
                 int_data = param.preint_sampling_data
-                oldValue = np.interp(t0, int_data[:,0], int_data[:,1],
+                a = np.interp(t0, int_data[:,0], int_data[:,1],
                                      left=np.nan, right=np.nan)
-                newValue = (np.interp(t, int_data[:,0], int_data[:,1],
-                                     left=np.nan, right=np.nan) - oldValue)/dt
+                b = np.interp(t, int_data[:,0], int_data[:,1],
+                                     left=np.nan, right=np.nan)
+                newValue = float((b-a)/dt)
                 value_assigned += 1
+                print(f"Parameter {param_name} assigned by preintegrated sampling data")
 
             if value_assigned != 1:
                 raise Exception("Either a value was not assigned or more than"\
                                 "one value was assigned to parameter %s" % param.name)
 
-            param.value = newValue
-            param.dolfinConstant.assign(newValue)
             Print('%f assigned to time-dependent parameter %s'
                   % (newValue, param.name))
+
+            if np.isnan(newValue):
+                raise ValueError(f"Warning! Parameter {param_name} is a NaN.")
+
+            param.value = newValue
+            param.dolfinConstant.assign(newValue)
             self.params[param_name].append((t,newValue))
 
 
@@ -515,7 +538,7 @@ class Model(object):
     def update_solution_boundary_to_volume(self):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
-                if key[0] == '_v': # fixme
+                if key[0:2] == 'v_': # fixme
                     d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
                     parent_comp_name = key[2:]
                     Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
@@ -523,7 +546,7 @@ class Model(object):
     def update_solution_volume_to_boundary(self):
         for comp_name in self.CD.Dict.keys():
             for key in self.u[comp_name].keys():
-                if key[0] == '_b': # fixme
+                if key[0:2] == 'b_': # fixme
                     #self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
                     d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
                     sub_comp_name = key[2:]
@@ -565,23 +588,60 @@ class Model(object):
         else:
             raise ValueError("Unknown nonlinear solver method")
 
-    def adjust_dt(self):
-        # check if time step should be changed
-        if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.NLidx.values()]):
-            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
-            Print("Increasing step size")
-        elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.NLidx.values()]):
-            self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
-            Print("Decreasing step size")
-
-    def assign_un(self):
+    def update_solution(self, ukeys=['k', 'n']):
         """
         After finishing a time step, assign all the most recently computed solutions as 
         the solutions for the previous time step.
         """
-        for comp_name in self.CD.Dict.keys():
-            self.u[comp_name]['n'].assign(self.u[comp_name]['u'])
+        for key in self.u.keys():
+            for ukey in ukeys:
+                self.u[key][ukey].assign(self.u[key]['u'])
 
+    def adjust_dt(self):
+        ## check if time step should be changed
+        #if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.NLidx.values()]):
+        #    self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
+        #    Print("Increasing step size")
+        #elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.NLidx.values()]):
+        #    self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
+        #    Print("Decreasing step size")
+
+        # check if time step should be changed based on number of multiphysics iterations
+        if self.mpidx <= self.solver_system.multiphysics_solver.min_multiphysics:
+            self.set_time(self.t, dt=self.dt*self.solver_system.multiphysics_solver.dt_increase_factor)
+            Print("Increasing step size")
+        elif self.mpidx > self.solver_system.multiphysics_solver.max_multiphysics:
+            self.set_time(self.t, dt=self.dt*self.solver_system.multiphysics_solver.dt_decrease_factor)
+            Print("Decreasing step size")
+
+    def compute_stopping_conditions(self, norm_type=np.inf):
+
+        for comp_name in self.u.keys():
+            # dolfin norm() is not really robust so we get vectors and use numpy.linalg.norm
+            #Fabs = d.norm(d.assemble(self.F[comp_name]), norm_type)
+            #udiff = self.u[comp_name]['u'] - self.u[comp_name]['k']
+            #udiff_abs = d.norm(udiff, norm_type)
+            #udiff_rel = udiff_abs/d.norm(self.u[comp_name]['u'], norm_type)
+
+            Fvec = d.assemble(self.F[comp_name]).get_local()
+
+            Fabs = np.linalg.norm(Fvec, ord=norm_type)
+
+            self.stopping_conditions['F_abs'].update({comp_name: Fabs})
+            #color_print(f"{'Computed F_abs for component '+comp_name+': ': <40} {Fabs:.4e}", color='green')
+
+        for sp_name, sp in self.SD.Dict.items():
+            uvec = self.dolfin_get_function_values(sp, ukey='u')
+            ukvec = self.dolfin_get_function_values(sp, ukey='k')
+            udiff = uvec-ukvec
+
+            udiff_abs = np.linalg.norm(udiff, ord=norm_type)
+            udiff_rel = udiff_abs/np.linalg.norm(uvec, ord=norm_type)
+
+            self.stopping_conditions['udiff_abs'].update({sp_name: udiff_abs})
+            self.stopping_conditions['udiff_rel'].update({sp_name: udiff_rel})
+            #color_print(f"{'Computed udiff_abs for species '+comp_name+': ': <40} {udiff_abs:.4e}", color='green')
+            #color_print(f"{'Computed udiff_rel for species '+comp_name+': ': <40} {udiff_rel:.4e}", color='green')
 
     def iterative_mpsolve(self, bcs=[]):
         """
@@ -589,26 +649,61 @@ class Model(object):
         """
         Print('\n\n\n')
         self.idx += 1
-        self.check_dt_resets()
-        color_print('\n *** Beginning time-step %d [time=%f, dt=%f] ***\n' % (self.idx, self.t, self.dt), color='red')
+        self.check_dt_resets()      # check if there is a manually prescribed time-step size
+        self.check_dt_pass_tfinal() # check that we don't pass tfinal
+        color_print(f'\n *** Beginning time-step {self.idx} [time={self.t}, dt={self.dt}] ***\n', color='red')
 
-        self.stopwatch("Total time step")
+        self.stopwatch("Total time step") # start a timer for the total time step
 
-        self.forward_time_step()
+        self.forward_time_step() # march forward in time and update time-dependent parameters
 
-        kidx = 0
-        while kidx<=3: #temp
+        self.mpidx = 0
+        while True: 
+            self.mpidx += 1
+            color_print(f'\n * Multiphysics iteration {self.mpidx} for time-step {self.idx} [time={self.t}] *', color='green')
             # solve volume problem(s)
             self.volume_reactions_forward()
             self.update_solution_volume_to_boundary()
+            # solve boundary problem(s)
             self.boundary_reactions_forward()
             self.update_solution_boundary_to_volume()
+            # decide whether to stop iterations
+            self.compute_stopping_conditions()
+            if self.solver_system.multiphysics_solver.eps_Fabs is not None:
+                if all([x<self.solver_system.multiphysics_solver.eps_Fabs for x in self.stopping_conditions['F_abs'].values()]):
+                    color_print(f"All F_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_Fabs}." \
+                                  f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    break
+                else: 
+                    max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
+                    color_print(f"{'One or more F_abs are above tolerance. Max F_abs is from component '+max_comp_name+': ': <40} {max_Fabs:.4e}", color='green')
 
-            kidx += 1
+            if self.solver_system.multiphysics_solver.eps_udiff_abs is not None:
+                if all([x<self.solver_system.multiphysics_solver.eps_udiff_abs for x in self.stopping_conditions['udiff_abs'].values()]):
+                    color_print(f"All udiff_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_abs}." \
+                                  f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    break
+                else: 
+                    max_sp_name, max_udiffabs = max(self.stopping_conditions['udiff_abs'].items(), key=operator.itemgetter(1))
+                    color_print(f"{'One or more udiff_abs are above tolerance. Max udiff_abs is from species '+max_sp_name+': ': <40} {max_udiffabs:.4e}", color='green')
 
-        self.assign_un
+            if self.solver_system.multiphysics_solver.eps_udiff_rel is not None:
+                if all([x<self.solver_system.multiphysics_solver.eps_udiff_rel for x in self.stopping_conditions['udiff_rel'].values()]):
+                    color_print(f"All udiff_rel are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_rel}." \
+                                  f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    break
+                else: 
+                    max_sp_name, max_udiffrel = max(self.stopping_conditions['udiff_rel'].items(), key=operator.itemgetter(1))
+                    color_print(f"{'One or more udiff_rel are above tolerance. Max udiff_rel is from species '+max_sp_name+': ': <40} {max_udiffrel:.4e}", color='green')
+
+            # update previous (iteration) solution 
+            self.update_solution(ukeys=['k'])
+
+
+        self.update_solution() # assign most recently computed solution to "previous solution"
         self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
         self.stopwatch("Total time step", stop=True, color='cyan')
+
 
 #===============================================================================
 #===============================================================================
@@ -677,26 +772,151 @@ class Model(object):
     def init_solver_and_plots(self):
         self.data.initSolutionFiles(self.SD, output_type=self.config.output_type)
         self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
-        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.initPlot(self.config, self.SD, self.FD)
 
-    def update_solution(self):
-        for key in self.u.keys():
-            self.u[key]['n'].assign(self.u[key]['u'])
-            self.u[key]['k'].assign(self.u[key]['u'])
-
     def compute_statistics(self):
-        self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        # debug
-        self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        self.data.outputPickle(self.config)
-        self.data.outputCSV(self.config)
+        #self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        ## debug
+        #self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        #self.data.outputPickle(self.config)
+        #self.data.outputCSV(self.config)
 
-    def plot_solution(self):
-        self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
+        self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
+        self.data.compute_probe_values(self.u, self.SD)
+        self.data.outputPickle()
+        self.data.outputCSV()
+
+    def plot_solution(self, store_solutions=True):
+        if store_solutions:
+            self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
         self.data.plotParameters(self.config)
         self.data.plotSolutions(self.config, self.SD)
         self.data.plotFluxes(self.config)
 
     def plot_solver_status(self):
         self.data.plotSolverStatus(self.config)
+
+
+
+##### DATA_MANIPULATION
+
+    # get the values of function u from subspace idx of some mixed function space, V
+    def dolfin_get_dof_indices(self, sp):#V, species_idx):
+        """
+        Returned indices are *local* to the CPU (not global)
+        function values can be returned e.g.
+        indices = dolfin_get_dof_indices(V,species_idx)
+        u.vector().get_local()[indices]
+        """
+        V           = sp.compartment.V
+        species_idx = sp.compartment_index
+
+        if V.num_sub_spaces() > 1:
+            indices = np.array(V.sub(species_idx).dofmap().dofs())
+        else:
+            indices = np.array(V.dofmap().dofs())
+        first_idx, last_idx = V.dofmap().ownership_range() # indices that this CPU owns
+
+        return indices-first_idx # subtract index offset to go from global -> local indices
+
+
+    def reduce_vector(u):
+        """
+        comm.allreduce() only works when the incoming vectors all have the same length. We use comm.Gatherv() to gather vectors
+        with different lengths
+        """
+        sendcounts = np.array(comm.gather(len(u), root)) # length of vectors being sent by workers
+        if rank == root:
+            print("reduceVector(): CPUs sent me %s length vectors, total length: %d"%(sendcounts, sum(sendcounts)))
+            recvbuf = np.empty(sum(sendcounts), dtype=float)
+        else:
+            recvbuf = None
+
+        comm.Gatherv(sendbuf=u, recvbuf=(recvbuf, sendcounts), root=root)
+
+        return recvbuf
+
+    def dolfin_get_function_values(self, sp, ukey='u'):
+        """
+        Returns the values from a sub-function of a VectorFunction. When run
+        in parallel this will *not* double-count overlapping vertices which
+        are shared by multiple CPUs (a simple call to 
+        u.sub(species_idx).compute_vertex_values() will double-count...)
+        """
+        # Get the VectorFunction
+        V           = sp.compartment.V
+        species_idx = sp.compartment_index
+        u           = self.u[sp.compartment_name][ukey]
+        indices     = self.dolfin_get_dof_indices(sp)
+        uvec        = u.vector().get_local()[indices]
+        return uvec
+
+    def dolfin_get_function_values_at_point(self, sp, coord):
+        """
+        Returns the values of a dolfin function at the specified coordinate 
+        :param dolfin.function.function.Function u: Function to extract values from
+        :param tuple coord: tuple of floats indicating where in space to evaluate u e.g. (x,y,z)
+        :param int species_idx: index of species
+        :return: list of values at point. If species_idx is not specified it will return all values
+        """
+        u = self.u[sp.compartment_name]['u']
+        if sp.compartment.V.num_sub_spaces() == 0:
+            return u(coord)
+        else:
+            species_idx = sp.compartment_index
+            return u(coord)[species_idx]
+
+    def dolfin_set_function_values(self, sp, ukey, unew):
+        """
+        unew can either be a scalar or a vector with the same length as u
+        """
+
+        u = self.u[sp.compartment_name][ukey]
+
+        indices = self.dolfin_get_dof_indices(sp)
+        uvec    = u.vector()
+        values  = uvec.get_local()
+        values[indices] = unew
+
+        uvec.set_local(values)
+        uvec.apply('insert')
+
+    def assign_initial_conditions(self):
+        ukeys = ['k', 'n', 'u']
+        for sp_name, sp in self.SD.Dict.items():
+            comp_name = sp.compartment_name
+            for ukey in ukeys:
+                self.dolfin_set_function_values(sp, ukey, sp.initial_condition)
+            if rank==root: print("Assigned initial condition for species %s" % sp.name)
+
+        # project to boundary/volume functions
+        self.update_solution_volume_to_boundary()
+        self.update_solution_boundary_to_volume()
+
+    # def dolfinFindClosestPoint(mesh, coords):
+    #     """
+    #     Given some point and a mesh, returns the coordinates of the nearest vertex
+    #     """
+    #     p = d.Point(coords)
+    #     L = list(d.vertices(mesh))
+    #     distToVerts = [np.linalg.norm(p.array() - x.midpoint().array()) for x in L]
+    #     minDist = min(distToVerts)
+    #     minIdx = distToVerts.index(minDist) # returns the local index (wrt the cell) of the closest point
+
+    #     closestPoint = L[minIdx].midpoint().array()
+
+    #     if size > 1:
+    #         min_dist_global, min_idx = comm.allreduce((minDist,rank), op=pyMPI.MINLOC)
+
+    #         if rank == min_idx:
+    #             comm.Send(closestPoint, dest=root)
+
+    #         if rank == root:
+    #             comm.Recv(closestPoint, min_idx)
+    #             print("CPU with rank %d has the closest point to %s: %s. The distance is %s" % (min_idx, coords, closestPoint, min_dist_global))
+    #             return closestPoint, min_dist_global
+    #     else:
+    #         return closestPoint, minDist
+
+

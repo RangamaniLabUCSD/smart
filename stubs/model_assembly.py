@@ -440,7 +440,7 @@ class SpeciesContainer(_ObjectContainer):
                         else:
                             boundaryV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
                         V['boundary'][compartment_name].update({mesh_name: boundaryV})
-                        u[compartment_name]['b'+mesh_name] = d.Function(boundaryV, name="concentration_ub")
+                        u[compartment_name]['b_'+mesh_name] = d.Function(boundaryV, name="concentration_ub")
 
         # now we create volume functions, i.e. interpolations of functions defined on the surface
         # to function spaces of the associated volume
@@ -456,7 +456,7 @@ class SpeciesContainer(_ObjectContainer):
                         else:
                             volumeV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
                         V['volume'][compartment_name].update({mesh_name: volumeV})
-                        u[compartment_name]['v'+mesh_name] = d.Function(volumeV, name="concentration_uv")
+                        u[compartment_name]['v_'+mesh_name] = d.Function(volumeV, name="concentration_uv")
 
         # associate indexed functions with dataframe
         for key, sp in self.Dict.items():
@@ -482,23 +482,6 @@ class SpeciesContainer(_ObjectContainer):
         self.v = v
         self.V = V
 
-    def assign_initial_conditions(self):
-        keys = ['k', 'n', 'u']
-        for sp in self.Dict.values():
-            comp_name = sp.compartment_name
-            for key in keys:
-                # stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
-                #                                           self.V[comp_name], sp.compartment_index)
-                stubs.data_manipulation.dolfinSetFunctionValues(self.u[comp_name][key], sp.initial_condition,
-                                                                sp.compartment_index)
-            #self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
-            if rank==root: print("Assigned initial condition for species %s" % sp.name)
-
-        # add boundary values
-        for comp_name in self.u.keys():
-            for ukey in self.u[comp_name].keys():
-                if 'b' in key[0]:
-                    self.u[comp_name][ukey].interpolate(self.u[comp_name]['u'])
 
 
 
@@ -511,7 +494,6 @@ class Species(_ObjectInstance):
         self.is_an_added_species = False
         self.parent_species = None
         self.dof_map = {}
-
 
 class CompartmentContainer(_ObjectContainer):
     def __init__(self, df=None, Dict=None):
@@ -981,9 +963,9 @@ class Flux(_ObjectInstance):
 
             # Testing volume interpolated functions
             if var.dimensionality > sp.dimensionality:
-                return '_b'+sp.compartment_name
+                return 'b_'+sp.compartment_name
             elif var.dimensionality < sp.dimensionality:
-                return '_v'+sp.compartment_name
+                return 'v_'+sp.compartment_name
             else:
                 return 'u'
 
@@ -1004,7 +986,7 @@ class Flux(_ObjectInstance):
             ## different compartments
             # volume -> surface
             if var.dimensionality > sp.dimensionality:
-                return '_b'+sp.compartment_name
+                return 'b_'+sp.compartment_name
             # surface -> volume is covered by first if statement in get_ukey()
 
         raise Exception("Missing logic in get_ukey(); contact a developer...")

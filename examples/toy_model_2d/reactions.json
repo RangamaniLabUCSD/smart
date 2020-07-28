@@ -1,1 +1,0 @@
-{"group":{"A+X <-> B":"cell 2013"},"LHS":{"A+X <-> B":["A","X"]},"RHS":{"A+X <-> B":["B"]},"paramDict":{"A+X <-> B":{"on":"kf","off":"kr"}},"reaction_type":{"A+X <-> B":"mass_action"},"explicit_restriction_to_domain":{"A+X <-> B":null},"speciesDict":{"A+X <-> B":{}},"track_value":{"A+X <-> B":false}}
