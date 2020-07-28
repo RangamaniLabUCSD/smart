@@ -35,4 +35,4 @@ r.append('B linear degredation', 'example reaction', ['B'], [], {"on": "kdeg"}, 
 
 
 # write out to file
-stubs.common.write_smodel(cwd + '/model.smodel', p, s, c, r)
+stubs.common.write_smodel(cwd + '/lin_deg.smodel', p, s, c, r)

@@ -28,10 +28,10 @@ from stubs import unit as ureg
 # fssmall = 5
 
 class Data(object):
-    def __init__(self, model):
+    def __init__(self, model, config):
         # TODO: refactor data class
         self.model = model
-        self.config = model.config
+        self.config = config
         self.append_flag = False
         self.solutions = {}
         self.probe_solutions = ddict(list)
@@ -45,7 +45,6 @@ class Data(object):
         self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.figure(), 'fluxes': plt.figure()}
         self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
-        self.timer = d.Timer()
 
     def initSolutionFiles(self, SD, output_type='vtk'):
         for sp_name, sp in SD.Dict.items():
@@ -96,15 +95,34 @@ class Data(object):
         self.append_flag = True # append to xmdf files rather than write over
 
 
+    def compute_function_stats(self, sp):
+        """
+        Computes and returns min, mean, and max values of a species
+        """
+        uvec    = self.model.dolfin_get_function_values(sp)
+        dx      = sp.compartment.dx
+        u       = self.model.u[sp.compartment_name]['u']
+        if self.model.V[sp.compartment_name].num_sub_spaces() == 0:
+            usub = u
+        else:
+            usub = u.sub(sp.compartment_index)
 
-    def computeStatistics(self, u, t, dt, SD, PD, CD, FD, NLidx):
+        umean   = d.assemble(usub*dx) / d.assemble(1*dx)
+        umin    = uvec.min()
+        umax    = uvec.max()
+        ustd    = uvec.std()
+        return {'min': umin, 'mean': umean, 'max': umax, 'std': ustd}
+
+
+    def compute_statistics(self, u, t, dt, SD, PD, CD, FD, NLidx):
         #for sp_name in speciesList:
-        for sp_name in SD.Dict.keys():
+        for sp_name, sp in SD.Dict.items():
             comp_name = self.solutions[sp_name]['comp_name']
             comp_idx = self.solutions[sp_name]['comp_idx']
 
             # compute statistics and append values
-            ustats = dolfinGetFunctionStats(u[comp_name]['u'], comp_idx)
+            ustats = self.compute_function_stats(sp)
+            #ustats = dolfin_get_function_stats(sp)
             for key, value in ustats.items():
                 if key not in self.solutions[sp_name].keys():
                     self.solutions[sp_name][key] = [value]
@@ -170,7 +188,8 @@ class Data(object):
         else:
             self.NLidxvec.append(max(NLidx.values()))
 
-    def computeProbeValues(self, u, t, dt, SD, PD, CD, FD, NLidx):
+    #def computeProbeValues(self, u, t, dt, SD, PD, CD, FD, NLidx):
+    def compute_probe_values(self, u, SD):
         """
         Computes the values of functions at various coordinates
         """
@@ -404,7 +423,7 @@ class Data(object):
         self.plots['solver_status'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_solver', figsize=figsize,dpi=300)
 
 
-    def outputPickle(self, config):
+    def outputPickle(self):
         """
         Outputs solution statistics as a serialized pickle
         """
@@ -429,34 +448,37 @@ class Data(object):
                 newDict[sp_name][coord] = val
 
         # pickle file
-        data_dir = config.directory['solutions']+'/stats'
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-        with open(data_dir+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
+        stats_dir = self.config.directory['solutions']+'/stats'
+        if not os.path.exists(stats_dir):
+            os.makedirs(stats_dir)
+        with open(stats_dir+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
             pickle.dump(newDict, pickle_file)
 
         Print('Solutions dumped into pickle.')
 
-    def outputCSV(self, config):
+    def outputCSV(self):
         """
         Outputs solution statistics as a csv
         """
-        data_dir = config.directory['solutions']+'/stats'
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
+        stats_dir = self.config.directory['solutions']+'/stats'
+        probe_dir = self.config.directory['solutions']+'/probe'
+        if not os.path.exists(stats_dir):
+            os.makedirs(stats_dir)
+        if not os.path.exists(probe_dir):
+            os.makedirs(probe_dir)
 
         # statistics over entire domain
         saveKeys = ['min', 'max', 'mean', 'std']
         for sp_name in self.solutions.keys():
             #for key in self.solutions[sp_name].keys():
             for key in saveKeys:
-                np.savetxt(data_dir+'/'+sp_name+'_'+str(key)+'.csv', 
+                np.savetxt(stats_dir+'/'+sp_name+'_'+str(key)+'.csv', 
                            self.solutions[sp_name][key], delimiter=',')
-        np.savetxt(data_dir+'/'+'tvec'+'.csv', self.tvec, delimiter=',')
+        np.savetxt(stats_dir+'/'+'tvec'+'.csv', self.tvec, delimiter=',')
 
         # fluxes
         for flux_name in self.fluxes.keys():
-            np.savetxt(data_dir+'/'+flux_name+'.csv', 
+            np.savetxt(stats_dir+'/'+flux_name+'.csv', 
                        self.fluxes[flux_name], delimiter=',')
 
         # solutions at specific coordinates
@@ -470,133 +492,135 @@ class Data(object):
                     raise Exception("Coordinates must be in two or three dimensions.")
 
                 coord_str = str(coord).replace(', ','_').replace('.',',')
-                np.savetxt(data_dir+'/'+sp_name+'_'+coord_str+'.csv', 
+                np.savetxt(probe_dir+'/'+sp_name+'_'+coord_str+'.csv', 
                            val, delimiter=',')
-
-
 
         Print('Solutions dumped into CSV.')
 
 # ====================================================
 # General fenics
 
-# get the values of function u from subspace idx of some mixed function space, V
-def dolfin_get_dof_indices(V,species_idx):
-    """
-    Returned indices are *local* to the CPU (not global)
-    function values can be returned e.g.
-    indices = dolfin_get_dof_indices(V,species_idx)
-    u.vector().get_local()[indices]
-    """
-    if V.num_sub_spaces() > 1:
-        indices = np.array(V.sub(species_idx).dofmap().dofs())
-    else:
-        indices = np.array(V.dofmap().dofs())
-    first_idx, last_idx = V.dofmap().ownership_range() # indices that this CPU owns
+# # get the values of function u from subspace idx of some mixed function space, V
+# def dolfin_get_dof_indices(V,species_idx):
+#     """
+#     Returned indices are *local* to the CPU (not global)
+#     function values can be returned e.g.
+#     indices = dolfin_get_dof_indices(V,species_idx)
+#     u.vector().get_local()[indices]
+#     """
+#     if V.num_sub_spaces() > 1:
+#         indices = np.array(V.sub(species_idx).dofmap().dofs())
+#     else:
+#         indices = np.array(V.dofmap().dofs())
+#     first_idx, last_idx = V.dofmap().ownership_range() # indices that this CPU owns
 
-    return indices-first_idx # subtract index offset to go from global -> local indices
-
-
-def reduceVector(u):
-    """
-    comm.allreduce() only works when the incoming vectors all have the same length. We use comm.Gatherv() to gather vectors
-    with different lengths
-    """
-    sendcounts = np.array(comm.gather(len(u), root)) # length of vectors being sent by workers
-    if rank == root:
-        print("reduceVector(): CPUs sent me %s length vectors, total length: %d"%(sendcounts, sum(sendcounts)))
-        recvbuf = np.empty(sum(sendcounts), dtype=float)
-    else:
-        recvbuf = None
-
-    comm.Gatherv(sendbuf=u, recvbuf=(recvbuf, sendcounts), root=root)
-
-    return recvbuf
+#     return indices-first_idx # subtract index offset to go from global -> local indices
 
 
+# def reduceVector(u):
+#     """
+#     comm.allreduce() only works when the incoming vectors all have the same length. We use comm.Gatherv() to gather vectors
+#     with different lengths
+#     """
+#     sendcounts = np.array(comm.gather(len(u), root)) # length of vectors being sent by workers
+#     if rank == root:
+#         print("reduceVector(): CPUs sent me %s length vectors, total length: %d"%(sendcounts, sum(sendcounts)))
+#         recvbuf = np.empty(sum(sendcounts), dtype=float)
+#     else:
+#         recvbuf = None
 
-def dolfinGetFunctionValues(u,species_idx):
-    """
-    Returns the values of a VectorFunction. When run in parallel this will *not* double-count overlapping vertices
-    which are shared by multiple CPUs (a simple call to u.sub(species_idx).compute_vertex_values() will do this though...)
-    """
-    V = u.function_space()
-    indices = dolfin_get_dof_indices(V,species_idx)
-    uvec = u.vector().get_local()[indices]
-    return uvec
+#     comm.Gatherv(sendbuf=u, recvbuf=(recvbuf, sendcounts), root=root)
 
-# when run in parallel, some vertices are shared by multiple CPUs. This function will return all the function values on
-# the invoking CPU. Note that summing/concatenating the results from this function over multiple CPUs will result in
-# double-counting of the overlapping vertices!
-#def dolfinGetFunctionValuesParallel(u,idx):
-#    uvec = u.sub(idx).compute_vertex_values()
-#    return uvec
+#     return recvbuf
 
 
-def dolfinGetFunctionValuesAtPoint(u, coord, species_idx=None):
-    """
-    Returns the values of a dolfin function at the specified coordinate 
-    :param dolfin.function.function.Function u: Function to extract values from
-    :param tuple coord: tuple of floats indicating where in space to evaluate u e.g. (x,y,z)
-    :param int species_idx: index of species
-    :return: list of values at point. If species_idx is not specified it will return all values
-    """
-    if species_idx is not None:
-        return u(coord)[species_idx]
-    else:
-        return u(coord)
 
-# def dolfinSetFunctionValues(u,unew,V,idx):
-#     # unew can be a scalar (all dofs will be set to that value), a numpy array, or a list
-#     dofmap = dolfinGetDOFmap(V,idx)
-#     u.vector()[dofmap] = unew
+# def dolfinGetFunctionValues(u,species_idx):
+#     """
+#     Returns the values of a VectorFunction. When run in parallel this will *not* double-count overlapping vertices
+#     which are shared by multiple CPUs (a simple call to u.sub(species_idx).compute_vertex_values() will do this though...)
+#     """
+#     V = u.function_space()
+#     indices = dolfin_get_dof_indices(V,species_idx)
+#     uvec = u.vector().get_local()[indices]
+#     return uvec
 
-
-def dolfinSetFunctionValues(u,unew,species_idx):
-    """
-    unew can either be a scalar or a vector with the same length as u
-    """
-    V = u.function_space()
-
-    indices = dolfin_get_dof_indices(V, species_idx)
-    uvec = u.vector()
-    values = uvec.get_local()
-    values[indices] = unew
-
-    uvec.set_local(values)
-    uvec.apply('insert')
+# # when run in parallel, some vertices are shared by multiple CPUs. This function will return all the function values on
+# # the invoking CPU. Note that summing/concatenating the results from this function over multiple CPUs will result in
+# # double-counting of the overlapping vertices!
+# #def dolfinGetFunctionValuesParallel(u,idx):
+# #    uvec = u.sub(idx).compute_vertex_values()
+# #    return uvec
 
 
-def dolfinGetFunctionStats(u,species_idx):
-    V = u.function_space()
-    uvalues = dolfinGetFunctionValues(u,species_idx)
-    return {'mean': uvalues.mean(), 'min': uvalues.min(), 'max': uvalues.max(), 'std': uvalues.std()}
+# def dolfinGetFunctionValuesAtPoint(u, coord, species_idx=None):
+    
+#     Returns the values of a dolfin function at the specified coordinate 
+#     :param dolfin.function.function.Function u: Function to extract values from
+#     :param tuple coord: tuple of floats indicating where in space to evaluate u e.g. (x,y,z)
+#     :param int species_idx: index of species
+#     :return: list of values at point. If species_idx is not specified it will return all values
+    
+#     if species_idx is not None:
+#         return u(coord)[species_idx]
+#     else:
+#         return u(coord)
 
-#def dolfinGetF
+# # def dolfinSetFunctionValues(u,unew,V,idx):
+# #     # unew can be a scalar (all dofs will be set to that value), a numpy array, or a list
+# #     dofmap = dolfinGetDOFmap(V,idx)
+# #     u.vector()[dofmap] = unew
 
-def dolfinFindClosestPoint(mesh, coords):
-    """
-    Given some point and a mesh, returns the coordinates of the nearest vertex
-    """
-    p = d.Point(coords)
-    L = list(d.vertices(mesh))
-    distToVerts = [np.linalg.norm(p.array() - x.midpoint().array()) for x in L]
-    minDist = min(distToVerts)
-    minIdx = distToVerts.index(minDist) # returns the local index (wrt the cell) of the closest point
 
-    closestPoint = L[minIdx].midpoint().array()
+# def dolfinSetFunctionValues(u,unew,species_idx):
+#     """
+#     unew can either be a scalar or a vector with the same length as u
+#     """
+#     V = u.function_space()
 
-    if size > 1:
-        min_dist_global, min_idx = comm.allreduce((minDist,rank), op=pyMPI.MINLOC)
+#     indices = dolfin_get_dof_indices(V, species_idx)
+#     uvec = u.vector()
+#     values = uvec.get_local()
+#     values[indices] = unew
 
-        if rank == min_idx:
-            comm.Send(closestPoint, dest=root)
+#     uvec.set_local(values)
+#     uvec.apply('insert')
 
-        if rank == root:
-            comm.Recv(closestPoint, min_idx)
-            print("CPU with rank %d has the closest point to %s: %s. The distance is %s" % (min_idx, coords, closestPoint, min_dist_global))
-            return closestPoint, min_dist_global
-    else:
-        return closestPoint, minDist
+
+# # def dolfinGetFunctionStats(u,species_idx):
+# #     V = u.function_space()
+# #     uvalues = dolfinGetFunctionValues(u,species_idx)
+# #     return {'mean': uvalues.mean(), 'min': uvalues.min(), 'max': uvalues.max(), 'std': uvalues.std()}
+
+# # def dolfin_get_function_stats(sp):
+# #     dx = sp.compartment.dx
+# #     umean = d.assemble(sp.u['u'] * dx) / d.assemble(1 * dx)
+#     # umin = sp.
+
+
+# def dolfinFindClosestPoint(mesh, coords):
+#     """
+#     Given some point and a mesh, returns the coordinates of the nearest vertex
+#     """
+#     p = d.Point(coords)
+#     L = list(d.vertices(mesh))
+#     distToVerts = [np.linalg.norm(p.array() - x.midpoint().array()) for x in L]
+#     minDist = min(distToVerts)
+#     minIdx = distToVerts.index(minDist) # returns the local index (wrt the cell) of the closest point
+
+#     closestPoint = L[minIdx].midpoint().array()
+
+#     if size > 1:
+#         min_dist_global, min_idx = comm.allreduce((minDist,rank), op=pyMPI.MINLOC)
+
+#         if rank == min_idx:
+#             comm.Send(closestPoint, dest=root)
+
+#         if rank == root:
+#             comm.Recv(closestPoint, min_idx)
+#             print("CPU with rank %d has the closest point to %s: %s. The distance is %s" % (min_idx, coords, closestPoint, min_dist_global))
+#             return closestPoint, min_dist_global
+#     else:
+#         return closestPoint, minDist
 
 

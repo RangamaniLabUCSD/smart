@@ -40,8 +40,4 @@ r.append('A+X <-> B', 'cell 2013', ['A','X'], ['B'], {"on": "kf", "off": "kr"})
 
 
 # write out to file
-p.write_json(name=cwd + '/parameters.json')
-s.write_json(name=cwd + '/species.json')
-c.write_json(name=cwd + '/compartments.json')
-r.write_json(name=cwd + '/reactions.json')
-
+stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
