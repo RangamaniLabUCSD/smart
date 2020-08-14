@@ -383,7 +383,7 @@ class SpeciesContainer(_ObjectContainer):
             idx = 0
             comp_species = [sp for sp in self.Dict.values() if sp.compartment_name==compartment]
             for sp in comp_species:
-                if sp.is_in_a_reaction or sp.parent_species:
+                if sp.is_in_a_reaction:
                     sp.compartment_index = idx
                     idx += 1
                 else:
@@ -492,7 +492,6 @@ class Species(_ObjectInstance):
         self.sub_species = {} # additional compartments this species may live in in addition to its primary one
         self.is_in_a_reaction = False
         self.is_an_added_species = False
-        self.parent_species = None
         self.dof_map = {}
 
 class CompartmentContainer(_ObjectContainer):
@@ -728,74 +727,6 @@ class FluxContainer(_ObjectContainer):
         #                      'destination_compartment', 'ukeys', 'group']
 
         self.properties_to_print = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
-    def check_and_replace_sub_species(self, SD, CD, config):
-        fluxes_to_remove = []
-        for flux_name, f in self.Dict.items():
-            tagged_for_removal = False
-            for sp_name, sp in f.spDict.items():
-                if sp.sub_species and (f.destination_compartment in sp.sub_species.keys()
-                                     or f.source_compartment in sp.sub_species.keys()):
-                    tagged_for_removal = True
-                    print("flux %s tagged for removal" % flux_name)
-                    #for sub_sp_name in sp.sub_species.keys():
-                    for sub_sp in sp.sub_species.values():
-                        if sub_sp.compartment_name in f.involved_compartments:
-                            f.symEqn = f.symEqn.subs({sp_name: sub_sp.name})
-                            print("subbed %s for %s" % (sp_name, sub_sp.name))
-
-            if tagged_for_removal:
-                fluxes_to_remove.append(f)
-                tagged_for_removal = False
-
-        new_flux_list = []
-        for f in fluxes_to_remove:
-            #if SD.Dict[f.species_name].compartment_name == f.source_compartment:
-            new_flux_name = f.flux_name + ' [sub**]'
-            involved_species = [str(x) for x in f.symEqn.free_symbols if str(x) in SD.Dict.keys()]
-            if not SD.Dict[f.species_name].sub_species:
-                new_species_name = f.species_name
-            else:
-                new_species_name = SD.Dict[f.species_name].sub_species[f.source_compartment].name
-
-            involved_species += [new_species_name] # add the flux species
-            species_w_parent = [SD.Dict[x] for x in involved_species if SD.Dict[x].parent_species]
-        #if f.species_name not in parent_species:
-
-            print("symEqn")
-            print(f.symEqn)
-            print("free symbols = ")
-            print([str(x) for x in f.symEqn.free_symbols])
-            print("involved species = ")
-            print(involved_species)
-            spDict = {}
-            for sp_name in involved_species:
-                spDict.update({sp_name: SD.Dict[sp_name]})
-
-            new_flux = Flux(new_flux_name, new_species_name, f.symEqn, f.signed_stoich,
-                            spDict, f.paramDict, f.group, f.explicit_restriction_to_domain, f.track_value)
-            new_flux.get_additional_flux_properties(CD, config)
-
-            # get length scale factor
-            comp1 = SD.Dict[species_w_parent[0].parent_species].compartment
-            comp2 = species_w_parent[0].compartment_name
-            print(comp1.name)
-            #print(comp2)
-            length_scale_factor = comp1.scale_to[comp2]
-            print("computed length_scale_factor")
-            setattr(new_flux, 'length_scale_factor', length_scale_factor)
-
-            new_flux_list.append((new_flux_name, new_flux))
-            #else:
-            #    new_species_name =
-            #    print("species name, source compartment: %s, %s" % (f.species_name, f.source_compartment))
-
-        for flux_rm in fluxes_to_remove:
-            Print('removing flux %s' %  flux_rm.flux_name)
-            self.Dict.pop(flux_rm.flux_name)
-
-        for (new_flux_name, new_flux) in new_flux_list:
-            Print('adding flux %s' % new_flux_name)
-            self.Dict.update({new_flux_name: new_flux})
 
 class Flux(_ObjectInstance):
     def __init__(self, flux_name, species_name, symEqn, signed_stoich,
@@ -878,7 +809,7 @@ class Flux(_ObjectInstance):
         sp = self.spDict[self.species_name]
         compartment_units = sp.compartment.compartment_units
         # a boundary flux
-        if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]) or sp.parent_species:
+        if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]):
             self.flux_units = sp.concentration_units / compartment_units * sp.D_units
         else:
             self.flux_units = sp.concentration_units / ureg.s

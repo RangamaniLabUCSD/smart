@@ -218,11 +218,11 @@ class Model(object):
                 v = sp.v
                 D = sp.D
 
-                if sp.dimensionality == max_dim and not sp.parent_species:
+                if sp.dimensionality == max_dim:
                     dx = sp.compartment.dx
                     Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
                     self.Forms.add(stubs.model_assembly.Form(Dform, sp, 'D'))
-                elif sp.dimensionality < max_dim or sp.parent_species:
+                elif sp.dimensionality < max_dim:
                     if self.solver_system.ignore_surface_diffusion:
                         dx=sp.compartment.dP
                     else:
@@ -633,7 +633,7 @@ class Model(object):
         for sp_name, sp in self.SD.Dict.items():
             uvec = self.dolfin_get_function_values(sp, ukey='u')
             ukvec = self.dolfin_get_function_values(sp, ukey='k')
-            udiff = uvec-ukvec
+            udiff = uvec - ukvec
 
             udiff_abs = np.linalg.norm(udiff, ord=norm_type)
             udiff_rel = udiff_abs/np.linalg.norm(uvec, ord=norm_type)
