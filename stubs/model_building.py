@@ -124,7 +124,7 @@ class CompartmentDF(object):
     def __init__(self):
         self.df = pd.DataFrame({'dimensionality': pd.Series([], dtype=int),
                                 'compartment_units': pd.Series([], dtype=object),
-                                'cell_marker': pd.Series([], dtype=int)})
+                                'cell_marker': pd.Series([], dtype=object)})
 
     def append(self, name, dim, units, marker):
         self.df = self.df.append(pd.Series({"dimensionality": dim,

@@ -114,7 +114,7 @@ class Model(object):
         print("\n\n********** Model initialization (Part 6/6) **********")
         print("Assembling reactive and diffusive fluxes...\n")
         self.RD.reaction_to_fluxes()
-        self.RD.do_to_all('reaction_to_fluxes')
+        #self.RD.do_to_all('reaction_to_fluxes')
         self.FD = self.RD.get_flux_container()
         self.FD.do_to_all('get_additional_flux_properties', {"CD": self.CD, "solver_system": self.solver_system})
         self.FD.do_to_all('flux_to_dolfin')

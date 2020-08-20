@@ -517,47 +517,73 @@ class CompartmentContainer(_ObjectContainer):
         bmesh_emap_0 = deepcopy(emap_0.array())
         emap_n = bmesh.entity_map(surfaceDim)
         bmesh_emap_n = deepcopy(emap_n.array())
+
         vmf = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
         bmf = d.MeshFunction("size_t", bmesh, surfaceDim)
-        for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): # iterate through faces of bmesh
+        vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
+        bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+
+        # iterate through facets of bmesh (transfer markers from volume mesh function to boundary mesh function)
+        for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): 
             #vmesh_idx = bmesh.entity_map(surfaceDim)[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_idx = bmesh_emap_n[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
+        # combine markers for subdomains specified as a list of markers
+        for comp_name, comp in self.Dict.items():
+            if type(comp.cell_marker) == list:
+                if not all([type(x)==int for x in comp.cell_marker]):
+                    raise ValueError("Cell markers were given as a list but not all elements were ints.")
+
+                primary_marker = comp.cell_marker[0] # combine into the first marker of the list 
+                Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {primary_marker}.")
+                for marker_value in comp.cell_marker:
+                    vmf_combined.array()[vmf.array() == marker_value] = primary_marker
+                    bmf_combined.array()[bmf.array() == marker_value] = primary_marker
+            elif type(comp.cell_marker) == int:
+                vmf_combined.array()[vmf.array() == comp.cell_marker] = comp.cell_marker
+                bmf_combined.array()[bmf.array() == comp.cell_marker] = comp.cell_marker
+            else:
+                raise ValueError("Cell markers must either be provided as an int or list of ints")
+
 
         # Loop through compartments
-        for key, obj in self.Dict.items():
+        for comp_name, comp in self.Dict.items():
             # FEniCS doesn't allow parallelization of SubMeshes. We need
             # SubMeshes because one boundary will often have multiple domains of
             # interest with different species (e.g., PM, ER). By exporting the
             # submeshes in serial we can reload them back in in parallel.
-            if key!=main_mesh_str and obj.dimensionality==surfaceDim:
-                # TODO: fix this
-                if size > 1: # if we are running in parallel
-                    Print("CPU %d: Loading submesh for %s from file" % (rank, key))
-                    submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml')
-                    self.meshes[key] = submesh
-                    obj.mesh = submesh
-                else:
-                    Print("Saving submeshes %s for use in parallel" % key)
-                    submesh = d.SubMesh(bmesh, bmf, obj.cell_marker)
-                    self.vertex_mappings[key] = submesh.data().array("parent_vertex_indices", 0)
-                    self.meshes[key] = submesh
-                    obj.mesh = submesh
-                    if save_to_file:
-                        save_str = 'submeshes/submesh_' + obj.name + '_' + str(obj.cell_marker) + '.xml'
-                        d.File(save_str) << submesh
+
+            if comp_name!=main_mesh_str and comp.dimensionality==surfaceDim:
+                # # TODO: fix this (parallel submesh)
+                # if size > 1: # if we are running in parallel
+                #     Print("CPU %d: Loading submesh for %s from file" % (rank, comp_name))
+                #     submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + comp.name + '_' + str(comp.cell_marker) + '.xml')
+                #     self.meshes[comp_name] = submesh
+                #     comp.mesh = submesh
+                # else:
+                submesh = d.SubMesh(bmesh, bmf_combined, comp.cell_marker)
+                self.vertex_mappings[comp_name] = submesh.data().array("parent_vertex_indices", 0)
+                self.meshes[comp_name] = submesh
+                comp.mesh = submesh
+
+                # # TODO: fix this (parallel submesh)
+                # if save_to_file:
+                #     Print("Saving submeshes %s for use in parallel" % comp_name)
+                #     save_str = 'submeshes/submesh_' + comp.name + '_' + str(comp.cell_marker) + '.xml'
+                #     d.File(save_str) << submesh
+
             # integration measures
-            if obj.dimensionality==main_mesh.dimensionality:
-                obj.ds = d.Measure('ds', domain=obj.mesh, subdomain_data=vmf, metadata={'quadrature_degree': 3})
-                obj.dP = None
-            elif obj.dimensionality<main_mesh.dimensionality:
-                obj.dP = d.Measure('dP', domain=obj.mesh)
-                obj.ds = None
+            if comp.dimensionality==main_mesh.dimensionality:
+                comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined, metadata={'quadrature_degree': 3})
+                comp.dP = None
+            elif comp.dimensionality<main_mesh.dimensionality:
+                comp.dP = d.Measure('dP', domain=comp.mesh)
+                comp.ds = None
             else:
                 raise Exception("main_mesh is not a maximum dimension compartment")
-            obj.dx = d.Measure('dx', domain=obj.mesh, metadata={'quadrature_degree': 3})
+            comp.dx = d.Measure('dx', domain=comp.mesh, metadata={'quadrature_degree': 3})
 
         # Get # of vertices
         for key, mesh in self.meshes.items():
@@ -565,26 +591,31 @@ class CompartmentContainer(_ObjectContainer):
             print('CPU %d: My partition of mesh %s has %d vertices' % (rank, key, num_vertices))
             self.Dict[key].num_vertices = num_vertices
 
-        self.vmf = vmf
-        self.bmesh = bmesh
-        self.bmesh_emap_0 = bmesh_emap_0
-        self.bmesh_emap_n = bmesh_emap_n
-        self.bmf = bmf
+        self.bmesh          = bmesh
+        self.bmesh_emap_0   = bmesh_emap_0
+        self.bmesh_emap_n   = bmesh_emap_n
+        self.mesh_functions = {
+                                'vmf': vmf,
+                                'bmf': bmf,
+                                'vmf_combined': vmf_combined,
+                                'bmf_combined': bmf_combined,
+                              }
 
-        # If we were running in serial to generate submeshes, exit here and
-        # restart in parallel
-        if save_to_file and size==1:
-            Print("If run in serial, submeshes were saved to file. Run again"\
-                  "in parallel.")
-            exit()
+        # # TODO: fix this (parallel submesh)
+        # # If we were running in serial to generate submeshes, exit here and
+        # # restart in parallel
+        # if save_to_file and size==1:
+        #     Print("If run in serial, submeshes were saved to file. Run again"\
+        #           "in parallel.")
+        #     exit()
 
     def compute_scaling_factors(self):
         self.do_to_all('compute_nvolume')
-        for key, obj in self.Dict.items():
-            obj.scale_to = {}
-            for key2, obj2 in self.Dict.items():
+        for key, comp in self.Dict.items():
+            comp.scale_to = {}
+            for key2, comp2 in self.Dict.items():
                 if key != key2:
-                    obj.scale_to.update({key2: obj.nvolume / obj2.nvolume})
+                    comp.scale_to.update({key2: comp.nvolume / comp2.nvolume})
     def get_min_max_dim(self):
         comp_dims = [comp.dimensionality for comp in self.Dict.values()]
         self.min_dim = min(comp_dims)
@@ -705,17 +736,17 @@ class Reaction(_ObjectInstance):
             track = True if species_name == self.track_value else False
 
             if hasattr(self, 'eqn_f'):
-                flux_name = self.name + ' (f) [' + species_name + ']'
+                flux_name = self.name + '_f_' + species_name
                 sign = -1 if species_name in self.LHS else 1
                 signed_stoich = sign*stoich
                 self.fluxList.append(Flux(flux_name, species_name, self.eqn_f, signed_stoich, self.involved_species_link,
-                                          self.paramDictValues, self.group, self.explicit_restriction_to_domain, track))
+                                          self.paramDictValues, self.group, self, self.explicit_restriction_to_domain, track))
             if hasattr(self, 'eqn_r'):
-                flux_name = self.name + ' (r) [' + species_name + ']'
+                flux_name = self.name + '_r_' + species_name
                 sign = 1 if species_name in self.LHS else -1
                 signed_stoich = sign*stoich
                 self.fluxList.append(Flux(flux_name, species_name, self.eqn_r, signed_stoich, self.involved_species_link,
-                                          self.paramDictValues, self.group, self.explicit_restriction_to_domain, track))
+                                          self.paramDictValues, self.group, self, self.explicit_restriction_to_domain, track))
 
 
 
@@ -730,7 +761,8 @@ class FluxContainer(_ObjectContainer):
 
 class Flux(_ObjectInstance):
     def __init__(self, flux_name, species_name, symEqn, signed_stoich,
-                 spDict, paramDict, group, explicit_restriction_to_domain=None, track_value=False):
+                 spDict, paramDict, group, parent_reaction=None,
+                 explicit_restriction_to_domain=None, track_value=False):
         super().__init__(flux_name)
 
         self.flux_name = flux_name
@@ -740,6 +772,7 @@ class Flux(_ObjectInstance):
         self.spDict = spDict
         self.paramDict = paramDict
         self.group = group
+        self.parent_reaction = parent_reaction
         self.explicit_restriction_to_domain = explicit_restriction_to_domain
         self.track_value = track_value
         self.tracked_values = []
@@ -921,9 +954,6 @@ class Flux(_ObjectInstance):
             # surface -> volume is covered by first if statement in get_ukey()
 
         raise Exception("Missing logic in get_ukey(); contact a developer...")
-
-
-
 
     def flux_to_dolfin(self):
         value_dict = {}
