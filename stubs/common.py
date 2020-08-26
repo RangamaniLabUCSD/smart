@@ -168,7 +168,7 @@ def np_smart_hstack(x1, x2):
 
     return np.hstack([x1.reshape(-1,1), x2.reshape(-1,1)])
 
-def append_meshfunction_to_meshdomains(mesh,G):
+def append_meshfunction_to_meshdomains(mesh, mesh_function):
     md = mesh.domains()
     mf_dim = mesh_function.dim()
 
