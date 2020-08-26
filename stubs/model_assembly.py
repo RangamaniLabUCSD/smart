@@ -537,11 +537,13 @@ class CompartmentContainer(_ObjectContainer):
                     raise ValueError("Cell markers were given as a list but not all elements were ints.")
 
                 primary_marker = comp.cell_marker[0] # combine into the first marker of the list 
+                comp.primary_marker = primary_marker
                 Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {primary_marker}.")
                 for marker_value in comp.cell_marker:
                     vmf_combined.array()[vmf.array() == marker_value] = primary_marker
                     bmf_combined.array()[bmf.array() == marker_value] = primary_marker
             elif type(comp.cell_marker) == int:
+                comp.primary_marker = comp.cell_marker
                 vmf_combined.array()[vmf.array() == comp.cell_marker] = comp.cell_marker
                 bmf_combined.array()[bmf.array() == comp.cell_marker] = comp.cell_marker
             else:
@@ -563,7 +565,7 @@ class CompartmentContainer(_ObjectContainer):
                 #     self.meshes[comp_name] = submesh
                 #     comp.mesh = submesh
                 # else:
-                submesh = d.SubMesh(bmesh, bmf_combined, comp.cell_marker)
+                submesh = d.SubMesh(bmesh, bmf_combined, comp.primary_marker)
                 self.vertex_mappings[comp_name] = submesh.data().array("parent_vertex_indices", 0)
                 self.meshes[comp_name] = submesh
                 comp.mesh = submesh
@@ -577,6 +579,7 @@ class CompartmentContainer(_ObjectContainer):
             # integration measures
             if comp.dimensionality==main_mesh.dimensionality:
                 comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined, metadata={'quadrature_degree': 3})
+                comp.ds_uncombined = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf, metadata={'quadrature_degree': 3})
                 comp.dP = None
             elif comp.dimensionality<main_mesh.dimensionality:
                 comp.dP = d.Measure('dP', domain=comp.mesh)
@@ -836,7 +839,7 @@ class Flux(_ObjectInstance):
         if dim[1] <= dim[0]:
             self.boundary_marker = None
         elif dim[1] > dim[0]: # boundary flux
-            self.boundary_marker = self.involved_compartments[self.source_compartment].cell_marker
+            self.boundary_marker = self.involved_compartments[self.source_compartment].primary_marker
 
     def get_flux_units(self):
         sp = self.spDict[self.species_name]
