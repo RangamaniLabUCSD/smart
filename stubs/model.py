@@ -114,7 +114,7 @@ class Model(object):
         print("\n\n********** Model initialization (Part 6/6) **********")
         print("Assembling reactive and diffusive fluxes...\n")
         self.RD.reaction_to_fluxes()
-        self.RD.do_to_all('reaction_to_fluxes')
+        #self.RD.do_to_all('reaction_to_fluxes')
         self.FD = self.RD.get_flux_container()
         self.FD.do_to_all('get_additional_flux_properties', {"CD": self.CD, "solver_system": self.solver_system})
         self.FD.do_to_all('flux_to_dolfin')
@@ -218,11 +218,11 @@ class Model(object):
                 v = sp.v
                 D = sp.D
 
-                if sp.dimensionality == max_dim and not sp.parent_species:
+                if sp.dimensionality == max_dim:
                     dx = sp.compartment.dx
                     Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
                     self.Forms.add(stubs.model_assembly.Form(Dform, sp, 'D'))
-                elif sp.dimensionality < max_dim or sp.parent_species:
+                elif sp.dimensionality < max_dim:
                     if self.solver_system.ignore_surface_diffusion:
                         dx=sp.compartment.dP
                     else:
@@ -302,53 +302,37 @@ class Model(object):
 #===============================================================================
 #===============================================================================
 
-    def solve_test(self, plot_period=1):
-        ## solve
-        self.init_solver_and_plots()
-        self.t_list=[]
-        self.errors=[]
-        self.stopwatch("Total simulation")
-        while True:
-            self.t_list.append(self.t)
-            self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
-            # Solve using specified multiphysics scheme 
-            if self.solver_system.multiphysics_solver.method == "iterative":
-                self.iterative_mpsolve()
-            else:
-                raise Exception("I don't know what operator splitting scheme to use")
 
-            self.compute_statistics()
-            if self.idx % plot_period == 0 or self.t >= self.final_t:
-                self.plot_solution()
-                self.plot_solver_status()
-            if self.t >= self.final_t:
-                self.t_list.append(self.t)
-                self.errors.append(np.max(self.u['cyto']['u'].vector().get_local()-(lambda t:10*np.exp(-5*t))(self.t))/(lambda t:10*np.exp(-5*t))(self.t))
-                break
+    def solve_single_timestep(self, plot_period=1, store_solutions=True):
+        end_simulation = False
+        # Solve using specified multiphysics scheme 
+        if self.solver_system.multiphysics_solver.method == "iterative":
+            self.iterative_mpsolve()
+        else:
+            raise Exception("I don't know what operator splitting scheme to use")
 
-        self.stopwatch("Total simulation", stop=True)
-        Print("Solver finished with %d total time steps." % self.idx)
+        # post processing
+        self.post_process()
+        if self.idx % plot_period == 0 or self.t >= self.final_t:
+            self.plot_solution(store_solutions=store_solutions)
+            self.plot_solver_status()
+
+        # if we've reached final time
+        if self.t >= self.final_t:
+            end_simulation = True 
+
+        return end_simulation
 
     def solve(self, plot_period=1, store_solutions=True):
-        ## solve
+        # Initialize
         self.init_solver_and_plots()
 
         self.stopwatch("Total simulation")
+        # Time loop
         while True:
-            # Solve using specified multiphysics scheme 
-            if self.solver_system.multiphysics_solver.method == "iterative":
-                self.iterative_mpsolve()
-            else:
-                raise Exception("I don't know what operator splitting scheme to use")
+            end_simulation = self.solve_single_timestep(plot_period, store_solutions)
 
-            # post processing
-            self.compute_statistics()
-            if self.idx % plot_period == 0 or self.t >= self.final_t:
-                self.plot_solution(store_solutions=store_solutions)
-                self.plot_solver_status()
-
-            # if we've reached final time
-            if self.t >= self.final_t:
+            if end_simulation:
                 break
 
         self.stopwatch("Total simulation", stop=True)
@@ -633,7 +617,7 @@ class Model(object):
         for sp_name, sp in self.SD.Dict.items():
             uvec = self.dolfin_get_function_values(sp, ukey='u')
             ukvec = self.dolfin_get_function_values(sp, ukey='k')
-            udiff = uvec-ukvec
+            udiff = uvec - ukvec
 
             udiff_abs = np.linalg.norm(udiff, ord=norm_type)
             udiff_rel = udiff_abs/np.linalg.norm(uvec, ord=norm_type)
@@ -775,13 +759,7 @@ class Model(object):
         self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.initPlot(self.config, self.SD, self.FD)
 
-    def compute_statistics(self):
-        #self.data.computeStatistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        ## debug
-        #self.data.computeProbeValues(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        #self.data.outputPickle(self.config)
-        #self.data.outputCSV(self.config)
-
+    def post_process(self):
         self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.compute_probe_values(self.u, self.SD)
         self.data.outputPickle()
