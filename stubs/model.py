@@ -339,6 +339,67 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
+    def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
+        ## solve
+        self.init_solver_and_plots()
+
+        self.stopwatch("Total simulation")
+        self.mass=[]
+        while True:
+            if check_mass:
+                assert x_compartment is not None
+                self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
+            #Solve using specified multiphysics scheme 
+            if self.solver_system.multiphysics_solver.method == "iterative":
+                self.iterative_mpsolve()
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
+
+            # post processing
+            self.compute_statistics()
+            if self.idx % plot_period == 0 or self.t >= self.final_t:
+                self.plot_solution(store_solutions=store_solutions)
+                self.plot_solver_status()
+
+            
+
+            # if we've reached final time
+            if self.t >= self.final_t:
+                break
+            #self.solve_step(plot_period, store_solutions)
+        if check_mass:
+            mass_list = [i[1] for i in self.mass]
+            assert abs((max(mass_list)-min(mass_list))/max(mass_list)) <=0.05
+        self.stopwatch("Total simulation", stop=True)
+        Print("Solver finished with %d total time steps." % self.idx)
+
+    def compute_mass_step(self,species_to_check=None, x_compartment='cyto'):
+        #seperate function with keyword
+        
+        
+
+        com = self.CD.Dict[x_compartment]
+        #com_s = self.CD.Dict[s_compartment]
+        dx = com.dx
+        ds = com.ds
+
+        if species_to_check is None:
+            print('Assuming mass of all species are conserved, and the stiochiometry coefficient for every species is one')
+            species_to_check = {i: 1 for i in self.SD.Dict}
+        target_unit_dict={}
+        coefficient = {}
+        max_dim=com.dimensionality
+        mass=0
+        for i in species_to_check:
+            s=self.SD.Dict[i]
+            target_unit_dict[i] = ureg.molecule/com.compartment_units.units**s.dimensionality
+            coefficient[i] = s.concentration_units.to(target_unit_dict[i]).to_tuple()[0]
+            if s.dimensionality == max_dim:
+                mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*dx)
+            else:
+                mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.CD.Dict[s.compartment_name].cell_marker))
+        ##compartment unit^comp_dim
+        return mass
 
     def set_time(self, t, dt=None):
         if not dt:
