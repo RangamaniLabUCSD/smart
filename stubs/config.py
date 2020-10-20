@@ -29,6 +29,8 @@ class Config(object):
     def __init__(self):
 
         # initialize with default values
+        self.flags              = {'store_solutions': True}
+
         self.directory          = {'solutions': 'solutions',
                                    'plots': 'plots'}
 

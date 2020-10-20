@@ -46,7 +46,9 @@ class Data(object):
         self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
 
-    def initSolutionFiles(self, SD, output_type='vtk'):
+    def initSolutionFiles(self, SD, config):
+        output_type = config.output_type
+
         for sp_name, sp in SD.Dict.items():
             self.solutions[sp_name] = {}
 
@@ -61,12 +63,16 @@ class Data(object):
             elif output_type=='xdmf':
                 file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
                 self.solutions[sp_name][output_type] = d.XDMFFile(comm,file_str)
-            elif output_type==None:
+            elif config.flags['store_solutions']==False or output_type==None:
                 self.solutions[sp_name][output_type] = None
+            else:
+                raise Exception("Unknown solution file type")
 
 
-    def storeSolutionFiles(self, u, t, output_type='vtk'):
-        if output_type==None:
+    def storeSolutionFiles(self, u, t, config):
+        output_type = config.output_type
+
+        if config.flags['store_solutions']==False or output_type==None:
             return
         for sp_name in self.solutions.keys():
             comp_name = self.solutions[sp_name]['comp_name']
@@ -82,6 +88,8 @@ class Data(object):
                     #    xdmf.write(u[comp_name]['u'], t)
                     self.solutions[sp_name][output_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
                     self.solutions[sp_name][output_type].close()
+                else:
+                    raise Exception("Unknown output type")
             else:
                 if output_type=='vtk':
                     self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
@@ -91,8 +99,12 @@ class Data(object):
                     if comp_name=='cyto':
                         self.solutions[sp_name][output_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
                         self.solutions[sp_name][output_type].close()
+                else:
+                    raise Exception("Unknown output type")
 
         self.append_flag = True # append to xmdf files rather than write over
+
+        Print(f"Solutions dumped into {output_type}.")
 
 
     def compute_function_stats(self, sp):

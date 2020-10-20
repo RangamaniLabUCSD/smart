@@ -125,6 +125,8 @@ class Model(object):
         self.assemble_diffusive_fluxes()
         self.sort_forms()
 
+        self.init_solutions_and_plots()
+
 #===============================================================================
 #===============================================================================
 # PROBLEM SETUP
@@ -303,7 +305,7 @@ class Model(object):
 #===============================================================================
 
 
-    def solve_single_timestep(self, plot_period=1, store_solutions=True):
+    def solve_single_timestep(self, plot_period=1):
         end_simulation = False
         # Solve using specified multiphysics scheme 
         if self.solver_system.multiphysics_solver.method == "iterative":
@@ -313,9 +315,8 @@ class Model(object):
 
         # post processing
         self.post_process()
-        if self.idx % plot_period == 0 or self.t >= self.final_t:
-            self.plot_solution(store_solutions=store_solutions)
-            self.plot_solver_status()
+        if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
+            self.plot_solution()
 
         # if we've reached final time
         if self.t >= self.final_t:
@@ -323,14 +324,14 @@ class Model(object):
 
         return end_simulation
 
-    def solve(self, plot_period=1, store_solutions=True):
+    def solve(self, plot_period=1):
         # Initialize
-        self.init_solver_and_plots()
+        #self.init_solutions_and_plots()
 
         self.stopwatch("Total simulation")
         # Time loop
         while True:
-            end_simulation = self.solve_single_timestep(plot_period, store_solutions)
+            end_simulation = self.solve_single_timestep(plot_period)
 
             if end_simulation:
                 break
@@ -753,9 +754,9 @@ class Model(object):
 # POST-PROCESSING
 #===============================================================================
 #===============================================================================
-    def init_solver_and_plots(self):
-        self.data.initSolutionFiles(self.SD, output_type=self.config.output_type)
-        self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
+    def init_solutions_and_plots(self):
+        self.data.initSolutionFiles(self.SD, self.config)
+        self.data.storeSolutionFiles(self.u, self.t, self.config)
         self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.initPlot(self.config, self.SD, self.FD)
 
@@ -765,15 +766,13 @@ class Model(object):
         self.data.outputPickle()
         self.data.outputCSV()
 
-    def plot_solution(self, store_solutions=True):
-        if store_solutions:
-            self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
+    def plot_solution(self):
+        self.data.storeSolutionFiles(self.u, self.t, self.config)
         self.data.plotParameters(self.config)
         self.data.plotSolutions(self.config, self.SD)
         self.data.plotFluxes(self.config)
-
-    def plot_solver_status(self):
         self.data.plotSolverStatus(self.config)
+
 
 
 
