@@ -402,7 +402,61 @@ class Model(object):
         ##compartment unit^comp_dim
         return mass
 >>>>>>> Stashed changes
+def solve_zero_d(self,t_span,initial_guess_for_root=None):
+        func_vector = self.get_lambdified()[0]
+        func_vector_t = lambda t,y:func_vector(y)
 
+        return self.de_solver(func_vector_t, t_span,initial_guess_for_root)
+
+    def de_solver(self, func_vectors, t_span,initial_guess_for_root=None, root_check=True, max_step=0.01, jac=False, method='RK45'):
+        #assert initial_guess_for_root is not None
+        if initial_guess_for_root is None:
+            print("Using the initial condition from config files. Unites will be automatically converted!")
+        coefficient_dict={}
+        target_unit = self.SD.Dict[list(self.SD.Dict.keys())[0]].concentration_units
+        for i in self.SD.Dict:
+            try:
+                coefficient_dict[i] = self.SD.Dict[i].concentration_units.to(target_unit).to_tuple()[0]
+            except:
+                raise RuntimeError('Units mismatched for a well-mixed system')
+        initial_guess_for_root = [(coefficient_dict[i] * self.SD.Dict[i].initial_condition) for i in self.SD.Dict]
+        # if initial_guess_for_root is None:
+        #     initial_guess_for_root = [0]*num_params
+        #     ("Warning: The initial condition of species is not given")
+        # if root_check:
+        #     root_info = optimize.root(lambda y:func_vectors(0, y),initial_guess_for_root,jac=jac)
+        #     if root_info.success:
+        #         root = root_info.x
+        #         if (((initial_guess_for_root - root)/initial_guess_for_root)>0.1).any():
+        #             print("Initial guess doesn't match root condition")
+        #     else:
+        #         raise Exception('Unable to find initial condition: unable to find root')
+        # else:
+        root = initial_guess_for_root
+        sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
+        #returns u
+        return sol
+    
+    def get_lambdified(self):
+        
+        sps = [i for i in self.SD.Dict]
+        func_dict = {i: None for i in list(self.SD.Dict.keys())}
+        for f in self.FD.Dict:
+            sp = self.FD.Dict[f].species_name
+            if func_dict[sp] is None:
+                func_dict[sp] = self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
+            else:
+                func_dict[sp] += self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
+            
+            
+        func_vector=[]
+        for j in func_dict:    
+            for i in self.PD.Dict:
+                func_dict[j] = func_dict[j].subs(i, self.PD.Dict[i].value)
+            
+            lam = sympy.lambdify(sps, func_dict[j])
+            func_vector.append(lam)
+        return lambda u:[f(*u) for f in func_vector], func_dict
     def set_time(self, t, dt=None):
         if not dt:
             dt = self.dt
