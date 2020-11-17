@@ -125,6 +125,8 @@ class Model(object):
         self.assemble_diffusive_fluxes()
         self.sort_forms()
 
+        self.init_solutions_and_plots()
+
 #===============================================================================
 #===============================================================================
 # PROBLEM SETUP
@@ -303,7 +305,7 @@ class Model(object):
 #===============================================================================
 
 
-    def solve_single_timestep(self, plot_period=1, store_solutions=True):
+    def solve_single_timestep(self, plot_period=1):
         end_simulation = False
         # Solve using specified multiphysics scheme 
         if self.solver_system.multiphysics_solver.method == "iterative":
@@ -313,9 +315,8 @@ class Model(object):
 
         # post processing
         self.post_process()
-        if self.idx % plot_period == 0 or self.t >= self.final_t:
-            self.plot_solution(store_solutions=store_solutions)
-            self.plot_solver_status()
+        if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
+            self.plot_solution()
 
         # if we've reached final time
         if self.t >= self.final_t:
@@ -323,14 +324,14 @@ class Model(object):
 
         return end_simulation
 
-    def solve(self, plot_period=1, store_solutions=True):
+    def solve(self, plot_period=1):
         # Initialize
-        self.init_solver_and_plots()
+        #self.init_solutions_and_plots()
 
         self.stopwatch("Total simulation")
         # Time loop
         while True:
-            end_simulation = self.solve_single_timestep(plot_period, store_solutions)
+            end_simulation = self.solve_single_timestep(plot_period)
 
             if end_simulation:
                 break
@@ -338,6 +339,7 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 =======
     def solve_2(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
@@ -356,6 +358,24 @@ class Model(object):
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
 
+=======
+    def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
+        ## solve
+        self.init_solver_and_plots()
+
+        self.stopwatch("Total simulation")
+        self.mass=[]
+        while True:
+            if check_mass:
+                assert x_compartment is not None
+                self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
+            #Solve using specified multiphysics scheme 
+            if self.solver_system.multiphysics_solver.method == "iterative":
+                self.iterative_mpsolve()
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
+
+>>>>>>> 67f151cc98bc3d367eedaa3017154e3c9f427548
             # post processing
             self.compute_statistics()
             if self.idx % plot_period == 0 or self.t >= self.final_t:
@@ -401,12 +421,13 @@ class Model(object):
                 mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.CD.Dict[s.compartment_name].cell_marker))
         ##compartment unit^comp_dim
         return mass
->>>>>>> Stashed changes
-def solve_zero_d(self,t_span,initial_guess_for_root=None):
-        func_vector = self.get_lambdified()[0]
-        func_vector_t = lambda t,y:func_vector(y)
 
-        return self.de_solver(func_vector_t, t_span,initial_guess_for_root)
+
+    def solve_zero_d(self,t_span,initial_guess_for_root=None):
+            func_vector = self.get_lambdified()[0]
+            func_vector_t = lambda t,y:func_vector(y)
+
+            return self.de_solver(func_vector_t, t_span,initial_guess_for_root)
 
     def de_solver(self, func_vectors, t_span,initial_guess_for_root=None, root_check=True, max_step=0.01, jac=False, method='RK45'):
         #assert initial_guess_for_root is not None
@@ -871,9 +892,9 @@ def solve_zero_d(self,t_span,initial_guess_for_root=None):
 # POST-PROCESSING
 #===============================================================================
 #===============================================================================
-    def init_solver_and_plots(self):
-        self.data.initSolutionFiles(self.SD, output_type=self.config.output_type)
-        self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
+    def init_solutions_and_plots(self):
+        self.data.initSolutionFiles(self.SD, self.config)
+        self.data.storeSolutionFiles(self.u, self.t, self.config)
         self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
         self.data.initPlot(self.config, self.SD, self.FD)
 
@@ -883,15 +904,13 @@ def solve_zero_d(self,t_span,initial_guess_for_root=None):
         self.data.outputPickle()
         self.data.outputCSV()
 
-    def plot_solution(self, store_solutions=True):
-        if store_solutions:
-            self.data.storeSolutionFiles(self.u, self.t, output_type=self.config.output_type)
+    def plot_solution(self):
+        self.data.storeSolutionFiles(self.u, self.t, self.config)
         self.data.plotParameters(self.config)
         self.data.plotSolutions(self.config, self.SD)
         self.data.plotFluxes(self.config)
-
-    def plot_solver_status(self):
         self.data.plotSolverStatus(self.config)
+
 
 
 
