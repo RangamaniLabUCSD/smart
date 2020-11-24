@@ -339,9 +339,7 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
+
     def solve_2(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
         ## solve
         self.init_solver_and_plots()
@@ -358,7 +356,7 @@ class Model(object):
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
 
-=======
+
     def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
         ## solve
         self.init_solver_and_plots()
@@ -375,7 +373,7 @@ class Model(object):
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
 
->>>>>>> 67f151cc98bc3d367eedaa3017154e3c9f427548
+
             # post processing
             self.compute_statistics()
             if self.idx % plot_period == 0 or self.t >= self.final_t:
