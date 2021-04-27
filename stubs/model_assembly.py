@@ -513,10 +513,10 @@ class CompartmentContainer(_ObjectContainer):
 
         # Very odd behavior - when bmesh.entity_map() is called together with .array() it will return garbage values. We
         # should only call entity_map once to avoid this
-        emap_0 = bmesh.entity_map(0)
-        bmesh_emap_0 = deepcopy(emap_0.array())
-        emap_n = bmesh.entity_map(surfaceDim)
-        bmesh_emap_n = deepcopy(emap_n.array())
+        temp_emap_0 = bmesh.entity_map(0)
+        bmesh_emap_0 = deepcopy(temp_emap_0.array())
+        temp_emap_n = bmesh.entity_map(surfaceDim)
+        bmesh_emap_n = deepcopy(temp_emap_n.array())
 
         vmf = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
         bmf = d.MeshFunction("size_t", bmesh, surfaceDim)

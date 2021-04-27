@@ -5,6 +5,8 @@ Print = PETSc.Sys.Print
 from termcolor import colored
 import numpy as np
 import operator
+import sympy
+from scipy.integrate import solve_ivp
 
 import stubs
 import stubs.model_assembly

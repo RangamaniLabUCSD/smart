@@ -1,6 +1,10 @@
 import sys
-sys.path.append("../../")
+import os
 import stubs
+
+
+sys.path.append("../../")
+cwd=os.path.dirname(os.path.abspath(__file__))
 unit = stubs.unit # unit registry
 
 # initialize 
@@ -34,4 +38,4 @@ r.append('A+X <-> B', 'First reaction', ['A','X'], ['B'], {"on": "kf", "off": "k
 r.append('B linear degredation', 'second reaction', ['B'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
 
 # write out to file
-stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
+stubs.common.write_smodel(cwd + '/cell2013_0d.smodel', p, s, c, r)

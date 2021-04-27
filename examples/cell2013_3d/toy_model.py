@@ -40,5 +40,27 @@ c.append('pm', 2, unit.um, 2)
 r.append('A+X <-> B', 'First reaction', ['A','X'], ['B'], {"on": "kf", "off": "kr"})
 r.append('B linear degredation', 'second reaction', ['B'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
 
+
+
+
+# Sample
+
+# define parameters
+parameter(name='kf', value=1.0, units=1/(unit.uM*unit.s))
+parameter(name='kr', value=0.1, units=1/unit.s)
+
+# define compartments
+compartment(name='cyto', geom_dim=3, units=unit.um, marker_value=1)
+compartment(name='pm',   geom_dim=2, units=unit.um, marker_value=2)
+
+# define species
+species(name='A', init_value=1.0,    units=unit.uM,                  D=1.0,  D_units=unit.um**2/unit.s, compartment='cyto')
+species(name='X', init_value=1000.0, units=unit.molecule/unit.um**2, D=0.1,  D_units=unit.um**2/unit.s, compartment='pm')
+species(name='B', init_value=0.0,    units=unit.molecule/unit.um**2, D=0.01, D_units=unit.um**2/unit.s, compartment='pm')
+
+# define reactions
+reaction(name='A+X <-> B', LHS=['A','X'], RHS=['B'], parameters={"on": "kf", "off": "kr"}, reaction_type='mass_action')
+
+
 # write out to file
 stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
