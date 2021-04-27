@@ -341,6 +341,24 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
+
+    def solve_2(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
+        ## solve
+        self.init_solver_and_plots()
+
+        self.stopwatch("Total simulation")
+        self.mass=[]
+        while True:
+            if check_mass:
+                assert x_compartment is not None
+                self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
+            #Solve using specified multiphysics scheme 
+            if self.solver_system.multiphysics_solver.method == "iterative":
+                self.iterative_mpsolve()
+            else:
+                raise Exception("I don't know what operator splitting scheme to use")
+
+
     def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
         ## solve
         self.init_solver_and_plots()
@@ -356,6 +374,7 @@ class Model(object):
                 self.iterative_mpsolve()
             else:
                 raise Exception("I don't know what operator splitting scheme to use")
+
 
             # post processing
             self.compute_statistics()
@@ -402,6 +421,7 @@ class Model(object):
                 mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.CD.Dict[s.compartment_name].cell_marker))
         ##compartment unit^comp_dim
         return mass
+
 
     def solve_zero_d(self,t_span,initial_guess_for_root=None):
             func_vector = self.get_lambdified()[0]

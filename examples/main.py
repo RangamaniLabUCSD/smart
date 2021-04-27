@@ -27,6 +27,10 @@ mps = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)
 nls = stubs.solvers.NonlinearNewtonSolver(relative_tolerance=1e-6, absolute_tolerance=1e-8,
                                           dt_increase_factor=1.05, dt_decrease_factor=0.7)
 ls = stubs.solvers.DolfinKrylovSolver(method = 'bicgstab', preconditioner='hypre_amg')
+<<<<<<< HEAD
+=======
+#zerod = stubs.solvers.ZeroDSolver()
+>>>>>>> ea95cc611b070999a23353027c211ae21afc0f60
 solver_system = stubs.solvers.SolverSystem(final_t = 0.4, initial_dt = 0.01, adjust_dt = [(0.2, 0.02)],
                                            multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
 cyto_mesh = stubs.mesh.Mesh(mesh_filename=cwd+'/cell2013_3d/cube_10.xml', name='cyto')
