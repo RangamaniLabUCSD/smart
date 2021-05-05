@@ -308,7 +308,6 @@ class Model(object):
 
 
     def solve_single_timestep(self, plot_period=1):
-        end_simulation = False
         # Solve using specified multiphysics scheme 
         if self.solver_system.multiphysics_solver.method == "iterative":
             self.iterative_mpsolve()
@@ -321,8 +320,7 @@ class Model(object):
             self.plot_solution()
 
         # if we've reached final time
-        if self.t >= self.final_t:
-            end_simulation = True 
+        end_simulation = True if self.t >= self.final_t else False
 
         return end_simulation
 
@@ -341,143 +339,144 @@ class Model(object):
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
 
+## Yuan's code
+    # def solve_2(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
+    #     ## solve
+    #     self.init_solver_and_plots()
 
-    def solve_2(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
-        ## solve
-        self.init_solver_and_plots()
-
-        self.stopwatch("Total simulation")
-        self.mass=[]
-        while True:
-            if check_mass:
-                assert x_compartment is not None
-                self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
-            #Solve using specified multiphysics scheme 
-            if self.solver_system.multiphysics_solver.method == "iterative":
-                self.iterative_mpsolve()
-            else:
-                raise Exception("I don't know what operator splitting scheme to use")
-
-
-    def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
-        ## solve
-        self.init_solver_and_plots()
-
-        self.stopwatch("Total simulation")
-        self.mass=[]
-        while True:
-            if check_mass:
-                assert x_compartment is not None
-                self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
-            #Solve using specified multiphysics scheme 
-            if self.solver_system.multiphysics_solver.method == "iterative":
-                self.iterative_mpsolve()
-            else:
-                raise Exception("I don't know what operator splitting scheme to use")
+    #     self.stopwatch("Total simulation")
+    #     self.mass=[]
+    #     while True:
+    #         if check_mass:
+    #             assert x_compartment is not None
+    #             self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
+    #         #Solve using specified multiphysics scheme 
+    #         if self.solver_system.multiphysics_solver.method == "iterative":
+    #             self.iterative_mpsolve()
+    #         else:
+    #             raise Exception("I don't know what operator splitting scheme to use")
 
 
-            # post processing
-            self.compute_statistics()
-            if self.idx % plot_period == 0 or self.t >= self.final_t:
-                self.plot_solution(store_solutions=store_solutions)
-                self.plot_solver_status()
+    # def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
+    #     ## solve
+    #     self.init_solver_and_plots()
+
+    #     self.stopwatch("Total simulation")
+    #     self.mass=[]
+    #     while True:
+    #         if check_mass:
+    #             assert x_compartment is not None
+    #             self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
+    #         #Solve using specified multiphysics scheme 
+    #         if self.solver_system.multiphysics_solver.method == "iterative":
+    #             self.iterative_mpsolve()
+    #         else:
+    #             raise Exception("I don't know what operator splitting scheme to use")
+
+
+    #         # post processing
+    #         self.compute_statistics()
+    #         if self.idx % plot_period == 0 or self.t >= self.final_t:
+    #             self.plot_solution(store_solutions=store_solutions)
+    #             self.plot_solver_status()
 
             
 
-            # if we've reached final time
-            if self.t >= self.final_t:
-                break
-            #self.solve_step(plot_period, store_solutions)
-        if check_mass:
-            mass_list = [i[1] for i in self.mass]
-            assert abs((max(mass_list)-min(mass_list))/max(mass_list)) <=0.05
-        self.stopwatch("Total simulation", stop=True)
-        Print("Solver finished with %d total time steps." % self.idx)
+    #         # if we've reached final time
+    #         if self.t >= self.final_t:
+    #             break
+    #         #self.solve_step(plot_period, store_solutions)
+    #     if check_mass:
+    #         mass_list = [i[1] for i in self.mass]
+    #         assert abs((max(mass_list)-min(mass_list))/max(mass_list)) <=0.05
+    #     self.stopwatch("Total simulation", stop=True)
+    #     Print("Solver finished with %d total time steps." % self.idx)
 
-    def compute_mass_step(self,species_to_check=None, x_compartment='cyto'):
-        #seperate function with keyword
+    # def compute_mass_step(self,species_to_check=None, x_compartment='cyto'):
+    #     #seperate function with keyword
         
         
 
-        com = self.CD.Dict[x_compartment]
-        #com_s = self.CD.Dict[s_compartment]
-        dx = com.dx
-        ds = com.ds
+    #     com = self.CD.Dict[x_compartment]
+    #     #com_s = self.CD.Dict[s_compartment]
+    #     dx = com.dx
+    #     ds = com.ds
 
-        if species_to_check is None:
-            print('Assuming mass of all species are conserved, and the stiochiometry coefficient for every species is one')
-            species_to_check = {i: 1 for i in self.SD.Dict}
-        target_unit_dict={}
-        coefficient = {}
-        max_dim=com.dimensionality
-        mass=0
-        for i in species_to_check:
-            s=self.SD.Dict[i]
-            target_unit_dict[i] = ureg.molecule/com.compartment_units.units**s.dimensionality
-            coefficient[i] = s.concentration_units.to(target_unit_dict[i]).to_tuple()[0]
-            if s.dimensionality == max_dim:
-                mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*dx)
-            else:
-                mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.CD.Dict[s.compartment_name].cell_marker))
-        ##compartment unit^comp_dim
-        return mass
+    #     if species_to_check is None:
+    #         print('Assuming mass of all species are conserved, and the stiochiometry coefficient for every species is one')
+    #         species_to_check = {i: 1 for i in self.SD.Dict}
+    #     target_unit_dict={}
+    #     coefficient = {}
+    #     max_dim=com.dimensionality
+    #     mass=0
+    #     for i in species_to_check:
+    #         s=self.SD.Dict[i]
+    #         target_unit_dict[i] = ureg.molecule/com.compartment_units.units**s.dimensionality
+    #         coefficient[i] = s.concentration_units.to(target_unit_dict[i]).to_tuple()[0]
+    #         if s.dimensionality == max_dim:
+    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*dx)
+    #         else:
+    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.CD.Dict[s.compartment_name].cell_marker))
+    #     ##compartment unit^comp_dim
+    #     return mass
 
 
-    def solve_zero_d(self,t_span,initial_guess_for_root=None):
-            func_vector = self.get_lambdified()[0]
-            func_vector_t = lambda t,y:func_vector(y)
+    # def solve_zero_d(self,t_span,initial_guess_for_root=None):
+    #         func_vector = self.get_lambdified()[0]
+    #         func_vector_t = lambda t,y:func_vector(y)
 
-            return self.de_solver(func_vector_t, t_span,initial_guess_for_root)
+    #         return self.de_solver(func_vector_t, t_span,initial_guess_for_root)
 
-    def de_solver(self, func_vectors, t_span,initial_guess_for_root=None, root_check=True, max_step=0.01, jac=False, method='RK45'):
-        #assert initial_guess_for_root is not None
-        if initial_guess_for_root is None:
-            print("Using the initial condition from config files. Unites will be automatically converted!")
-        coefficient_dict={}
-        target_unit = self.SD.Dict[list(self.SD.Dict.keys())[0]].concentration_units
-        for i in self.SD.Dict:
-            try:
-                coefficient_dict[i] = self.SD.Dict[i].concentration_units.to(target_unit).to_tuple()[0]
-            except:
-                raise RuntimeError('Units mismatched for a well-mixed system')
-        initial_guess_for_root = [(coefficient_dict[i] * self.SD.Dict[i].initial_condition) for i in self.SD.Dict]
-        # if initial_guess_for_root is None:
-        #     initial_guess_for_root = [0]*num_params
-        #     ("Warning: The initial condition of species is not given")
-        # if root_check:
-        #     root_info = optimize.root(lambda y:func_vectors(0, y),initial_guess_for_root,jac=jac)
-        #     if root_info.success:
-        #         root = root_info.x
-        #         if (((initial_guess_for_root - root)/initial_guess_for_root)>0.1).any():
-        #             print("Initial guess doesn't match root condition")
-        #     else:
-        #         raise Exception('Unable to find initial condition: unable to find root')
-        # else:
-        root = initial_guess_for_root
-        sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
-        #returns u
-        return sol
+    # def de_solver(self, func_vectors, t_span,initial_guess_for_root=None, root_check=True, max_step=0.01, jac=False, method='RK45'):
+    #     #assert initial_guess_for_root is not None
+    #     if initial_guess_for_root is None:
+    #         print("Using the initial condition from config files. Unites will be automatically converted!")
+    #     coefficient_dict={}
+    #     target_unit = self.SD.Dict[list(self.SD.Dict.keys())[0]].concentration_units
+    #     for i in self.SD.Dict:
+    #         try:
+    #             coefficient_dict[i] = self.SD.Dict[i].concentration_units.to(target_unit).to_tuple()[0]
+    #         except:
+    #             raise RuntimeError('Units mismatched for a well-mixed system')
+    #     initial_guess_for_root = [(coefficient_dict[i] * self.SD.Dict[i].initial_condition) for i in self.SD.Dict]
+    #     # if initial_guess_for_root is None:
+    #     #     initial_guess_for_root = [0]*num_params
+    #     #     ("Warning: The initial condition of species is not given")
+    #     # if root_check:
+    #     #     root_info = optimize.root(lambda y:func_vectors(0, y),initial_guess_for_root,jac=jac)
+    #     #     if root_info.success:
+    #     #         root = root_info.x
+    #     #         if (((initial_guess_for_root - root)/initial_guess_for_root)>0.1).any():
+    #     #             print("Initial guess doesn't match root condition")
+    #     #     else:
+    #     #         raise Exception('Unable to find initial condition: unable to find root')
+    #     # else:
+    #     root = initial_guess_for_root
+    #     sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
+    #     #returns u
+    #     return sol
     
-    def get_lambdified(self):
+    # def get_lambdified(self):
         
-        sps = [i for i in self.SD.Dict]
-        func_dict = {i: None for i in list(self.SD.Dict.keys())}
-        for f in self.FD.Dict:
-            sp = self.FD.Dict[f].species_name
-            if func_dict[sp] is None:
-                func_dict[sp] = self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
-            else:
-                func_dict[sp] += self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
+    #     sps = [i for i in self.SD.Dict]
+    #     func_dict = {i: None for i in list(self.SD.Dict.keys())}
+    #     for f in self.FD.Dict:
+    #         sp = self.FD.Dict[f].species_name
+    #         if func_dict[sp] is None:
+    #             func_dict[sp] = self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
+    #         else:
+    #             func_dict[sp] += self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
             
             
-        func_vector=[]
-        for j in func_dict:    
-            for i in self.PD.Dict:
-                func_dict[j] = func_dict[j].subs(i, self.PD.Dict[i].value)
+    #     func_vector=[]
+    #     for j in func_dict:    
+    #         for i in self.PD.Dict:
+    #             func_dict[j] = func_dict[j].subs(i, self.PD.Dict[i].value)
             
-            lam = sympy.lambdify(sps, func_dict[j])
-            func_vector.append(lam)
-        return lambda u:[f(*u) for f in func_vector], func_dict
+    #         lam = sympy.lambdify(sps, func_dict[j])
+    #         func_vector.append(lam)
+    #     return lambda u:[f(*u) for f in func_vector], func_dict
+
     def set_time(self, t, dt=None):
         if not dt:
             dt = self.dt

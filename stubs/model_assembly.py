@@ -525,7 +525,6 @@ class CompartmentContainer(_ObjectContainer):
 
         # iterate through facets of bmesh (transfer markers from volume mesh function to boundary mesh function)
         for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): 
-            #vmesh_idx = bmesh.entity_map(surfaceDim)[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_idx = bmesh_emap_n[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
@@ -550,7 +549,7 @@ class CompartmentContainer(_ObjectContainer):
                 raise ValueError("Cell markers must either be provided as an int or list of ints")
 
 
-        # Loop through compartments
+        # Loop through compartments: extract submeshes and integration measures
         for comp_name, comp in self.Dict.items():
             # FEniCS doesn't allow parallelization of SubMeshes. We need
             # SubMeshes because one boundary will often have multiple domains of
