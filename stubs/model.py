@@ -129,6 +129,70 @@ class Model(object):
 
         self.init_solutions_and_plots()
 
+
+    def initialize_refactor(self):
+        # parameter/unit assembly
+        print("\n\n********** Model initialization (Part 1/6) **********")
+        print("Assembling parameters and units...\n")
+        self.PD.do_to_all('assemble_units', {'unit_name': 'unit'})
+        self.PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        self.PD.do_to_all('assembleTimeDependentParameters')
+        self.SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        self.SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        self.CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+        self.RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+
+        # linking containers with one another
+        print("\n\n********** Model initialization (Part 2/6) **********")
+        print("Linking different containers with one another...\n")
+        self.RD.link_object(self.PD,'paramDict','name','paramDictValues', value_is_key=True)
+        self.SD.link_object(self.CD,'compartment_name','name','compartment')
+        self.SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        self.RD.do_to_all('get_involved_species_and_compartments', {"SD": self.SD, "CD": self.CD})
+        self.RD.link_object(self.SD,'involved_species','name','involved_species_link')
+
+        # meshes
+        print("\n\n********** Model initialization (Part 3/6) **********")
+        print("Loading in mesh and computing statistics...\n")
+        self.CD.get_min_max_dim()
+        setattr(self.CD, 'meshes', {self.mesh.name: self.mesh.mesh})
+        #self.CD.extract_submeshes('cyto', save_to_file=False)
+        self.CD.extract_submeshes_refactor(save_to_file=False)
+        self.CD.compute_scaling_factors()
+
+        # Associate species and compartments
+        print("\n\n********** Model initialization (Part 4/6) **********")
+        print("Associating species with compartments...\n")
+        num_species_per_compartment = self.RD.get_species_compartment_counts(self.SD, self.CD)
+        self.SD.assemble_compartment_indices(self.RD, self.CD)
+        self.CD.add_property_to_all('is_in_a_reaction', False)
+        self.CD.add_property_to_all('V', None)
+
+        # dolfin functions
+        print("\n\n********** Model initialization (Part 5/6) **********")
+        print("Creating dolfin functions and assinging initial conditions...\n")
+        self.SD.assemble_dolfin_functions(self.RD, self.CD)
+        self.u = self.SD.u
+        self.v = self.SD.v
+        self.V = self.SD.V
+        self.assign_initial_conditions()
+
+        print("\n\n********** Model initialization (Part 6/6) **********")
+        print("Assembling reactive and diffusive fluxes...\n")
+        self.RD.reaction_to_fluxes()
+        #self.RD.do_to_all('reaction_to_fluxes')
+        self.FD = self.RD.get_flux_container()
+        self.FD.do_to_all('get_additional_flux_properties', {"CD": self.CD, "solver_system": self.solver_system})
+        self.FD.do_to_all('flux_to_dolfin')
+ 
+        self.set_allow_extrapolation()
+        # Turn fluxes into fenics/dolfin expressions
+        self.assemble_reactive_fluxes()
+        self.assemble_diffusive_fluxes()
+        self.sort_forms()
+
+        self.init_solutions_and_plots()
+
 #===============================================================================
 #===============================================================================
 # PROBLEM SETUP

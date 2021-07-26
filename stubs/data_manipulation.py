@@ -18,7 +18,7 @@ rank = comm.rank
 root = 0
 
 from stubs import unit as ureg
-import networkx as nx
+#import networkx as nx
 #import stubs.model_assembly as model_assembly
 
 # # matplotlib settings

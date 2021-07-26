@@ -401,7 +401,7 @@ class SpeciesContainer(_ObjectContainer):
 
         # functions to run beforehand as we need their results
         num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
-        CD.get_min_max_dim()
+        #CD.get_min_max_dim() # refactor
         self.assemble_compartment_indices(RD, CD)
         CD.add_property_to_all('is_in_a_reaction', False)
         CD.add_property_to_all('V', None)
@@ -500,10 +500,11 @@ class CompartmentContainer(_ObjectContainer):
         self.properties_to_print = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
         self.meshes = {}
         self.vertex_mappings = {} # from submesh -> parent indices
-    def load_mesh(self, mesh_key, mesh_str):
-        self.meshes[mesh_key] = d.Mesh(mesh_str)
+#    def load_mesh(self, mesh_key, mesh_str):
+#        self.meshes[mesh_key] = d.Mesh(mesh_str)
+#
     def extract_submeshes(self, main_mesh_str, save_to_file=False):
-        main_mesh = self.Dict[main_mesh_str]
+        main_mesh  = self.Dict[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
 
         self.Dict[main_mesh_str].mesh = self.meshes[main_mesh_str]
@@ -513,13 +514,13 @@ class CompartmentContainer(_ObjectContainer):
 
         # Very odd behavior - when bmesh.entity_map() is called together with .array() it will return garbage values. We
         # should only call entity_map once to avoid this
-        temp_emap_0 = bmesh.entity_map(0)
+        temp_emap_0  = bmesh.entity_map(0)
         bmesh_emap_0 = deepcopy(temp_emap_0.array())
-        temp_emap_n = bmesh.entity_map(surfaceDim)
+        temp_emap_n  = bmesh.entity_map(surfaceDim)
         bmesh_emap_n = deepcopy(temp_emap_n.array())
 
-        vmf = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
-        bmf = d.MeshFunction("size_t", bmesh, surfaceDim)
+        vmf          = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
+        bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)
         vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
         bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
 
@@ -535,14 +536,14 @@ class CompartmentContainer(_ObjectContainer):
                 if not all([type(x)==int for x in comp.cell_marker]):
                     raise ValueError("Cell markers were given as a list but not all elements were ints.")
 
-                primary_marker = comp.cell_marker[0] # combine into the first marker of the list 
-                comp.primary_marker = primary_marker
-                Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {primary_marker}.")
+                first_index_marker = comp.cell_marker[0] # combine into the first marker of the list 
+                comp.first_index_marker = first_index_marker
+                Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {first_index_marker}.")
                 for marker_value in comp.cell_marker:
-                    vmf_combined.array()[vmf.array() == marker_value] = primary_marker
-                    bmf_combined.array()[bmf.array() == marker_value] = primary_marker
+                    vmf_combined.array()[vmf.array() == marker_value] = first_index_marker
+                    bmf_combined.array()[bmf.array() == marker_value] = first_index_marker
             elif type(comp.cell_marker) == int:
-                comp.primary_marker = comp.cell_marker
+                comp.first_index_marker = comp.cell_marker
                 vmf_combined.array()[vmf.array() == comp.cell_marker] = comp.cell_marker
                 bmf_combined.array()[bmf.array() == comp.cell_marker] = comp.cell_marker
             else:
@@ -564,7 +565,7 @@ class CompartmentContainer(_ObjectContainer):
                 #     self.meshes[comp_name] = submesh
                 #     comp.mesh = submesh
                 # else:
-                submesh = d.SubMesh(bmesh, bmf_combined, comp.primary_marker)
+                submesh = d.SubMesh(bmesh, bmf_combined, comp.first_index_marker)
                 self.vertex_mappings[comp_name] = submesh.data().array("parent_vertex_indices", 0)
                 self.meshes[comp_name] = submesh
                 comp.mesh = submesh
@@ -610,6 +611,127 @@ class CompartmentContainer(_ObjectContainer):
         #     Print("If run in serial, submeshes were saved to file. Run again"\
         #           "in parallel.")
         #     exit()
+
+    def extract_submeshes_refactor(self, main_mesh_str='main_mesh', save_to_file=False):
+        # Get minimum and maximum dimensions of meshes being compued on.
+        volumeDim  = self.max_dim
+        surfaceDim = self.min_dim
+        if (volumeDim - surfaceDim) not in [0,1]:
+            raise ValueError("Highest mesh dimension - smallest mesh dimension must be either 0 or 1.")
+
+        # Get volume and boundary mesh
+        vmesh                           = self.meshes[main_mesh_str]
+        self.Dict[main_mesh_str].mesh   = self.meshes[main_mesh_str]
+        bmesh                           = d.BoundaryMesh(vmesh, "exterior")
+
+        # Very odd behavior - when bmesh.entity_map() is called together with .array() it will return garbage values. We
+        # should only call entity_map once to avoid this
+        temp_emap_0  = bmesh.entity_map(0)
+        bmesh_emap_0 = deepcopy(temp_emap_0.array()) # entity map to vertices
+        temp_emap_n  = bmesh.entity_map(surfaceDim)
+        bmesh_emap_n = deepcopy(temp_emap_n.array()) # entity map to facets
+
+        # Mesh functions
+        vvmf         = d.MeshFunction("size_t", vmesh, volumeDim, vmesh.domains())  # cell markers for volume mesh
+        vbmf         = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # facet markers for volume mesh
+        bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)                  # cell markers for surface mesh
+        vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # 
+        bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+
+        vmf          = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
+        bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)
+        vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
+        bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+
+        # iterate through facets of bmesh (transfer markers from volume mesh function to boundary mesh function)
+        for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): 
+            vmesh_idx = bmesh_emap_n[idx] # get the index of the face on vmesh corresponding to this face on bmesh
+            vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
+            bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
+
+        # combine markers for subdomains specified as a list of markers
+        for comp_name, comp in self.Dict.items():
+            if type(comp.cell_marker) == list:
+                if not all([type(x)==int for x in comp.cell_marker]):
+                    raise ValueError("Cell markers were given as a list but not all elements were ints.")
+
+                first_index_marker = comp.cell_marker[0] # combine into the first marker of the list 
+                comp.first_index_marker = first_index_marker
+                Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {first_index_marker}.")
+                for marker_value in comp.cell_marker:
+                    vmf_combined.array()[vmf.array() == marker_value] = first_index_marker
+                    bmf_combined.array()[bmf.array() == marker_value] = first_index_marker
+            elif type(comp.cell_marker) == int:
+                comp.first_index_marker = comp.cell_marker
+                vmf_combined.array()[vmf.array() == comp.cell_marker] = comp.cell_marker
+                bmf_combined.array()[bmf.array() == comp.cell_marker] = comp.cell_marker
+            else:
+                raise ValueError("Cell markers must either be provided as an int or list of ints")
+
+
+        # Loop through compartments: extract submeshes and integration measures
+        for comp_name, comp in self.Dict.items():
+            # FEniCS doesn't allow parallelization of SubMeshes. We need
+            # SubMeshes because one boundary will often have multiple domains of
+            # interest with different species (e.g., PM, ER). By exporting the
+            # submeshes in serial we can reload them back in in parallel.
+
+            if comp_name!=main_mesh_str and comp.dimensionality==surfaceDim:
+                # # TODO: fix this (parallel submesh)
+                # if size > 1: # if we are running in parallel
+                #     Print("CPU %d: Loading submesh for %s from file" % (rank, comp_name))
+                #     submesh = d.Mesh(d.MPI.comm_self, 'submeshes/submesh_' + comp.name + '_' + str(comp.cell_marker) + '.xml')
+                #     self.meshes[comp_name] = submesh
+                #     comp.mesh = submesh
+                # else:
+                submesh = d.SubMesh(bmesh, bmf_combined, comp.first_index_marker)
+                self.vertex_mappings[comp_name] = submesh.data().array("parent_vertex_indices", 0)
+                self.meshes[comp_name] = submesh
+                comp.mesh = submesh
+
+                # # TODO: fix this (parallel submesh)
+                # if save_to_file:
+                #     Print("Saving submeshes %s for use in parallel" % comp_name)
+                #     save_str = 'submeshes/submesh_' + comp.name + '_' + str(comp.cell_marker) + '.xml'
+                #     d.File(save_str) << submesh
+
+            # integration measures
+            if comp.dimensionality==volumeDim:
+                comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined, metadata={'quadrature_degree': 3})
+                comp.ds_uncombined = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf, metadata={'quadrature_degree': 3})
+                comp.dP = None
+            elif comp.dimensionality<volumeDim:
+                comp.dP = d.Measure('dP', domain=comp.mesh)
+                comp.ds = None
+            else:
+                raise Exception(f"Internal error: {comp_name} has a dimension larger than then the volume dimension.")
+            comp.dx = d.Measure('dx', domain=comp.mesh, metadata={'quadrature_degree': 3})
+
+        # Get # of vertices
+        for key, mesh in self.meshes.items():
+            num_vertices = mesh.num_vertices()
+            print('CPU %d: My partition of mesh %s has %d vertices' % (rank, key, num_vertices))
+            self.Dict[key].num_vertices = num_vertices
+
+        self.bmesh          = bmesh
+        self.bmesh_emap_0   = bmesh_emap_0
+        self.bmesh_emap_n   = bmesh_emap_n
+        self.mesh_functions = {
+                                'vmf': vmf,
+                                'bmf': bmf,
+                                'vmf_combined': vmf_combined,
+                                'bmf_combined': bmf_combined,
+                              }
+
+        # # TODO: fix this (parallel submesh)
+        # # If we were running in serial to generate submeshes, exit here and
+        # # restart in parallel
+        # if save_to_file and size==1:
+        #     Print("If run in serial, submeshes were saved to file. Run again"\
+        #           "in parallel.")
+        #     exit()
+
+
 
     def compute_scaling_factors(self):
         self.do_to_all('compute_nvolume')
@@ -838,7 +960,7 @@ class Flux(_ObjectInstance):
         if dim[1] <= dim[0]:
             self.boundary_marker = None
         elif dim[1] > dim[0]: # boundary flux
-            self.boundary_marker = self.involved_compartments[self.source_compartment].primary_marker
+            self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
 
     def get_flux_units(self):
         sp = self.spDict[self.species_name]
