@@ -503,7 +503,7 @@ class CompartmentContainer(_ObjectContainer):
 #    def load_mesh(self, mesh_key, mesh_str):
 #        self.meshes[mesh_key] = d.Mesh(mesh_str)
 #
-    def extract_submeshes(self, main_mesh_str, save_to_file=False):
+    def extract_submeshes(self, main_mesh_str='main_mesh', save_to_file=False):
         main_mesh  = self.Dict[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
 
@@ -612,31 +612,41 @@ class CompartmentContainer(_ObjectContainer):
         #           "in parallel.")
         #     exit()
 
-    def extract_submeshes_refactor(self, main_mesh_str='main_mesh', save_to_file=False):
-        # Get minimum and maximum dimensions of meshes being compued on.
+    def extract_submeshes_refactor(self, parent_mesh):
+        # Get minimum and maximum dimensions of meshes being computed on.
         volumeDim  = self.max_dim
         surfaceDim = self.min_dim
+
+        # Check that dimensionality of components and mesh is acceptable
         if (volumeDim - surfaceDim) not in [0,1]:
-            raise ValueError("Highest mesh dimension - smallest mesh dimension must be either 0 or 1.")
+            raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
+        if volumeDim != parent_mesh.dolfin_mesh.geometric_dimension():
+            raise ValueError(f"Parent mesh has geometric dimension: {parent_mesh.dolfin_mesh.geometric_dimension()} which"
+                            +f" is not the same as volumeDim: {volumeDim}.")
 
         # Get volume and boundary mesh
-        vmesh                           = self.meshes[main_mesh_str]
-        self.Dict[main_mesh_str].mesh   = self.meshes[main_mesh_str]
-        bmesh                           = d.BoundaryMesh(vmesh, "exterior")
+        #vmesh                           = self.meshes[main_mesh_str]
+        #self.Dict[main_mesh_str].mesh   = self.meshes[main_mesh_str]
+        smesh           = d.BoundaryMesh(parent_mesh.dolfin_mesh, "exterior")
 
-        # Very odd behavior - when bmesh.entity_map() is called together with .array() it will return garbage values. We
-        # should only call entity_map once to avoid this
-        temp_emap_0  = bmesh.entity_map(0)
-        bmesh_emap_0 = deepcopy(temp_emap_0.array()) # entity map to vertices
-        temp_emap_n  = bmesh.entity_map(surfaceDim)
-        bmesh_emap_n = deepcopy(temp_emap_n.array()) # entity map to facets
+        # When smesh.entity_map() is called together with .array() it will return garbage values. We should only call 
+        # entity_map once to avoid this
+        temp_emap_0     = smesh.entity_map(0)
+        smesh_emap_0    = deepcopy(temp_emap_0.array()) # entity map to vertices
+        temp_emap_n     = smesh.entity_map(surfaceDim)
+        smesh_emap_n    = deepcopy(temp_emap_n.array()) # entity map to facets
 
         # Mesh functions
-        vvmf         = d.MeshFunction("size_t", vmesh, volumeDim, vmesh.domains())  # cell markers for volume mesh
-        vbmf         = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # facet markers for volume mesh
-        bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)                  # cell markers for surface mesh
-        vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # 
-        bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+        # 
+        # vvmf: cell markers for volume mesh. Used to distinguish sub-volumes
+        #
+        #
+        #
+        #vvmf         = d.MeshFunction("size_t", vmesh, volumeDim, vmesh.domains())  # cell markers for volume mesh
+        #vsmf         = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # facet markers for volume mesh
+        #smf          = d.MeshFunction("size_t", bmesh, surfaceDim)                  # cell markers for surface mesh
+        #vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # 
+        #bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
 
         vmf          = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
         bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)

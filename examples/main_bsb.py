@@ -29,7 +29,7 @@ ls = stubs.solvers.DolfinKrylovSolver(method = 'bicgstab', preconditioner='hypre
 solver_system = stubs.solvers.SolverSystem(final_t = 0.4, initial_dt = 0.01, adjust_dt = [(0.2, 0.02)],
                                            multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
 
-main_mesh = stubs.mesh.Mesh(mesh_filename=cwd+'/bsb/cube_10.xml')
+parent_mesh = stubs.mesh.Mesh(mesh_filename=cwd+'/bsb/cube_10.xml')
 
 model = stubs.model.Model(PD, SD, CD, RD, config, solver_system, main_mesh)
 

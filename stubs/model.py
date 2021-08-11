@@ -27,7 +27,7 @@ root = 0
 # ==============================================================================
 # ==============================================================================
 class Model(object):
-    def __init__(self, PD, SD, CD, RD, config, solver_system, mesh=None):
+    def __init__(self, PD, SD, CD, RD, config, solver_system, parent_mesh=None):
         self.PD = PD
         self.SD = SD
         self.CD = CD
@@ -38,7 +38,7 @@ class Model(object):
         self.solver_system = solver_system
         self.solver_system.make_dolfin_parameter_dict()
 
-        self.mesh = mesh
+        self.parent_mesh = parent_mesh
         self.params = ddict(list)
 
         self.idx = 0
@@ -91,8 +91,8 @@ class Model(object):
         # meshes
         print("\n\n********** Model initialization (Part 3/6) **********")
         print("Loading in mesh and computing statistics...\n")
-        setattr(self.CD, 'meshes', {self.mesh.name: self.mesh.mesh})
-        self.CD.extract_submeshes('cyto', save_to_file=False)
+        setattr(self.CD, 'meshes', {self.parent_mesh.name: self.parent_mesh.mesh})
+        self.CD.extract_submeshes(save_to_file=False)
         self.CD.compute_scaling_factors()
 
         # Associate species and compartments
@@ -155,9 +155,12 @@ class Model(object):
         print("\n\n********** Model initialization (Part 3/6) **********")
         print("Loading in mesh and computing statistics...\n")
         self.CD.get_min_max_dim()
-        setattr(self.CD, 'meshes', {self.mesh.name: self.mesh.mesh})
+        #setattr(self.CD, 'meshes', {self.mesh.name: self.mesh.mesh})
         #self.CD.extract_submeshes('cyto', save_to_file=False)
-        self.CD.extract_submeshes_refactor(save_to_file=False)
+        if self.parent_mesh is not None:
+            self.CD.extract_submeshes_refactor(self.parent_mesh, save_to_file=False)
+        else:
+            raise ValueError("There is no parent mesh.")
         self.CD.compute_scaling_factors()
 
         # Associate species and compartments

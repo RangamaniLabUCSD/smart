@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid"  version="0.1"  >
+<UnstructuredGrid>
+<Piece  NumberOfPoints="0" NumberOfCells="0">
+<Points>
+<DataArray  type="Float64"  NumberOfComponents="3"  format="ascii">
