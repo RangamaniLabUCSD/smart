@@ -97,23 +97,23 @@ class ParentMesh(_Mesh):
                          mesh_filename=mesh_filename)
         self.dimensionality = self.dolfin_mesh.geometric_dimension
 
-    def get_full_boundary_mesh(self):
-m       = self.dolfin_mesh
-dim     = self.dimensionality
-# Mesh function for sub-volumes
-mf_vv   = d.MeshFunction('size_t', m, dim, m.domains())
-# Get unique sub-volume markers
-unique_markers = list(set(mf_vv.array()))
-# Get BoundaryMesh for each sub-volume
-bm = dict()
-bm_union = d.Mesh()
-for marker in unique_markers:
-    bm[marker] = d.BoundaryMesh(m, 'exterior')
+#     def get_full_boundary_mesh(self):
+# m       = self.dolfin_mesh
+# dim     = self.dimensionality
+# # Mesh function for sub-volumes
+# mf_vv   = d.MeshFunction('size_t', m, dim, m.domains())
+# # Get unique sub-volume markers
+# unique_markers = list(set(mf_vv.array()))
+# # Get BoundaryMesh for each sub-volume
+# bm = dict()
+# bm_union = d.Mesh()
+# for marker in unique_markers:
+#     bm[marker] = d.BoundaryMesh(m, 'exterior')
 
-me = d.MeshEditor()
-b = bm[11]
-btype = d.CellType.type2string(b.type().cell_type())
-me.open(b, btype, b.topology().dim(), b.geometric_dimension())
+# me = d.MeshEditor()
+# b = bm[11]
+# btype = d.CellType.type2string(b.type().cell_type())
+# me.open(b, btype, b.topology().dim(), b.geometric_dimension())
 
 
         # Combine BoundaryMesh while eliminating 
