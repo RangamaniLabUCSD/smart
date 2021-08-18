@@ -10,8 +10,6 @@ mouter  = SubMesh(m,mf33,1)
 
 mf32    = MeshFunction('size_t', m, 2, m.domains())
 
-
-
 bmesh        = BoundaryMesh(m, "exterior")
 temp_emap_0  = bmesh.entity_map(0)
 bmesh_emap_0 = deepcopy(temp_emap_0.array())

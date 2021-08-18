@@ -620,12 +620,11 @@ class CompartmentContainer(_ObjectContainer):
         # Check that dimensionality of components and mesh is acceptable
         if (volumeDim - surfaceDim) not in [0,1]:
             raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
-        if volumeDim != parent_mesh.dolfin_mesh.geometric_dimension():
+        if volumeDim != parent_mesh.dimensionality:
             raise ValueError(f"Parent mesh has geometric dimension: {parent_mesh.dolfin_mesh.geometric_dimension()} which"
                             +f" is not the same as volumeDim: {volumeDim}.")
 
         # Get volume and boundary mesh
-        #vmesh                           = self.meshes[main_mesh_str]
         #self.Dict[main_mesh_str].mesh   = self.meshes[main_mesh_str]
         smesh           = d.BoundaryMesh(parent_mesh.dolfin_mesh, "exterior")
 

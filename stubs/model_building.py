@@ -6,7 +6,6 @@ import pandas as pd
 import dolfin as d
 import pint 
 
-
 # IN PROGRESS
 # class ObjectDF(object):
 #     def __init__(self, property_types):
@@ -29,7 +28,6 @@ import pint
 #             # ensure types are correct
 #             for key, value in to_df.items():
 #                 to_df[key] =  
-
 
 class ParameterDF(object):
     """
