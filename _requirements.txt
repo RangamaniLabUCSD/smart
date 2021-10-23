@@ -1,7 +1,0 @@
-#python packages required:
-pint, tabulate, sympy, dolfin, pandas, matplotlib, termcolor, numpy, pprint, scipy
-
-#default python packages required: 
-collections, os, sys, pickle, copy, re
-
-#PEP518: pyproject.toml

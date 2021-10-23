@@ -22,7 +22,7 @@ setup(
     # Self-descriptive entries which should always be present
     name='stubs',
     author='Justin Laughlin',
-    author_email='jlaughli@ucsd.edu',
+    author_email='justinglaughlin@gmail.com',
     description=short_description[0],
     long_description=long_description,
     long_description_content_type="text/markdown",
