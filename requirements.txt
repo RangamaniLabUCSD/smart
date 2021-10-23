@@ -38,5 +38,5 @@ tabulate==0.8.5
 termcolor==1.1.0
 tornado==6.0.3
 typing==3.7.4.1
-urllib3==1.25.6
+urllib3==1.26.5
 wcwidth==0.1.7
