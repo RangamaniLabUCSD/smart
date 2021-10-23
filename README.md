@@ -1,10 +1,5 @@
 Setup Tool for Unified Biophysical Simulations
 ==============================
-[//]: # (Badges)
-[![Travis Build Status](https://travis-ci.org/justinlaughlin/stubs.png)](https://travis-ci.org/justinlaughlin/stubs)
-[![AppVeyor Build status](https://ci.appveyor.com/api/projects/status/REPLACE_WITH_APPVEYOR_LINK/branch/master?svg=true)](https://ci.appveyor.com/project/justinlaughlin/stubs/branch/master)
-[![codecov](https://codecov.io/gh/justinlaughlin/stubs/branch/master/graph/badge.svg)](https://codecov.io/gh/justinlaughlin/stubs/branch/master)
-
 STUBS is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models. 
 STUBS is highly suited for building systems biology models and simulating them as deterministic partial differential equations `[PDEs]` in realistic geometries using the Finite Element Method `[FEM]` - the integration of additional physics such as electro-diffusion or stochasticity may come in future updates. 
 Systems biology models are converted by STUBS into the appropriate systems of reaction-diffusion PDEs with proper boundary conditions. 
