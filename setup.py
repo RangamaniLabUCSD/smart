@@ -33,12 +33,16 @@ setup(
     #include_package_data=True,
 
     # Additional entries you may want simply uncomment the lines you want and fill in the data
-    # url='http://www.my_package.com',  # Website
-    # install_requires=[],              # Required packages, pulls from pip if needed; do not use for Conda deployment
-    # platforms=['Linux',
-    #            'Mac OS-X',
-    #            'Unix',
-    #            'Windows'],            # Valid platforms your code works on, adjust to your flavor
+    install_requires=[
+        'matplotlib',
+        'numpy',
+        'pandas',
+        'Pint',
+        'scipy',
+        'sympy',
+        'tabulate',
+        'termcolor',
+        ],              # Required packages, pulls from pip if needed; do not use for Conda deployment
     # python_requires=">=3.5",          # Python version restrictions
 
     # Manual control if final package is compressible or not, set False to prevent the .egg from being made
