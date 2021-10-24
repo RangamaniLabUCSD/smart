@@ -26,7 +26,6 @@ fenics:~$ pip install stubs
 * STUBS uses [sympy](https://www.sympy.org/) to allow users to input custom reactions and also to determine the appopriate solution techniques (e.g. testing for non-linearities).
 * STUBS uses [numpy](https://numpy.org/) and [scipy](https://www.scipy.org/) for general array manipulations and basic calculations.
 * STUBS uses [tabulate](https://pypi.org/project/tabulate/) to make pretty ASCII tables.
-* STUBS uses [pprint](https://docs.python.org/3/library/pprint.html) for prettier printing.
 * STUBS uses [termcolor](https://pypi.org/project/termcolor/) for pretty terminal output so that simulations are more satisfying to watch.
 
 ## Functionality

@@ -1,6 +1,3 @@
-"""
-stubs setup
-"""
 import sys
 from setuptools import setup, find_packages
 
@@ -10,7 +7,7 @@ with open("README.md", "r") as handle:
 
 setup(
     # Self-descriptive entries which should always be present
-    name='stubs',
+    name='fenics-stubs',
     author='Justin Laughlin',
     author_email='justinglaughlin@gmail.com',
     url='https://github.com/justinlaughlin/stubs',
@@ -18,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     platforms=['Linux', 'Mac OS-X'],
-    version='0.1.0',
+    version='0.1.1',
     license='LGPLv3',
 
     # Which Python importable modules should be included when your package is installed
@@ -35,10 +32,10 @@ setup(
     # Additional entries you may want simply uncomment the lines you want and fill in the data
     install_requires=[
         'matplotlib',
-        'numpy',
+        'numpy>=1.21.0',
         'pandas',
         'Pint',
-        'scipy',
+        'scipy>=1.7.0',
         'sympy',
         'tabulate',
         'termcolor',

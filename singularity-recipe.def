@@ -1,0 +1,27 @@
+Bootstrap: docker
+From: quay.io/fenicsproject/dev
+
+####### Notes #######
+#
+# This is a Singularity recipe that adds STUBS to a Docker container 
+# with the current development version of FEniCS.
+#
+# To build an image from this recipe, use the following command (on a
+# system where you have sudo access):
+# $ sudo singularity build image.simg singularity-recipe.def
+#
+#
+# If you are on Debian/Ubuntu, Singularity can by installed by first 
+# enabling the NeuroDebian repository 
+# (see instructions at http://neuro.debian.net/) then installing via apt-get.
+#
+# For example on Ubuntu 20.04 the commands would be:
+# $ wget -O- http://neuro.debian.net/lists/focal.us-ca.full | sudo tee /etc/apt/sources.list.d/neurodebian.sources.list
+# $ sudo apt-key adv --recv-keys --keyserver hkps://keyserver.ubuntu.com 0xA5D32F012649A5A9
+# $ sudo apt-get update
+# $ sudo apt-get install -y singularity-container
+#
+#####################
+
+%post
+    pip3 install fenics-stubs

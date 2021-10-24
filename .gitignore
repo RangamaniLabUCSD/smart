@@ -76,3 +76,4 @@ ENV/
 **.out
 **.DS_Store
 **.vscode
+**.simg
