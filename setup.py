@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     platforms=['Linux', 'Mac OS-X'],
-    version='0.1.1',
+    version='0.1.2',
     license='LGPLv3',
 
     # Which Python importable modules should be included when your package is installed
@@ -32,10 +32,10 @@ setup(
     # Additional entries you may want simply uncomment the lines you want and fill in the data
     install_requires=[
         'matplotlib',
-        'numpy>=1.21.0',
+        'numpy>=1.16.0',
         'pandas',
         'Pint',
-        'scipy>=1.7.0',
+        'scipy>=1.1.0',
         'sympy',
         'tabulate',
         'termcolor',
