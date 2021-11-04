@@ -1,0 +1,27 @@
+# Dockerfile with minimal changes to run stubs
+#
+# To build the image, run in the main stubs directory:
+# $ docker build -t stubs:latest -f Dockerfile .
+# To run the image (with default settings, e.g. mounting your home directory):
+# $ docker run -ti --name stubs --init -p 8080:8888 -v $HOME:/home/fenics/shared stubs:latest
+
+# Base fenics dev image
+FROM quay.io/fenicsproject/dev
+
+# Install desired packages using pip
+RUN python3 -m pip install fenics-stubs
+
+# bashrc settings (this appends to the top of the file)
+RUN printf \
+"# colored terminal output\n\
+export TERM=xterm-256color\n" | cat - $FENICS_HOME/.bashrc > temp && \
+mv temp $FENICS_HOME/.bashrc
+
+# Bash aliases
+RUN printf \
+"# Our bash aliases\n\
+alias python='python3'" >> $FENICS_HOME/.bash_aliases
+
+# source bashrc
+RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]
+

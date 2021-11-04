@@ -1,3 +1,5 @@
+# Runs using a local copy of stubs (change directory) rather than the installed version
+#
 # This Dockerfile will install some additional packages on top of standard FEniCS dev image
 # Some of these are necessary to run stubs, others are for convenience
 # Some settings (bash aliases and vim) are also set here
@@ -26,12 +28,11 @@ RUN apt-get -qq update && \
 RUN python3 -m pip install meshio
 RUN python3 -m pip install bpython
 RUN python3 -m pip install gmsh
+# this is to install just the dependencies
 RUN python3 -m pip install fenics-stubs
-#RUN python3 -m pip install \
-#    meshio \
-#    bpython \
-#    gmsh \
-#    fenics-stubs
+RUN python3 -m pip uninstall --yes fenics-stubs
+# now we add the pythonpath to the local repository
+ENV PYTHONPATH "${PYTHONPATH}:$FENICS_HOME/shared/gitrepos/stubs"
 
 # bashrc settings (this appends to the top of the file)
 RUN printf \
@@ -43,13 +44,15 @@ mv temp $FENICS_HOME/.bashrc
 RUN printf \
 "# Our bash aliases\n\
 alias ..='cd ..'\n\
-alias ...='cd ../..'\n\
-alias ....='cd ../../..'\n\
+alias ..2='cd ../..'\n\
+alias ..3='cd ../../..'\n\
+alias ..4='cd ../../../..'\n\
 alias python='python3'\n\
 alias bpython='python3 -m bpython'\n\
 alias sourceme='source ~/.bashrc'\n\
 alias vimbash='vim ~/.bashrc'\n\
 alias vimalias='vim ~/.bash_aliases'\n\
+alias cdstubs='cd ~/shared/gitrepos/stubs'\n\
 alias vimrc='vim ~/.vimrc'" >> $FENICS_HOME/.bash_aliases
 
 # vimrc settings
@@ -72,6 +75,7 @@ set t_vb=\n\
 set number\n\
 set colorcolumn=120\n\
 highlight ColorColumn ctermbg=7" >> $FENICS_HOME/.vimrc
+
 
 # source bashrc
 RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]

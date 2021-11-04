@@ -13,13 +13,16 @@ class _Mesh(object):
         self.dimensionality     = dimensionality
 
         if mesh_filename is not None:
-            self.mesh_filename = mesh_filename
+            self.mesh_filename = mesh_filename.__str__()
             self.load_mesh_from_xml()
     def load_mesh_from_xml(self):
         if self._is_parent_mesh is not True:
             raise ValueError("Mesh must be a parent mesh in order to load from xml.")
         self.dolfin_mesh = d.Mesh(self.mesh_filename)
         print(f"Mesh, \"{self.name}\", successfully loaded from file: {self.mesh_filename}!")
+    def get_mesh_coordinate_bounds(self):
+        return {'min': self.dolfin_mesh.coordinates().min(axis=0), 'max': self.dolfin_mesh.coordinates().max(axis=0)}
+        
 
 class ParentMesh(_Mesh):
     """

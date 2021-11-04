@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     platforms=['Linux', 'Mac OS-X'],
-    version='0.1.2',
+    version='0.1.3',
     license='LGPLv3',
 
     # Which Python importable modules should be included when your package is installed
@@ -39,6 +39,7 @@ setup(
         'sympy',
         'tabulate',
         'termcolor',
+        'pytest',
         ],              # Required packages, pulls from pip if needed; do not use for Conda deployment
     # python_requires=">=3.5",          # Python version restrictions
 

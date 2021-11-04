@@ -68,6 +68,9 @@ ENV/
 **.pvd
 **.xdmf
 
+# blender save files
+**.blend1
+
 # misc
 **.obj
 **.csv
@@ -80,3 +83,6 @@ ENV/
 # singularity images
 **.simg
 **.sif
+
+# my personal settings
+Dockerfile_jgl

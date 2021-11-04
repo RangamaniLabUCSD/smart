@@ -1,4 +1,0 @@
-adjacent_cubes.xml consists of two cubes, both with an edge length of 2. They are merged at a common face on the xy-plane at z=-1 (min z value is -3 and max z value is 1)
-
-the outermost surface has marker value 2, the shared surface has marker value 4
-the cube with a smaller z value has marker value 12, the cube with a larger z value has marker value 11
