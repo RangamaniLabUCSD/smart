@@ -35,7 +35,6 @@ RUN cd $FENICS_HOME/gitrepos && \
 RUN python3 -m pip install meshio
 RUN python3 -m pip install bpython
 RUN python3 -m pip install gmsh
-RUN python3 -m pip install sphinx
 # this is to install just the dependencies so that we can use the local version of stubs
 RUN python3 -m pip install fenics-stubs
 RUN python3 -m pip uninstall --yes fenics-stubs

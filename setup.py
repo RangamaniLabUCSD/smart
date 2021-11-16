@@ -40,6 +40,7 @@ setup(
         'tabulate',
         'termcolor',
         'pytest',
+        'sphinx==4.3.0',
         ],              # Required packages, pulls from pip if needed; do not use for Conda deployment
     # python_requires=">=3.5",          # Python version restrictions
 
