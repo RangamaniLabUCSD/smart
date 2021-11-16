@@ -1,4 +1,4 @@
-import sys
+import sys 
 from setuptools import setup, find_packages
 
 with open("README.md", "r") as handle:
@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     platforms=['Linux', 'Mac OS-X'],
-    version='0.1.3',
+    version='0.1.4',
     license='LGPLv3',
 
     # Which Python importable modules should be included when your package is installed
