@@ -31,7 +31,27 @@ release = '0.1.3'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+        'sphinx.ext.autosummary',   # auto generates function/method/attribute summary lists
+        'sphinx.ext.autodoc',       # auto generate documentation from docstrings
+        'sphinx.ext.mathjax',       # tex math rendered with java
+        'sphinx.ext.napoleon',      # numpy/google style docstrings
+        'sphinx.ext.viewcode',
 ]
+
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+#napoleon_include_init_with_doc = True
+#napoleon_include_private_with_doc = False
+#napoleon_include_special_with_doc = True
+#napoleon_use_admonition_for_examples = False
+#napoleon_use_admonition_for_notes = False
+#napoleon_use_admonition_for_references = False
+#napoleon_use_ivar = True
+#napoleon_use_param = True
+#napoleon_use_rtype = True
+
+autosummary_generate = True
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

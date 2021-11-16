@@ -1,4 +1,5 @@
-"""Classes/functions used to construct models
+"""
+Classes/functions used to construct models
 """
 from stubs import unit
 

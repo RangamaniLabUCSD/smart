@@ -1,5 +1,6 @@
-# ====================================================
-# General python
+"""
+General functions: array manipulation, data i/o, etc
+"""
 import pandas as pd
 import dolfin as d
 import numpy as np
@@ -308,19 +309,4 @@ def read_smodel(filepath):
     RD = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
 
     return PD, SD, CD, RD
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

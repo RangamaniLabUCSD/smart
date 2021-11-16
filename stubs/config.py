@@ -1,3 +1,6 @@
+"""
+Configuration settings for simulation: plotting, reaction types, solution output, etc.
+"""
 import pdb
 import re
 import os

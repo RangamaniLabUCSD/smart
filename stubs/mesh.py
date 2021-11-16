@@ -1,5 +1,5 @@
 """
-
+Wrapper around dolfin mesh class (originally for submesh implementation - possibly unneeded now)
 """
 import dolfin as d
 

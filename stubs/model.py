@@ -1,3 +1,6 @@
+"""
+Model class. Consists of parameters, species, etc. and is used for simulation
+"""
 import dolfin as d
 from collections import defaultdict as ddict
 import petsc4py.PETSc as PETSc

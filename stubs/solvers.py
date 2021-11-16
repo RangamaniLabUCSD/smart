@@ -1,3 +1,7 @@
+"""
+Solver classes. Linear/Nonlinear are wrappers around dolfin solvers.
+MultiphysicsSolver uses a picard iteration scheme to solve coupled problems.
+"""
 import re
 import os
 from pandas import read_json
