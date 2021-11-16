@@ -40,6 +40,5 @@ c.append('pm', 2, unit.um, 2)
 r.append('A+X <-> B', 'First reaction', ['A','X'], ['B'], {"on": "kf", "off": "kr"})
 r.append('B linear degredation', 'second reaction', ['B'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
 
-
 # write out to file
 stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
