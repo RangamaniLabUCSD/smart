@@ -66,7 +66,7 @@ templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 
-autodoc_mock_imports = ["dolfin"]
+autodoc_mock_imports = ["dolfin", "petsc4py", "mpi4py"]
 
 
 # -- Options for HTML output -------------------------------------------------

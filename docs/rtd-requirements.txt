@@ -1,13 +1,14 @@
-#dolfin
 sphinx==4.3.0
 
 matplotlib==3.1.2
-mpi4py==3.0.3
 numpy==1.19.5
 pandas==1.1.5
-petsc4py==3.12.0
 pint==0.17
 scipy==1.5.4
 sympy==1.1.1
 tabulate==0.8.9
 termcolor==1.1.0
+
+#petsc4py==3.12.0
+#mpi4py==3.0.3
+#dolfin
