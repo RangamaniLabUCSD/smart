@@ -2,7 +2,13 @@
 Mathematics
 ##########################
 
-#. Governing Equations of Multi-Dimensional Reaction-Diffusion Equations (test)
+Mathematics related to stubs.
 
-    .. math::
-        x+y=z
+.. _Multi-Dimensional Reaction-Diffusion Equations:
+
+**********************************
+PyGAMer Jupyter Notebook Tutorials
+**********************************
+
+.. math::
+    x+y=z
