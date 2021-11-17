@@ -111,7 +111,8 @@ class SpeciesDF(object):
     def append(self, name, group, units, IC, D, D_units, compartment_name):
         self.df = self.df.append(pd.Series({"group": group,
                                             "concentration_units": str(units),
-                                            "initial_condition": IC, "D": D,
+                                            "initial_condition": IC, 
+                                            "D": D,
                                             "D_units": str(D_units),
                                             "compartment_name": compartment_name}, name=name))
 
