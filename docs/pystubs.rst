@@ -5,6 +5,7 @@ Python API Reference
 
 .. autosummary::
     :toctree: _pythonapi
+
     stubs.common
     stubs.config
     stubs.data_manipulation
