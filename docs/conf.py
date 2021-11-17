@@ -33,7 +33,7 @@ release = '0.1.4'
 extensions = [
         'sphinx.ext.autosummary',   # auto generates function/method/attribute summary lists
         'sphinx.ext.autodoc',       # auto generate documentation from docstrings
-        'sphinx.ext.viewcode'
+        'sphinx.ext.viewcode',
         'sphinx.ext.mathjax',       # tex math rendered with java
         'sphinx.ext.napoleon',      # numpy/google style docstrings
         'sphinx.ext.intersphinx',

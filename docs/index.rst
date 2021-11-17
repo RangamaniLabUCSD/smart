@@ -1,6 +1,6 @@
-###########################################
+###############################################
 Setup Tool for Unified Biophysical Simulations
-###########################################
+###############################################
 
 STUBS is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models. 
 STUBS is highly suited for building systems biology models and simulating them as deterministic partial differential equations `[PDEs]` in realistic geometries using the Finite Element Method `[FEM]` - the integration of additional physics such as electro-diffusion or stochasticity may come in future updates. 
