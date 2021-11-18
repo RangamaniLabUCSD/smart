@@ -13,7 +13,7 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-import stubs
+#import stubs
 
 
 # -- Project information -----------------------------------------------------
@@ -56,7 +56,7 @@ napoleon_use_param = True
 napoleon_use_rtype = True
 
 # Add any paths that contain templates here, relative to this directory.
-#templates_path = ['_templates']
+templates_path = ['_templates']
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
