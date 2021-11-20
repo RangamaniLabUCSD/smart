@@ -121,6 +121,10 @@ class SpeciesDF(object):
         print("Species generated successfully! Saved as %s" % name)
 
 class CompartmentDF(object):
+    """
+    Dimensionality refers to the topological dimension (e.g. a triangle is always 2d regardless it is embedded
+    in R^2 or R^3.
+    """
     def __init__(self):
         self.df = pd.DataFrame({'dimensionality': pd.Series([], dtype=int),
                                 'compartment_units': pd.Series([], dtype=object),
