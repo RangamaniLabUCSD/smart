@@ -57,11 +57,11 @@ for meshfile in ['/Users/rabona/Documents/stubs/examples/cell2013_3d/cube_10.xml
                     stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
                     # Load in model and settings
                     config = stubs.config.Config()
-                    #PD = stubs.common.json_to_ObjectContainer('toy_model_2d/parameters.json', 'parameters')
-                    #SD = stubs.common.json_to_ObjectContainer('toy_model_2d/species.json', 'species')
-                    #CD = stubs.common.json_to_ObjectContainer('toy_model_2d/compartments.json', 'compartments')
-                    #RD = stubs.common.json_to_ObjectContainer('toy_model_2d/reactions.json', 'reactions')
-                    PD, SD, CD, RD = stubs.common.read_smodel('cell2013_3d/cell2013_3d.smodel')
+                    #pc = stubs.common.json_to_ObjectContainer('toy_model_2d/parameters.json', 'parameters')
+                    #sc = stubs.common.json_to_ObjectContainer('toy_model_2d/species.json', 'species')
+                    #cc = stubs.common.json_to_ObjectContainer('toy_model_2d/compartments.json', 'compartments')
+                    #rc = stubs.common.json_to_ObjectContainer('toy_model_2d/reactions.json', 'reactions')
+                    pc, sc, cc, rc = stubs.common.read_smodel('cell2013_3d/cell2013_3d.smodel')
 
                     # Define solvers
                     mps = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)
@@ -72,7 +72,7 @@ for meshfile in ['/Users/rabona/Documents/stubs/examples/cell2013_3d/cube_10.xml
                                                             multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
                     cyto_mesh = stubs.mesh.Mesh(mesh_filename=meshfile, name='cyto')
 
-                    model = stubs.model.Model(PD, SD, CD, RD, config, solver_system, cyto_mesh)
+                    model = stubs.model.Model(pc, sc, cc, rc, config, solver_system, cyto_mesh)
                     model.initialize()
                     model.solve_2(check_mass=True, species_to_check={'A':1,'X':1,'B':2}, x_compartment='cyto')
 

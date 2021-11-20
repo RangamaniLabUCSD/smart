@@ -17,7 +17,7 @@ config = stubs.config.Config()
 
 errors=[]
 for dt in [0.012, 0.01, 0.008, 0.006, 0.004, 0.002]:
-    PD, SD, CD, RD = stubs.common.read_smodel('model.smodel')
+    pc, sc, cc, rc = stubs.common.read_smodel('model.smodel')
 
     # Define solvers
     mps = stubs.solvers.MultiphysicsSolver('iterative')
@@ -30,7 +30,7 @@ for dt in [0.012, 0.01, 0.008, 0.006, 0.004, 0.002]:
                                             multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
     cyto_mesh = stubs.mesh.Mesh(mesh_filename='/Users/rabona/Documents/stubs/examples/unit_cube.xml', name='cyto')
 
-    model = stubs.model_refactor.ModelRefactor(PD, SD, CD, RD, config, solver_system, cyto_mesh)
+    model = stubs.model_refactor.ModelRefactor(pc, sc, cc, rc, config, solver_system, cyto_mesh)
     model.initialize()
 
     # solve system

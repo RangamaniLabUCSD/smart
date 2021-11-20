@@ -303,10 +303,10 @@ def read_smodel(filepath):
     sdf = pd.read_json(''.join(s_string)).sort_index()
     cdf = pd.read_json(''.join(c_string)).sort_index()
     rdf = pd.read_json(''.join(r_string)).sort_index()
-    PD = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
-    SD = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
-    CD = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
-    RD = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
+    pc = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
+    sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
+    cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
+    rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
 
-    return PD, SD, CD, RD
+    return pc, sc, cc, rc
 

@@ -30,11 +30,11 @@ root = 0
 # ==============================================================================
 # ==============================================================================
 class Model(object):
-    def __init__(self, PD, SD, CD, RD, config, solver_system, parent_mesh=None):
-        self.PD = PD
-        self.SD = SD
-        self.CD = CD
-        self.RD = RD
+    def __init__(self, pc, sc, cc, rc, config, solver_system, parent_mesh=None):
+        self.pc = pc
+        self.sc = sc
+        self.cc = cc
+        self.rc = rc
         self.config = config
         # Check that solver_system is valid
         solver_system.check_solver_system_validity()
@@ -74,54 +74,54 @@ class Model(object):
         # parameter/unit assembly
         print("\n\n********** Model initialization (Part 1/6) **********")
         print("Assembling parameters and units...\n")
-        self.PD.do_to_all('assemble_units', {'unit_name': 'unit'})
-        self.PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        self.PD.do_to_all('assembleTimeDependentParameters')
-        self.SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-        self.SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
-        self.CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-        self.RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+        self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
+        self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        self.pc.do_to_all('assembleTimeDependentParameters')
+        self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+        self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
 
         # linking containers with one another
         print("\n\n********** Model initialization (Part 2/6) **********")
         print("Linking different containers with one another...\n")
-        self.RD.link_object(self.PD,'paramDict','name','paramDictValues', value_is_key=True)
-        self.SD.link_object(self.CD,'compartment_name','name','compartment')
-        self.SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        self.RD.do_to_all('get_involved_species_and_compartments', {"SD": self.SD, "CD": self.CD})
-        self.RD.link_object(self.SD,'involved_species','name','involved_species_link')
+        self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
+        self.sc.link_object(self.cc,'compartment_name','name','compartment')
+        self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
+        self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
 
         # meshes
         print("\n\n********** Model initialization (Part 3/6) **********")
         print("Loading in mesh and computing statistics...\n")
-        setattr(self.CD, 'meshes', {self.parent_mesh.name: self.parent_mesh.mesh})
-        self.CD.extract_submeshes(save_to_file=False)
-        self.CD.compute_scaling_factors()
+        setattr(self.cc, 'meshes', {self.parent_mesh.name: self.parent_mesh.mesh})
+        self.cc.extract_submeshes(save_to_file=False)
+        self.cc.compute_scaling_factors()
 
         # Associate species and compartments
         print("\n\n********** Model initialization (Part 4/6) **********")
         print("Associating species with compartments...\n")
-        num_species_per_compartment = self.RD.get_species_compartment_counts(self.SD, self.CD)
-        self.CD.get_min_max_dim()
-        self.SD.assemble_compartment_indices(self.RD, self.CD)
-        self.CD.add_property_to_all('is_in_a_reaction', False)
-        self.CD.add_property_to_all('V', None)
+        num_species_per_compartment = self.rc.get_species_compartment_counts(self.sc, self.cc)
+        self.cc.get_min_max_dim()
+        self.sc.assemble_compartment_indices(self.rc, self.cc)
+        self.cc.add_property_to_all('is_in_a_reaction', False)
+        self.cc.add_property_to_all('V', None)
 
         # dolfin functions
         print("\n\n********** Model initialization (Part 5/6) **********")
         print("Creating dolfin functions and assinging initial conditions...\n")
-        self.SD.assemble_dolfin_functions(self.RD, self.CD)
-        self.u = self.SD.u
-        self.v = self.SD.v
-        self.V = self.SD.V
+        self.sc.assemble_dolfin_functions(self.rc, self.cc)
+        self.u = self.sc.u
+        self.v = self.sc.v
+        self.V = self.sc.V
         self.assign_initial_conditions()
 
         print("\n\n********** Model initialization (Part 6/6) **********")
         print("Assembling reactive and diffusive fluxes...\n")
-        self.RD.reaction_to_fluxes()
-        #self.RD.do_to_all('reaction_to_fluxes')
-        self.FD = self.RD.get_flux_container()
-        self.FD.do_to_all('get_additional_flux_properties', {"CD": self.CD, "solver_system": self.solver_system})
+        self.rc.reaction_to_fluxes()
+        #self.rc.do_to_all('reaction_to_fluxes')
+        self.FD = self.rc.get_flux_container()
+        self.FD.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
         self.FD.do_to_all('flux_to_dolfin')
  
         self.set_allow_extrapolation()
@@ -137,58 +137,58 @@ class Model(object):
         # parameter/unit assembly
         print("\n\n********** Model initialization (Part 1/6) **********")
         print("Assembling parameters and units...\n")
-        self.PD.do_to_all('assemble_units', {'unit_name': 'unit'})
-        self.PD.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        self.PD.do_to_all('assembleTimeDependentParameters')
-        self.SD.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-        self.SD.do_to_all('assemble_units', {'unit_name': 'D_units'})
-        self.CD.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-        self.RD.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+        self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
+        self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        self.pc.do_to_all('assembleTimeDependentParameters')
+        self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+        self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
 
         # linking containers with one another
         print("\n\n********** Model initialization (Part 2/6) **********")
         print("Linking different containers with one another...\n")
-        self.RD.link_object(self.PD,'paramDict','name','paramDictValues', value_is_key=True)
-        self.SD.link_object(self.CD,'compartment_name','name','compartment')
-        self.SD.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        self.RD.do_to_all('get_involved_species_and_compartments', {"SD": self.SD, "CD": self.CD})
-        self.RD.link_object(self.SD,'involved_species','name','involved_species_link')
+        self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
+        self.sc.link_object(self.cc,'compartment_name','name','compartment')
+        self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
+        self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
 
         # meshes
         print("\n\n********** Model initialization (Part 3/6) **********")
         print("Loading in mesh and computing statistics...\n")
-        self.CD.get_min_max_dim()
-        #setattr(self.CD, 'meshes', {self.mesh.name: self.mesh.mesh})
-        #self.CD.extract_submeshes('cyto', save_to_file=False)
+        self.cc.get_min_max_dim()
+        #setattr(self.cc, 'meshes', {self.mesh.name: self.mesh.mesh})
+        #self.cc.extract_submeshes('cyto', save_to_file=False)
         if self.parent_mesh is not None:
-            self.CD.extract_submeshes_refactor(self.parent_mesh, save_to_file=False)
+            self.cc.extract_submeshes_refactor(self.parent_mesh, save_to_file=False)
         else:
             raise ValueError("There is no parent mesh.")
-        self.CD.compute_scaling_factors()
+        self.cc.compute_scaling_factors()
 
         # Associate species and compartments
         print("\n\n********** Model initialization (Part 4/6) **********")
         print("Associating species with compartments...\n")
-        num_species_per_compartment = self.RD.get_species_compartment_counts(self.SD, self.CD)
-        self.SD.assemble_compartment_indices(self.RD, self.CD)
-        self.CD.add_property_to_all('is_in_a_reaction', False)
-        self.CD.add_property_to_all('V', None)
+        num_species_per_compartment = self.rc.get_species_compartment_counts(self.sc, self.cc)
+        self.sc.assemble_compartment_indices(self.rc, self.cc)
+        self.cc.add_property_to_all('is_in_a_reaction', False)
+        self.cc.add_property_to_all('V', None)
 
         # dolfin functions
         print("\n\n********** Model initialization (Part 5/6) **********")
         print("Creating dolfin functions and assinging initial conditions...\n")
-        self.SD.assemble_dolfin_functions(self.RD, self.CD)
-        self.u = self.SD.u
-        self.v = self.SD.v
-        self.V = self.SD.V
+        self.sc.assemble_dolfin_functions(self.rc, self.cc)
+        self.u = self.sc.u
+        self.v = self.sc.v
+        self.V = self.sc.V
         self.assign_initial_conditions()
 
         print("\n\n********** Model initialization (Part 6/6) **********")
         print("Assembling reactive and diffusive fluxes...\n")
-        self.RD.reaction_to_fluxes()
-        #self.RD.do_to_all('reaction_to_fluxes')
-        self.FD = self.RD.get_flux_container()
-        self.FD.do_to_all('get_additional_flux_properties', {"CD": self.CD, "solver_system": self.solver_system})
+        self.rc.reaction_to_fluxes()
+        #self.rc.do_to_all('reaction_to_fluxes')
+        self.FD = self.rc.get_flux_container()
+        self.FD.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
         self.FD.do_to_all('flux_to_dolfin')
  
         self.set_allow_extrapolation()
@@ -278,11 +278,11 @@ class Model(object):
 
 
     def assemble_diffusive_fluxes(self):
-        min_dim = min(self.CD.get_property('dimensionality').values())
-        max_dim = max(self.CD.get_property('dimensionality').values())
+        min_dim = min(self.cc.get_property('dimensionality').values())
+        max_dim = max(self.cc.get_property('dimensionality').values())
         dT = self.dT
 
-        for sp_name, sp in self.SD.Dict.items():
+        for sp_name, sp in self.sc.Dict.items():
             if sp.is_in_a_reaction:
                 if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
                     u = sp.u['t']
@@ -326,7 +326,7 @@ class Model(object):
         split the forms into a bilinear and linear component, for Newton we
         simply solve F(u;v)=0.
         """
-        comp_list = [self.CD.Dict[key] for key in self.u.keys()]
+        comp_list = [self.cc.Dict[key] for key in self.u.keys()]
         self.split_forms = ddict(dict)
         form_types = set([f.form_type for f in self.Forms.form_list])
 
@@ -467,26 +467,26 @@ class Model(object):
         
         
 
-    #     com = self.CD.Dict[x_compartment]
-    #     #com_s = self.CD.Dict[s_compartment]
+    #     com = self.cc.Dict[x_compartment]
+    #     #com_s = self.cc.Dict[s_compartment]
     #     dx = com.dx
     #     ds = com.ds
 
     #     if species_to_check is None:
     #         print('Assuming mass of all species are conserved, and the stiochiometry coefficient for every species is one')
-    #         species_to_check = {i: 1 for i in self.SD.Dict}
+    #         species_to_check = {i: 1 for i in self.sc.Dict}
     #     target_unit_dict={}
     #     coefficient = {}
     #     max_dim=com.dimensionality
     #     mass=0
     #     for i in species_to_check:
-    #         s=self.SD.Dict[i]
+    #         s=self.sc.Dict[i]
     #         target_unit_dict[i] = ureg.molecule/com.compartment_units.units**s.dimensionality
     #         coefficient[i] = s.concentration_units.to(target_unit_dict[i]).to_tuple()[0]
     #         if s.dimensionality == max_dim:
     #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*dx)
     #         else:
-    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.CD.Dict[s.compartment_name].cell_marker))
+    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.cc.Dict[s.compartment_name].cell_marker))
     #     ##compartment unit^comp_dim
     #     return mass
 
@@ -502,13 +502,13 @@ class Model(object):
     #     if initial_guess_for_root is None:
     #         print("Using the initial condition from config files. Unites will be automatically converted!")
     #     coefficient_dict={}
-    #     target_unit = self.SD.Dict[list(self.SD.Dict.keys())[0]].concentration_units
-    #     for i in self.SD.Dict:
+    #     target_unit = self.sc.Dict[list(self.sc.Dict.keys())[0]].concentration_units
+    #     for i in self.sc.Dict:
     #         try:
-    #             coefficient_dict[i] = self.SD.Dict[i].concentration_units.to(target_unit).to_tuple()[0]
+    #             coefficient_dict[i] = self.sc.Dict[i].concentration_units.to(target_unit).to_tuple()[0]
     #         except:
     #             raise RuntimeError('Units mismatched for a well-mixed system')
-    #     initial_guess_for_root = [(coefficient_dict[i] * self.SD.Dict[i].initial_condition) for i in self.SD.Dict]
+    #     initial_guess_for_root = [(coefficient_dict[i] * self.sc.Dict[i].initial_condition) for i in self.sc.Dict]
     #     # if initial_guess_for_root is None:
     #     #     initial_guess_for_root = [0]*num_params
     #     #     ("Warning: The initial condition of species is not given")
@@ -528,8 +528,8 @@ class Model(object):
     
     # def get_lambdified(self):
         
-    #     sps = [i for i in self.SD.Dict]
-    #     func_dict = {i: None for i in list(self.SD.Dict.keys())}
+    #     sps = [i for i in self.sc.Dict]
+    #     func_dict = {i: None for i in list(self.sc.Dict.keys())}
     #     for f in self.FD.Dict:
     #         sp = self.FD.Dict[f].species_name
     #         if func_dict[sp] is None:
@@ -540,8 +540,8 @@ class Model(object):
             
     #     func_vector=[]
     #     for j in func_dict:    
-    #         for i in self.PD.Dict:
-    #             func_dict[j] = func_dict[j].subs(i, self.PD.Dict[i].value)
+    #         for i in self.pc.Dict:
+    #             func_dict[j] = func_dict[j].subs(i, self.pc.Dict[i].value)
             
     #         lam = sympy.lambdify(sps, func_dict[j])
     #         func_vector.append(lam)
@@ -654,7 +654,7 @@ class Model(object):
                 raise Exception("Either t0<0 or dt<=0, is this the desired behavior?")
 
         # Update time dependent parameters
-        for param_name, param in self.PD.Dict.items():
+        for param_name, param in self.pc.Dict.items():
             # check to make sure a parameter wasn't assigned a new value more than once
             value_assigned = 0
             if not param.is_time_dependent:
@@ -728,7 +728,7 @@ class Model(object):
             Print("Assigning old value of u to species in compartment %s" % comp_name)
 
     def update_solution_boundary_to_volume(self):
-        for comp_name in self.CD.Dict.keys():
+        for comp_name in self.cc.Dict.keys():
             for key in self.u[comp_name].keys():
                 if key[0:2] == 'v_': # fixme
                     d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
@@ -736,7 +736,7 @@ class Model(object):
                     Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
 
     def update_solution_volume_to_boundary(self):
-        for comp_name in self.CD.Dict.keys():
+        for comp_name in self.cc.Dict.keys():
             for key in self.u[comp_name].keys():
                 if key[0:2] == 'b_': # fixme
                     #self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
@@ -748,8 +748,8 @@ class Model(object):
         self.stopwatch("Boundary reactions forward")
 
         # solve boundary problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality < self.CD.max_dim:
+        for comp_name, comp in self.cc.Dict.items():
+            if comp.dimensionality < self.cc.max_dim:
                 self.nonlinear_solve(comp_name, dt_factor=dt_factor)
         self.stopwatch("Boundary reactions forward", stop=True)
 
@@ -757,8 +757,8 @@ class Model(object):
         self.stopwatch("Volume reactions forward")
 
         # solve volume problem(s)
-        for comp_name, comp in self.CD.Dict.items():
-            if comp.dimensionality == self.CD.max_dim:
+        for comp_name, comp in self.cc.Dict.items():
+            if comp.dimensionality == self.cc.max_dim:
                 self.nonlinear_solve(comp_name, dt_factor=dt_factor)
         self.stopwatch("Volume reactions forward", stop=True)
 
@@ -822,7 +822,7 @@ class Model(object):
             self.stopping_conditions['F_abs'].update({comp_name: Fabs})
             #color_print(f"{'Computed F_abs for component '+comp_name+': ': <40} {Fabs:.4e}", color='green')
 
-        for sp_name, sp in self.SD.Dict.items():
+        for sp_name, sp in self.sc.Dict.items():
             uvec = self.dolfin_get_function_values(sp, ukey='u')
             ukvec = self.dolfin_get_function_values(sp, ukey='k')
             udiff = uvec - ukvec
@@ -962,21 +962,21 @@ class Model(object):
 #===============================================================================
 #===============================================================================
     def init_solutions_and_plots(self):
-        self.data.initSolutionFiles(self.SD, self.config)
+        self.data.initSolutionFiles(self.sc, self.config)
         self.data.storeSolutionFiles(self.u, self.t, self.config)
-        self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        self.data.initPlot(self.config, self.SD, self.FD)
+        self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.FD, self.NLidx)
+        self.data.initPlot(self.config, self.sc, self.FD)
 
     def post_process(self):
-        self.data.compute_statistics(self.u, self.t, self.dt, self.SD, self.PD, self.CD, self.FD, self.NLidx)
-        self.data.compute_probe_values(self.u, self.SD)
+        self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.FD, self.NLidx)
+        self.data.compute_probe_values(self.u, self.sc)
         self.data.outputPickle()
         self.data.outputCSV()
 
     def plot_solution(self):
         self.data.storeSolutionFiles(self.u, self.t, self.config)
         self.data.plotParameters(self.config)
-        self.data.plotSolutions(self.config, self.SD)
+        self.data.plotSolutions(self.config, self.sc)
         self.data.plotFluxes(self.config)
         self.data.plotSolverStatus(self.config)
 
@@ -1068,7 +1068,7 @@ class Model(object):
 
     def assign_initial_conditions(self):
         ukeys = ['k', 'n', 'u']
-        for sp_name, sp in self.SD.Dict.items():
+        for sp_name, sp in self.sc.Dict.items():
             comp_name = sp.compartment_name
             for ukey in ukeys:
                 self.dolfin_set_function_values(sp, ukey, sp.initial_condition)

@@ -49,10 +49,10 @@ class Data(object):
         self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
 
-    def initSolutionFiles(self, SD, config):
+    def initSolutionFiles(self, sc, config):
         output_type = config.output_type
 
-        for sp_name, sp in SD.Dict.items():
+        for sp_name, sp in sc.Dict.items():
             self.solutions[sp_name] = {}
 
             self.solutions[sp_name]['num_species'] = sp.compartment.num_species
@@ -129,9 +129,9 @@ class Data(object):
         return {'min': umin, 'mean': umean, 'max': umax, 'std': ustd}
 
 
-    def compute_statistics(self, u, t, dt, SD, PD, CD, FD, NLidx):
+    def compute_statistics(self, u, t, dt, sc, pc, cc, FD, NLidx):
         #for sp_name in speciesList:
-        for sp_name, sp in SD.Dict.items():
+        for sp_name, sp in sc.Dict.items():
             comp_name = self.solutions[sp_name]['comp_name']
             comp_idx = self.solutions[sp_name]['comp_idx']
 
@@ -145,7 +145,7 @@ class Data(object):
                     self.solutions[sp_name][key].append(value)
 
         # store time dependent parameters
-        for param in PD.Dict.values():
+        for param in pc.Dict.values():
             if param.is_time_dependent:
                 self.parameters[param.name].append(param.value)
 
@@ -170,7 +170,7 @@ class Data(object):
         for i in flux_indices:
             flux_name = flux_names[i]
             flux = FD.Dict[flux_name]
-            area_units = CD.Dict[flux.source_compartment].compartment_units**2
+            area_units = cc.Dict[flux.source_compartment].compartment_units**2
             scale_to_molecule_per_s = (1*flux.flux_units*area_units).to(ureg.molecule/ureg.s).magnitude
             #value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
             value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
@@ -182,8 +182,8 @@ class Data(object):
             flux_name_2 = flux_names[j]
             flux_1 = FD.Dict[flux_name_1]
             flux_2 = FD.Dict[flux_name_2]
-            area_units_1 = CD.Dict[flux_1.source_compartment].compartment_units**2
-            area_units_2 = CD.Dict[flux_2.source_compartment].compartment_units**2
+            area_units_1 = cc.Dict[flux_1.source_compartment].compartment_units**2
+            area_units_2 = cc.Dict[flux_2.source_compartment].compartment_units**2
 
             scale_to_molecule_per_s_1 = (1*flux_1.flux_units*area_units_1).to(ureg.molecule/ureg.s).magnitude
             scale_to_molecule_per_s_2 = (1*flux_2.flux_units*area_units_2).to(ureg.molecule/ureg.s).magnitude
@@ -203,8 +203,8 @@ class Data(object):
         else:
             self.NLidxvec.append(max(NLidx.values()))
 
-    #def computeProbeValues(self, u, t, dt, SD, PD, CD, FD, NLidx):
-    def compute_probe_values(self, u, SD):
+    #def computeProbeValues(self, u, t, dt, sc, pc, cc, FD, NLidx):
+    def compute_probe_values(self, u, sc):
         """
         Computes the values of functions at various coordinates
         """
@@ -212,8 +212,8 @@ class Data(object):
         #y_list = self.config.output['points_y']
 
         for sp_name, coord_list in self.config.probe_plot.items():
-            comp = SD.Dict[sp_name].compartment
-            sp_idx = SD.Dict[sp_name].compartment_index
+            comp = sc.Dict[sp_name].compartment
+            sp_idx = sc.Dict[sp_name].compartment_index
             if sp_name not in self.probe_solutions.keys():
                 self.probe_solutions[sp_name] = {}
             for coords in coord_list:
@@ -259,7 +259,7 @@ class Data(object):
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
-    def initPlot(self, config, SD, FD):
+    def initPlot(self, config, sc, FD):
         if rank==root:
             if not os.path.exists(config.directory['plots']):
                 os.makedirs(config.directory['plots'])
@@ -267,7 +267,7 @@ class Data(object):
 
         maxCols = 3
         # solution plots 
-        self.groups = list(set([p.group for p in SD.Dict.values()]))
+        self.groups = list(set([p.group for p in sc.Dict.values()]))
         if 'Null' in self.groups: self.groups.remove('Null')
         numPlots = len(self.groups)
         #numPlots = len(self.solutions.keys())
@@ -360,7 +360,7 @@ class Data(object):
             self.plots['fluxes'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
-    def plotSolutions(self, config, SD, figsize=(160,160)):
+    def plotSolutions(self, config, sc, figsize=(160,160)):
         plot_settings = config.plot_settings
         dir_settings = config.directory
 
@@ -370,7 +370,7 @@ class Data(object):
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.clear()
             sidx = 0
-            for param_name, param in SD.Dict.items():
+            for param_name, param in sc.Dict.items():
                 if param.group == group:
 
                     soln =  self.solutions[param_name]
@@ -555,9 +555,9 @@ class Data(object):
 #    fig, ax = plt.subplots(1,1, figsize=(10, 8))
 #    
 #    G=nx.DiGraph()
-#    reaction = model.RD.Dict[reaction_expr]
-#    lhs_list = [model.SD.Dict[i] for i in reaction.LHS]
-#    rhs_list = [model.SD.Dict[i] for i in reaction.RHS]
+#    reaction = model.rc.Dict[reaction_expr]
+#    lhs_list = [model.sc.Dict[i] for i in reaction.LHS]
+#    rhs_list = [model.sc.Dict[i] for i in reaction.RHS]
 #    if output=='detailed':
 #        reaction_f_node = reaction_node(reaction.eqn_f)
 #        reaction_r_node = reaction_node(reaction.eqn_r)

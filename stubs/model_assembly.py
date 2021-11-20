@@ -92,7 +92,7 @@ class _ObjectContainer(object):
 
         Example Usage
         -------------
-        CD.where_equals('compartment_name', 'cyto')
+        cc.where_equals('compartment_name', 'cyto')
 
         Returns
         -------
@@ -125,10 +125,10 @@ class _ObjectContainer(object):
 
         Example Usage
         -------------
-        SD = {'key0': sd0, 'key1': sd1}; CD = {'key0': cd0, 'key1': cd1}
+        sc = {'key0': sd0, 'key1': sd1}; cc = {'key0': cd0, 'key1': cd1}
         sd0.compartment_name == 'cyto'
         cd0.name == 'cyto'
-        >> SD.link_object(CD,'compartment_name','name','compartment')
+        >> sc.link_object(cc,'compartment_name','name','compartment')
         sd0.compartment == cd0
 
         Returns
@@ -374,11 +374,11 @@ class SpeciesContainer(_ObjectContainer):
         super().__init__(Species, df, Dict)
         self.properties_to_print = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
-    def assemble_compartment_indices(self, RD, CD):
+    def assemble_compartment_indices(self, rc, cc):
         """
         Adds a column to the species dataframe which indicates the index of a species relative to its compartment
         """
-        num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
+        num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
         for compartment, num_species in num_species_per_compartment.items():
             idx = 0
             comp_species = [sp for sp in self.Dict.values() if sp.compartment_name==compartment]
@@ -390,7 +390,7 @@ class SpeciesContainer(_ObjectContainer):
                     print('Warning: species %s is not used in any reactions!' % sp.name)
 
 
-    def assemble_dolfin_functions(self, RD, CD):
+    def assemble_dolfin_functions(self, rc, cc):
         """
         define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
         IMPORTANT: this function will create additional species on boundaries in order to use operator-splitting later on
@@ -400,28 +400,28 @@ class SpeciesContainer(_ObjectContainer):
         """
 
         # functions to run beforehand as we need their results
-        num_species_per_compartment = RD.get_species_compartment_counts(self, CD)
-        #CD.get_min_max_dim() # refactor
-        self.assemble_compartment_indices(RD, CD)
-        CD.add_property_to_all('is_in_a_reaction', False)
-        CD.add_property_to_all('V', None)
+        num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
+        #cc.get_min_max_dim() # refactor
+        self.assemble_compartment_indices(rc, cc)
+        cc.add_property_to_all('is_in_a_reaction', False)
+        cc.add_property_to_all('V', None)
 
         V, u, v = {}, {}, {}
         for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = CD.Dict[compartment_name].dimensionality
-            CD.Dict[compartment_name].num_species = num_species
+            compartmentDim = cc.Dict[compartment_name].dimensionality
+            cc.Dict[compartment_name].num_species = num_species
             if rank==root:
                 print('Compartment %s (dimension: %d) has %d species associated with it' %
                       (compartment_name, compartmentDim, num_species))
 
             # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
             if num_species == 1:
-                V[compartment_name] = d.FunctionSpace(CD.meshes[compartment_name], 'P', 1)
+                V[compartment_name] = d.FunctionSpace(cc.meshes[compartment_name], 'P', 1)
                 u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunction(V[compartment_name]),
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunction(V[compartment_name])
             else: # vector space
-                V[compartment_name] = d.VectorFunctionSpace(CD.meshes[compartment_name], 'P', 1, dim=num_species)
+                V[compartment_name] = d.VectorFunctionSpace(cc.meshes[compartment_name], 'P', 1, dim=num_species)
                 u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunctions(V[compartment_name]),
                 'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
                 v[compartment_name] = d.TestFunctions(V[compartment_name])
@@ -430,10 +430,10 @@ class SpeciesContainer(_ObjectContainer):
         # to function spaces of the surrounding mesh
         V['boundary'] = {}
         for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = CD.Dict[compartment_name].dimensionality
-            if compartmentDim == CD.max_dim: # mesh may have boundaries
+            compartmentDim = cc.Dict[compartment_name].dimensionality
+            if compartmentDim == cc.max_dim: # mesh may have boundaries
                 V['boundary'][compartment_name] = {}
-                for mesh_name, mesh in CD.meshes.items():
+                for mesh_name, mesh in cc.meshes.items():
                     if compartment_name != mesh_name and mesh.topology().dim() < compartmentDim:
                         if num_species == 1:
                             boundaryV = d.FunctionSpace(mesh, 'P', 1)
@@ -446,10 +446,10 @@ class SpeciesContainer(_ObjectContainer):
         # to function spaces of the associated volume
         V['volume'] = {}
         for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = CD.Dict[compartment_name].dimensionality
-            if compartmentDim == CD.min_dim: # mesh may be a boundary with a connected volume
+            compartmentDim = cc.Dict[compartment_name].dimensionality
+            if compartmentDim == cc.min_dim: # mesh may be a boundary with a connected volume
                 V['volume'][compartment_name] = {}
-                for mesh_name, mesh in CD.meshes.items():
+                for mesh_name, mesh in cc.meshes.items():
                     if compartment_name != mesh_name and mesh.topology().dim() > compartmentDim:
                         if num_species == 1:
                             volumeV = d.FunctionSpace(mesh, 'P', 1)
@@ -474,7 +474,7 @@ class SpeciesContainer(_ObjectContainer):
                         sp.v = v[sp.compartment_name][sp.compartment_index]
 
         # # associate function spaces with dataframe
-        for key, comp in CD.Dict.items():
+        for key, comp in cc.Dict.items():
             if comp.is_in_a_reaction:
                 comp.V = V[comp.name]
 
@@ -770,13 +770,13 @@ class ReactionContainer(_ObjectContainer):
         #self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
-    def get_species_compartment_counts(self, SD, CD):
+    def get_species_compartment_counts(self, sc, cc):
         """
         Returns a Counter object with the number of times a species appears in each compartment
         """
-        self.do_to_all('get_involved_species_and_compartments', {"SD": SD, "CD": CD})
+        self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
         all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.Dict.values()] for sp in species_set])
-        for sp_name, sp in SD.Dict.items():
+        for sp_name, sp in sc.Dict.items():
             if sp in all_involved_species:
                 sp.is_in_a_reaction = True
 
@@ -842,18 +842,18 @@ class Reaction(_ObjectInstance):
         rxnExpr = rxnExpr.subs(self.speciesDict)
         self.eqn_f = rxnExpr
 
-    def get_involved_species_and_compartments(self, SD=None, CD=None):
+    def get_involved_species_and_compartments(self, sc=None, cc=None):
         # used to get number of active species in each compartment
         self.involved_species = set(self.LHS + self.RHS)
         for eqn in ['eqn_r', 'eqn_f']:
             if hasattr(self, eqn):
                 varSet = {str(x) for x in self.eqn_f.free_symbols}
-                spSet = varSet.intersection(SD.Dict.keys())
+                spSet = varSet.intersection(sc.Dict.keys())
                 self.involved_species = self.involved_species.union(spSet)
 
-        self.involved_compartments = dict(set([(SD.Dict[sp_name].compartment_name, SD.Dict[sp_name].compartment) for sp_name in self.involved_species]))
+        self.involved_compartments = dict(set([(sc.Dict[sp_name].compartment_name, sc.Dict[sp_name].compartment) for sp_name in self.involved_species]))
         if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: CD.Dict[self.explicit_restriction_to_domain]})
+            self.involved_compartments.update({self.explicit_restriction_to_domain: cc.Dict[self.explicit_restriction_to_domain]})
 
         if len(self.involved_compartments) not in (1,2):
             raise Exception("Number of compartments involved in a flux must be either one or two!")
@@ -916,18 +916,18 @@ class Flux(_ObjectInstance):
         self.involved_parameters = list(paramDict.keys())
 
 
-    def get_additional_flux_properties(self, CD, solver_system):
+    def get_additional_flux_properties(self, cc, solver_system):
         # get additional properties of the flux
-        self.get_involved_species_parameters_compartment(CD)
+        self.get_involved_species_parameters_compartment(cc)
         self.get_flux_dimensionality()
         self.get_boundary_marker()
         self.get_flux_units()
         self.get_is_linear()
         self.get_is_linear_comp()
         self.get_ukeys(solver_system)
-        self.get_integration_measure(CD, solver_system)
+        self.get_integration_measure(cc, solver_system)
 
-    def get_involved_species_parameters_compartment(self, CD):
+    def get_involved_species_parameters_compartment(self, cc):
         symStrList = {str(x) for x in self.symList}
         self.involved_species = symStrList.intersection(self.spDict.keys())
         self.involved_species.add(self.species_name)
@@ -941,7 +941,7 @@ class Flux(_ObjectInstance):
         self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.spDict.values()])
 
         if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: CD.Dict[self.explicit_restriction_to_domain]})
+            self.involved_compartments.update({self.explicit_restriction_to_domain: cc.Dict[self.explicit_restriction_to_domain]})
         if len(self.involved_compartments) not in (1,2):
             raise Exception("Number of compartments involved in a flux must be either one or two!")
     #def flux_to_dolfin(self):
@@ -1017,11 +1017,11 @@ class Flux(_ObjectInstance):
 
         self.is_linear_wrt_comp = is_linear_wrt_comp
 
-    def get_integration_measure(self, CD, solver_system):
+    def get_integration_measure(self, cc, solver_system):
         sp = self.spDict[self.species_name]
         flux_dim = self.flux_dimensionality
-        min_dim = min(CD.get_property('dimensionality').values())
-        max_dim = max(CD.get_property('dimensionality').values())
+        min_dim = min(cc.get_property('dimensionality').values())
+        max_dim = max(cc.get_property('dimensionality').values())
 
         # boundary flux
         if flux_dim[0] < flux_dim[1]:
