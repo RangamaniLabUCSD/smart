@@ -215,15 +215,15 @@ def json_to_ObjectContainer(json_str, data_type=None):
 
 
 
-def write_smodel(filepath, pdf, sdf, cdf, rdf):
+def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
     """
     Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
-    a .smodel file (a convenient concatenation of .json files with syntax
+    a .sbmodel file (a convenient concatenation of .json files with syntax
     similar to .xml)
     """
     f = open(filepath, "w")
 
-    f.write("<smodel>\n")
+    f.write("<sbmodel>\n")
     # parameters
     f.write("<parameters>\n")
     pdf.df.to_json(f)
@@ -241,15 +241,15 @@ def write_smodel(filepath, pdf, sdf, cdf, rdf):
     rdf.df.to_json(f)
     f.write("\n</reactions>\n")
 
-    f.write("</smodel>\n")
+    f.write("</sbmodel>\n")
     f.close()
-    print(f"Smodel file saved successfully as {filepath}!")
+    print(f"sbmodel file saved successfully as {filepath}!")
 
-def read_smodel(filepath):
+def read_sbmodel(filepath):
     f = open(filepath, "r")
     lines = f.read().splitlines()
-    if lines[0] != "<smodel>":
-        raise Exception(f"Is {filepath} a valid .smodel file?")
+    if lines[0] != "<sbmodel>":
+        raise Exception(f"Is {filepath} a valid .sbmodel file?")
 
     p_string = []
     c_string = []
@@ -261,8 +261,8 @@ def read_smodel(filepath):
         if line_idx >= len(lines):
             break
         line = lines[line_idx]
-        if line == '</smodel>':
-            print("Finished reading in smodel file")
+        if line == '</sbmodel>':
+            print("Finished reading in sbmodel file")
             break
 
         if line == '<parameters>':
