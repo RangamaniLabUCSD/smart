@@ -2,8 +2,8 @@ Here we explore models built using just two different simple kinetic systems + s
 
 File and directories are organized as such: 
   /exampleXY
-    example_XY_model.py    [run this script to generate the .smodel file]
-    example_XY.smodel      [all data necessary for model]
+    example_XY_model.py    [run this script to generate the .sbmodel file]
+    example_XY.sbmodel      [all data necessary for model]
     example_XY_run.py      [driver script - run to simulate the model]
     some_mesh_file.xml     [dolfin format]
 

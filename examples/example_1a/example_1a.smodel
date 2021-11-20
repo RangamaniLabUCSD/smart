@@ -1,4 +1,4 @@
-<smodel>
+<sbmodel>
 <parameters>
 {"value":{"kdeg":5.0},"unit":{"kdeg":"1 \/ second"},"group":{"kdeg":"degradation rate"},"notes":{"kdeg":""},"is_time_dependent":{"kdeg":false},"sampling_file":{"kdeg":""},"sampling_data":{"kdeg":null},"preint_sampling_data":{"kdeg":null},"dolfinConstant":{"kdeg":null},"symExpr":{"kdeg":null},"preintegrated_symExpr":{"kdeg":null}}
 </parameters>
@@ -11,4 +11,4 @@
 <reactions>
 {"group":{"B linear degredation":"example reaction"},"LHS":{"B linear degredation":["B"]},"RHS":{"B linear degredation":[]},"paramDict":{"B linear degredation":{"on":"kdeg"}},"reaction_type":{"B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"B linear degredation":null},"speciesDict":{"B linear degredation":{}},"track_value":{"B linear degredation":false}}
 </reactions>
-</smodel>
+</sbmodel>

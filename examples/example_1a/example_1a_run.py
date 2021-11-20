@@ -9,7 +9,7 @@ cwd = os.getcwd()
 
 # Load in model and settings
 config          = stubs.config.Config()
-pc, sc, cc, rc  = stubs.common.read_smodel('lin_deg.smodel')
+sb_model     = stubs.common.read_sbmodel('lin_deg.sbmodel')
 
 # Define solvers
 mps             = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)

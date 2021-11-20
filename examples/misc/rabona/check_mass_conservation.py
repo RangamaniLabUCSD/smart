@@ -54,14 +54,14 @@ for meshfile in ['/Users/rabona/Documents/stubs/examples/cell2013_3d/cube_10.xml
 
 
                     # write out to file
-                    stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
+                    stubs.common.write_sbmodel(cwd + '/cell2013_3d.sbmodel', p, s, c, r)
                     # Load in model and settings
                     config = stubs.config.Config()
                     #pc = stubs.common.json_to_ObjectContainer('toy_model_2d/parameters.json', 'parameters')
                     #sc = stubs.common.json_to_ObjectContainer('toy_model_2d/species.json', 'species')
                     #cc = stubs.common.json_to_ObjectContainer('toy_model_2d/compartments.json', 'compartments')
                     #rc = stubs.common.json_to_ObjectContainer('toy_model_2d/reactions.json', 'reactions')
-                    pc, sc, cc, rc = stubs.common.read_smodel('cell2013_3d/cell2013_3d.smodel')
+                    pc, sc, cc, rc = stubs.common.read_sbmodel('cell2013_3d/cell2013_3d.sbmodel')
 
                     # Define solvers
                     mps = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)

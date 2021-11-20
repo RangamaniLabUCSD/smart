@@ -40,4 +40,4 @@ r.append('A+X <-> B', 'cell 2013', ['A','X'], ['B'], {"on": "kf", "off": "kr"})
 
 
 # write out to file
-stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
+stubs.common.write_sbmodel(cwd + '/cell2013_3d.sbmodel', p, s, c, r)

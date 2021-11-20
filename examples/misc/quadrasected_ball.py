@@ -43,4 +43,4 @@ r.append('B <-X-> A', 'Leak from ER to cyto', ['B'], ['A'], {"perm": "kf"},
 
 
 # write out to file
-stubs.common.write_smodel(cwd + '/cell2013_3d.smodel', p, s, c, r)
+stubs.common.write_sbmodel(cwd + '/cell2013_3d.sbmodel', p, s, c, r)

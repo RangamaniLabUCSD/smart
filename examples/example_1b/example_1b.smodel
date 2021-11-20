@@ -1,4 +1,4 @@
-<smodel>
+<sbmodel>
 <parameters>
 {"value":{"kf":5.0,"kr":0.1,"kdeg":2.0},"unit":{"kf":"1 \/ micromolar \/ second","kr":"1 \/ second","kdeg":"1 \/ second"},"group":{"kf":"forward rate","kr":"reverse rate","kdeg":"degradation rate"},"notes":{"kf":"","kr":"","kdeg":""},"is_time_dependent":{"kf":false,"kr":false,"kdeg":false},"sampling_file":{"kf":"","kr":"","kdeg":""},"sampling_data":{"kf":null,"kr":null,"kdeg":null},"preint_sampling_data":{"kf":null,"kr":null,"kdeg":null},"dolfinConstant":{"kf":null,"kr":null,"kdeg":null},"symExpr":{"kf":null,"kr":null,"kdeg":null},"preintegrated_symExpr":{"kf":null,"kr":null,"kdeg":null}}
 </parameters>
@@ -11,4 +11,4 @@
 <reactions>
 {"group":{"A+X <-> B":"First reaction","B linear degredation":"second reaction"},"LHS":{"A+X <-> B":["A","X"],"B linear degredation":["B"]},"RHS":{"A+X <-> B":["B"],"B linear degredation":[]},"paramDict":{"A+X <-> B":{"on":"kf","off":"kr"},"B linear degredation":{"on":"kdeg"}},"reaction_type":{"A+X <-> B":"mass_action","B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"A+X <-> B":null,"B linear degredation":null},"speciesDict":{"A+X <-> B":{},"B linear degredation":{}},"track_value":{"A+X <-> B":false,"B linear degredation":false}}
 </reactions>
-</smodel>
+</sbmodel>

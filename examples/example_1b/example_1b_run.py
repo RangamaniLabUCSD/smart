@@ -10,7 +10,7 @@ import stubs
 
 # Load in model and settings
 config = stubs.config.Config()
-pc, sc, cc, rc = stubs.common.read_smodel('example2.smodel')
+pc, sc, cc, rc = stubs.common.read_sbmodel('example2.sbmodel')
 
 # Define solvers
 mps = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)

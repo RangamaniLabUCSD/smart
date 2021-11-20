@@ -308,5 +308,5 @@ def read_smodel(filepath):
     cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
     rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
 
-    return pc, sc, cc, rc
-
+    return {'parameter_container': pc,   'species_container': sc, 
+            'compartment_container': cc, 'reaction_container': rc}
