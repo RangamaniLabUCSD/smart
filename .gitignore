@@ -86,3 +86,6 @@ ENV/
 
 # my personal settings
 Dockerfile_jgl
+
+# vs code
+**.code-workspace
