@@ -9,7 +9,7 @@ cwd = os.getcwd()
 
 # Load in model and settings
 config          = stubs.config.Config()
-sb_model     = stubs.common.read_sbmodel('lin_deg.sbmodel')
+sbmodel         = stubs.common.read_sbmodel('lin_deg.sbmodel')
 
 # Define solvers
 mps             = stubs.solvers.MultiphysicsSolver('iterative', eps_Fabs=1e-8)
@@ -22,7 +22,7 @@ solver_system   = stubs.solvers.SolverSystem(final_t = 0.4, initial_dt = 0.01, a
 # Load parent mesh
 parent_mesh = stubs.mesh.ParentMesh(mesh_filename=cwd+'/cell2013_3d/cube_10.xml')
 
-model = stubs.model.Model(pc, sc, cc, rc, config, solver_system, parent_mesh)
+model = stubs.model.Model(sbmodel, config, solver_system, parent_mesh)
 model.initialize_refactor()
 
 # solve system

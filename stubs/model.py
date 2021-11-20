@@ -30,11 +30,11 @@ root = 0
 # ==============================================================================
 # ==============================================================================
 class Model(object):
-    def __init__(self, pc, sc, cc, rc, config, solver_system, parent_mesh=None):
-        self.pc = pc
-        self.sc = sc
-        self.cc = cc
-        self.rc = rc
+    def __init__(self, smodel, config, solver_system, parent_mesh=None):
+        self.pc = smodel['parameter_container']
+        self.sc = smodel['species_container']
+        self.cc = smodel['compartment_container']
+        self.rc = smodel['reaction_container']
         self.config = config
         # Check that solver_system is valid
         solver_system.check_solver_system_validity()
