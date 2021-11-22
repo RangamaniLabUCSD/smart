@@ -189,6 +189,19 @@ class ReactionDF(object):
         self.df.to_json(name)
         print("Reactions generated successfully! Saved as %s" % name)
 
-
+def empty_sbmodel(output_type=tuple):
+    """
+    Convenience function. Gives an empty sbmodel
+    """
+    if output_type==tuple:
+        return (ParameterDF(), SpeciesDF(),
+                CompartmentDF(), ReactionDF())
+    elif output_type==dict:
+        return {'parameter_container': ParameterDF(),
+                'species_container': SpeciesDF(),
+                'compartment_container': CompartmentDF(),
+                'reaction_container': ReactionDF()}
+    else:
+        raise ValueError("Unknown output type.")
 
 

@@ -245,7 +245,7 @@ def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
     f.close()
     print(f"sbmodel file saved successfully as {filepath}!")
 
-def read_sbmodel(filepath):
+def read_sbmodel(filepath, output_type=dict):
     f = open(filepath, "r")
     lines = f.read().splitlines()
     if lines[0] != "<sbmodel>":
@@ -308,5 +308,8 @@ def read_sbmodel(filepath):
     cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
     rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
 
-    return {'parameter_container': pc,   'species_container': sc, 
-            'compartment_container': cc, 'reaction_container': rc}
+    if output_type==dict:
+        return {'parameter_container': pc,   'species_container': sc, 
+                'compartment_container': cc, 'reaction_container': rc}
+    elif output_type==tuple:
+        return (pc, sc, cc, rc)
