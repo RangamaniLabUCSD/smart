@@ -5,7 +5,7 @@ import pytest
 Test to see if stubs can write a sbmodel
 """
 @pytest.mark.stubs
-def test_stubs_define_sbmodel
+def test_stubs_define_sbmodel():
     unit = stubs.unit # unit registry
 
     # initialize 
