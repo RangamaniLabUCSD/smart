@@ -43,7 +43,7 @@ root = 0
 # Base Classes
 # ====================================================
 # ====================================================
-class _ObjectContainer(object):
+class ObjectContainer(object):
     """
     Parent class containing general methods used by all "containers"
     """
@@ -80,7 +80,7 @@ class _ObjectContainer(object):
 
     def where_equals(self, property_name, value):
         """
-        Links objects from ObjectContainer2 to ObjectContainer1 (the _ObjectContainer invoking
+        Links objects from ObjectContainer2 to ObjectContainer1 (the ObjectContainer invoking
         this method).
 
         Parameters
@@ -97,7 +97,7 @@ class _ObjectContainer(object):
         Returns
         -------
         objectList: list
-            List of objects from _ObjectContainer that matches the criterion
+            List of objects from ObjectContainer that matches the criterion
         """
         objList = []
         for key, obj in self.Dict.items():
@@ -107,15 +107,15 @@ class _ObjectContainer(object):
 
     def link_object(self, ObjectContainer2, property_name1, property_name2, linked_name, value_is_key=False):
         """
-        Links objects from ObjectContainer2 to ObjectContainer1 (the _ObjectContainer invoking
+        Links objects from ObjectContainer2 to ObjectContainer1 (the ObjectContainer invoking
         this method).
 
         Parameters
         ----------
         with_attribution : bool, Optional, default: True
             Set whether or not to display who the quote is from
-        ObjectContainer2 : _ObjectContainer type
-            _ObjectContainer with objects we are linking to
+        ObjectContainer2 : ObjectContainer type
+            ObjectContainer with objects we are linking to
         property_name1 : str
             Name of property of object in ObjectContainer1 to match
         property_name2 : str
@@ -133,8 +133,8 @@ class _ObjectContainer(object):
 
         Returns
         -------
-        ObjectContainer1 : _ObjectContainer
-            _ObjectContainer where each object has an added property linking to some
+        ObjectContainer1 : ObjectContainer
+            ObjectContainer where each object has an added property linking to some
             object from ObjectContainer2
         """
         for _, obj1 in self.Dict.items():
@@ -193,7 +193,7 @@ class _ObjectContainer(object):
                 getattr(instance, method_name)()
             else:
                 getattr(instance, method_name)(**kwargs)
-
+    
     def get_pandas_dataframe(self, properties_to_print=[], include_idx=True):
         df = pd.DataFrame()
         if include_idx:
@@ -282,7 +282,7 @@ class _ObjectContainer(object):
             pass
 
 
-class _ObjectInstance(object):
+class ObjectInstance(object):
     """
     Parent class containing general methods used by all stubs
     "objects": i.e. parameters, species, compartments, reactions, fluxes, forms
@@ -336,12 +336,12 @@ class _ObjectInstance(object):
 # ==============================================================================
 # ==============================================================================
 
-class ParameterContainer(_ObjectContainer):
+class ParameterContainer(ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Parameter, df, Dict)
         self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
 
-class Parameter(_ObjectInstance):
+class Parameter(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assembleTimeDependentParameters(self):
@@ -369,7 +369,7 @@ class Parameter(_ObjectInstance):
 
 
 
-class SpeciesContainer(_ObjectContainer):
+class SpeciesContainer(ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Species, df, Dict)
         self.properties_to_print = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
@@ -486,7 +486,7 @@ class SpeciesContainer(_ObjectContainer):
 
 
 
-class Species(_ObjectInstance):
+class Species(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
         self.sub_species = {} # additional compartments this species may live in in addition to its primary one
@@ -494,7 +494,7 @@ class Species(_ObjectInstance):
         self.is_an_added_species = False
         self.dof_map = {}
 
-class CompartmentContainer(_ObjectContainer):
+class CompartmentContainer(ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Compartment, df, Dict)
         self.properties_to_print = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
@@ -756,7 +756,7 @@ class CompartmentContainer(_ObjectContainer):
 
 
 
-class Compartment(_ObjectInstance):
+class Compartment(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def compute_nvolume(self):
@@ -764,7 +764,7 @@ class Compartment(_ObjectInstance):
 
 
 
-class ReactionContainer(_ObjectContainer):
+class ReactionContainer(ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Reaction, df, Dict)
         #self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
@@ -795,7 +795,7 @@ class ReactionContainer(_ObjectContainer):
         return FluxContainer(Dict=odict([(f.flux_name, f) for f in self.fluxList]))
 
 
-class Reaction(_ObjectInstance):
+class Reaction(ObjectInstance):
     def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None,
                  explicit_restriction_to_domain=False, speciesDict={}, track_value=False):
         if eqn_f_str:
@@ -883,7 +883,7 @@ class Reaction(_ObjectInstance):
 
 
 
-class FluxContainer(_ObjectContainer):
+class FluxContainer(ObjectContainer):
     def __init__(self, df=None, Dict=None):
         super().__init__(Flux, df, Dict)
         # self.properties_to_print = ['species_name', 'symEqn', 'sign', 'involved_species',
@@ -892,7 +892,7 @@ class FluxContainer(_ObjectContainer):
 
         self.properties_to_print = ['species_name', 'symEqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
-class Flux(_ObjectInstance):
+class Flux(ObjectInstance):
     def __init__(self, flux_name, species_name, symEqn, signed_stoich,
                  spDict, paramDict, group, parent_reaction=None,
                  explicit_restriction_to_domain=None, track_value=False):

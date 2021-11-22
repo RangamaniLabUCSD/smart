@@ -169,8 +169,10 @@ class Model(object):
         # Associate species and compartments
         print("\n\n********** Model initialization (Part 4/6) **********")
         print("Associating species with compartments...\n")
-        num_species_per_compartment = self.rc.get_species_compartment_counts(self.sc, self.cc)
+        _ = self.rc.get_species_compartment_counts(self.sc, self.cc)
         self.sc.assemble_compartment_indices(self.rc, self.cc)
+
+        # should be able to comment these two out
         self.cc.add_property_to_all('is_in_a_reaction', False)
         self.cc.add_property_to_all('V', None)
 
@@ -183,6 +185,7 @@ class Model(object):
         self.V = self.sc.V
         self.assign_initial_conditions()
 
+        # Assembling fluxes from reactions
         print("\n\n********** Model initialization (Part 6/6) **********")
         print("Assembling reactive and diffusive fluxes...\n")
         self.rc.reaction_to_fluxes()
