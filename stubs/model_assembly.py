@@ -60,7 +60,7 @@ class ObjectContainer(object):
     def add_property(self, property_name, item):
         setattr(self, property_name, item)
     def add_property_to_all(self, property_name, item):
-        for obj in self.Dict.values():
+        for obj in self.values:
             setattr(obj, property_name, item)
     def add(self, item):
         self[item.name] = item
@@ -74,7 +74,7 @@ class ObjectContainer(object):
     def get_property(self, property_name):
         # returns a dict of properties
         property_dict = {}
-        for key, obj in self.Dict.items():
+        for key, obj in self.items:
             property_dict[key] = getattr(obj, property_name)
         return property_dict
 
@@ -82,12 +82,21 @@ class ObjectContainer(object):
     def size(self):
         "Size of ObjectContainer"
         return len(self.Dict)
+    @property
+    def items(self):
+        return self.Dict.items()
+    @property
+    def values(self):
+        return self.Dict.values()
+    @property
+    def keys(self):
+        return self.Dict.keys()
 
     def __getitem__(self, key):
         "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
         return self[key]
-
     def __setitem__(self, key, newvalue):
+        "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
         self.Dict[key] = newvalue
 
     def where_equals(self, property_name, value):
@@ -112,7 +121,7 @@ class ObjectContainer(object):
             List of objects from ObjectContainer that matches the criterion
         """
         objList = []
-        for key, obj in self.Dict.items():
+        for key, obj in self.items:
             if getattr(obj, property_name) == value:
                 objList.append(obj)
         return objList
@@ -149,7 +158,7 @@ class ObjectContainer(object):
             ObjectContainer where each object has an added property linking to some
             object from ObjectContainer2
         """
-        for _, obj1 in self.Dict.items():
+        for _, obj1 in self.items:
             obj1_value = getattr(obj1, property_name1)
             # if type dict, then match values of entries with ObjectContainer2
             if type(obj1_value) == dict:
@@ -194,13 +203,13 @@ class ObjectContainer(object):
         """
         Convenience function to copy a property from a linked object
         """
-        for _, obj in self.Dict.items():
+        for _, obj in self.items:
             linked_obj = getattr(obj, linked_name)
             setattr(obj, property_name, getattr(linked_obj, linked_name_property))
 
 
     def do_to_all(self, method_name, kwargs=None):
-        for name, instance in self.Dict.items():
+        for name, instance in self.items:
             if kwargs is None:
                 getattr(instance, method_name)()
             else:
@@ -211,10 +220,10 @@ class ObjectContainer(object):
         if include_idx:
             if properties_to_print and 'idx' not in properties_to_print:
                 properties_to_print.insert(0, 'idx')
-            for idx, (name, instance) in enumerate(self.Dict.items()):
+            for idx, (name, instance) in enumerate(self.items):
                 df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx))
         else:
-            for idx, (name, instance) in enumerate(self.Dict.items()):
+            for idx, (name, instance) in enumerate(self.items):
                 df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print))
         # sometimes types are recast. change entries into their original types
         for dtypeName, dtype in self.dtypes.items():
@@ -249,7 +258,7 @@ class ObjectContainer(object):
         """
         Get an element of the object container ordered dict by referencing its index
         """
-        return list(self.Dict.values())[idx]
+        return list(self.values)[idx]
 
     def print(self, tablefmt='fancy_grid', properties_to_print=[]):
         if rank == root:
@@ -280,7 +289,7 @@ class ObjectContainer(object):
             elif hasattr(self, 'keyList'):
                 keyList = self.keyList
             else:
-                keyList = list(self.Dict.keys())
+                keyList = list(self.keys)
 
             if properties_to_print:
                 if type(properties_to_print) != list: properties_to_print=[properties_to_print]
@@ -393,7 +402,7 @@ class SpeciesContainer(ObjectContainer):
         num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
         for compartment, num_species in num_species_per_compartment.items():
             idx = 0
-            comp_species = [sp for sp in self.Dict.values() if sp.compartment_name==compartment]
+            comp_species = [sp for sp in self.values if sp.compartment_name==compartment]
             for sp in comp_species:
                 if sp.is_in_a_reaction:
                     sp.compartment_index = idx
@@ -471,7 +480,7 @@ class SpeciesContainer(ObjectContainer):
                         u[compartment_name]['v_'+mesh_name] = d.Function(volumeV, name="concentration_uv")
 
         # associate indexed functions with dataframe
-        for key, sp in self.Dict.items():
+        for key, sp in self.items:
             sp.u = {}
             sp.v = None
             if sp.is_in_a_reaction:
@@ -486,7 +495,7 @@ class SpeciesContainer(ObjectContainer):
                         sp.v = v[sp.compartment_name][sp.compartment_index]
 
         # # associate function spaces with dataframe
-        for key, comp in cc.Dict.items():
+        for key, comp in cc.items:
             if comp.is_in_a_reaction:
                 comp.V = V[comp.name]
 
@@ -543,7 +552,7 @@ class CompartmentContainer(ObjectContainer):
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
         # combine markers for subdomains specified as a list of markers
-        for comp_name, comp in self.Dict.items():
+        for comp_name, comp in self.items:
             if type(comp.cell_marker) == list:
                 if not all([type(x)==int for x in comp.cell_marker]):
                     raise ValueError("Cell markers were given as a list but not all elements were ints.")
@@ -563,7 +572,7 @@ class CompartmentContainer(ObjectContainer):
 
 
         # Loop through compartments: extract submeshes and integration measures
-        for comp_name, comp in self.Dict.items():
+        for comp_name, comp in self.items:
             # FEniCS doesn't allow parallelization of SubMeshes. We need
             # SubMeshes because one boundary will often have multiple domains of
             # interest with different species (e.g., PM, ER). By exporting the
@@ -671,7 +680,7 @@ class CompartmentContainer(ObjectContainer):
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
 
         # combine markers for subdomains specified as a list of markers
-        for comp_name, comp in self.Dict.items():
+        for comp_name, comp in self.items:
             if type(comp.cell_marker) == list:
                 if not all([type(x)==int for x in comp.cell_marker]):
                     raise ValueError("Cell markers were given as a list but not all elements were ints.")
@@ -691,7 +700,7 @@ class CompartmentContainer(ObjectContainer):
 
 
         # Loop through compartments: extract submeshes and integration measures
-        for comp_name, comp in self.Dict.items():
+        for comp_name, comp in self.items:
             # FEniCS doesn't allow parallelization of SubMeshes. We need
             # SubMeshes because one boundary will often have multiple domains of
             # interest with different species (e.g., PM, ER). By exporting the
@@ -756,13 +765,13 @@ class CompartmentContainer(ObjectContainer):
 
     def compute_scaling_factors(self):
         self.do_to_all('compute_nvolume')
-        for key, comp in self.Dict.items():
+        for key, comp in self.items:
             comp.scale_to = {}
-            for key2, comp2 in self.Dict.items():
+            for key2, comp2 in self.items:
                 if key != key2:
                     comp.scale_to.update({key2: comp.nvolume / comp2.nvolume})
     def get_min_max_dim(self):
-        comp_dims = [comp.dimensionality for comp in self.Dict.values()]
+        comp_dims = [comp.dimensionality for comp in self.values]
         self.min_dim = min(comp_dims)
         self.max_dim = max(comp_dims)
 
@@ -787,8 +796,8 @@ class ReactionContainer(ObjectContainer):
         Returns a Counter object with the number of times a species appears in each compartment
         """
         self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
-        all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.Dict.values()] for sp in species_set])
-        for sp_name, sp in sc.Dict.items():
+        all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.values] for sp in species_set])
+        for sp_name, sp in sc.items:
             if sp in all_involved_species:
                 sp.is_in_a_reaction = True
 
@@ -799,7 +808,7 @@ class ReactionContainer(ObjectContainer):
     def reaction_to_fluxes(self):
         self.do_to_all('reaction_to_fluxes')
         fluxList = []
-        for rxn in self.Dict.values():
+        for rxn in self.values:
             for f in rxn.fluxList:
                 fluxList.append(f)
         self.fluxList = fluxList
@@ -860,7 +869,7 @@ class Reaction(ObjectInstance):
         for eqn in ['eqn_r', 'eqn_f']:
             if hasattr(self, eqn):
                 varSet = {str(x) for x in self.eqn_f.free_symbols}
-                spSet = varSet.intersection(sc.Dict.keys())
+                spSet = varSet.intersection(sc.keys)
                 self.involved_species = self.involved_species.union(spSet)
 
         self.involved_compartments = dict(set([(sc[sp_name].compartment_name, sc[sp_name].compartment) for sp_name in self.involved_species]))

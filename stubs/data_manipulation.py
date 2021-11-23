@@ -52,7 +52,7 @@ class Data(object):
     def initSolutionFiles(self, sc, config):
         output_type = config.output_type
 
-        for sp_name, sp in sc.Dict.items():
+        for sp_name, sp in sc.items:
             self.solutions[sp_name] = {}
 
             self.solutions[sp_name]['num_species'] = sp.compartment.num_species
@@ -131,7 +131,7 @@ class Data(object):
 
     def compute_statistics(self, u, t, dt, sc, pc, cc, fc, nl_idx):
         #for sp_name in speciesList:
-        for sp_name, sp in sc.Dict.items():
+        for sp_name, sp in sc.items:
             comp_name = self.solutions[sp_name]['comp_name']
             comp_idx = self.solutions[sp_name]['comp_idx']
 
@@ -145,12 +145,12 @@ class Data(object):
                     self.solutions[sp_name][key].append(value)
 
         # store time dependent parameters
-        for param in pc.Dict.values():
+        for param in pc.values:
             if param.is_time_dependent:
                 self.parameters[param.name].append(param.value)
 
         # store fluxes
-        flux_names = [flux_name for flux_name, flux in fc.Dict.items() if flux.track_value]
+        flux_names = [flux_name for flux_name, flux in fc.items if flux.track_value]
         # remove forward/reverse flux labels
         temp = [flux_name.replace(' (r)','') for flux_name in flux_names]
         temp = [flux_name.replace(' (f)','') for flux_name in temp]
@@ -267,7 +267,7 @@ class Data(object):
 
         maxCols = 3
         # solution plots 
-        self.groups = list(set([p.group for p in sc.Dict.values()]))
+        self.groups = list(set([p.group for p in sc.values]))
         if 'Null' in self.groups: self.groups.remove('Null')
         numPlots = len(self.groups)
         #numPlots = len(self.solutions.keys())
@@ -285,7 +285,7 @@ class Data(object):
                 self.plots['parameters'].add_subplot(subplotRows,subplotCols,idx+1)
 
         # flux plots
-        flux_names = [flux_name for flux_name, flux in fc.Dict.items() if flux.track_value]
+        flux_names = [flux_name for flux_name, flux in fc.items if flux.track_value]
         numPlots = len(flux_names)
         if numPlots > 0:
             # remove forward/reverse flux labels
@@ -370,7 +370,7 @@ class Data(object):
             subplot = self.plots['solutions'].get_axes()[idx]
             subplot.clear()
             sidx = 0
-            for param_name, param in sc.Dict.items():
+            for param_name, param in sc.items:
                 if param.group == group:
 
                     soln =  self.solutions[param_name]

@@ -211,7 +211,7 @@ class Model(object):
         """
         Creates the actual dolfin objects for each flux. Checks units for consistency
         """
-        for j in self.fc.Dict.values():
+        for j in self.fc.values:
             total_scaling = 1.0 # all adjustments needed to get congruent units
             sp = j.spDict[j.species_name]
             prod = j.prod
@@ -285,7 +285,7 @@ class Model(object):
         max_dim = max(self.cc.get_property('dimensionality').values())
         dT = self.dT
 
-        for sp_name, sp in self.sc.Dict.items():
+        for sp_name, sp in self.sc.items:
             if sp.is_in_a_reaction:
                 if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
                     u = sp.u['t']
@@ -505,7 +505,7 @@ class Model(object):
     #     if initial_guess_for_root is None:
     #         print("Using the initial condition from config files. Unites will be automatically converted!")
     #     coefficient_dict={}
-    #     target_unit = self.sc[list(self.sc.Dict.keys())[0]].concentration_units
+    #     target_unit = self.sc[list(self.sc.keys)[0]].concentration_units
     #     for i in self.sc.Dict:
     #         try:
     #             coefficient_dict[i] = self.sc[i].concentration_units.to(target_unit).to_tuple()[0]
@@ -532,7 +532,7 @@ class Model(object):
     # def get_lambdified(self):
         
     #     sps = [i for i in self.sc.Dict]
-    #     func_dict = {i: None for i in list(self.sc.Dict.keys())}
+    #     func_dict = {i: None for i in list(self.sc.keys)}
     #     for f in self.fc.Dict:
     #         sp = self.fc[f].species_name
     #         if func_dict[sp] is None:
@@ -657,7 +657,7 @@ class Model(object):
                 raise Exception("Either t0<0 or dt<=0, is this the desired behavior?")
 
         # Update time dependent parameters
-        for param_name, param in self.pc.Dict.items():
+        for param_name, param in self.pc.items:
             # check to make sure a parameter wasn't assigned a new value more than once
             value_assigned = 0
             if not param.is_time_dependent:
@@ -731,7 +731,7 @@ class Model(object):
             Print("Assigning old value of u to species in compartment %s" % comp_name)
 
     def update_solution_boundary_to_volume(self):
-        for comp_name in self.cc.Dict.keys():
+        for comp_name in self.cc.keys:
             for key in self.u[comp_name].keys():
                 if key[0:2] == 'v_': # fixme
                     d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
@@ -739,7 +739,7 @@ class Model(object):
                     Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
 
     def update_solution_volume_to_boundary(self):
-        for comp_name in self.cc.Dict.keys():
+        for comp_name in self.cc.keys:
             for key in self.u[comp_name].keys():
                 if key[0:2] == 'b_': # fixme
                     #self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
@@ -751,7 +751,7 @@ class Model(object):
         self.stopwatch("Boundary reactions forward")
 
         # solve boundary problem(s)
-        for comp_name, comp in self.cc.Dict.items():
+        for comp_name, comp in self.cc.items:
             if comp.dimensionality < self.cc.max_dim:
                 self.nonlinear_solve(comp_name, dt_factor=dt_factor)
         self.stopwatch("Boundary reactions forward", stop=True)
@@ -760,7 +760,7 @@ class Model(object):
         self.stopwatch("Volume reactions forward")
 
         # solve volume problem(s)
-        for comp_name, comp in self.cc.Dict.items():
+        for comp_name, comp in self.cc.items:
             if comp.dimensionality == self.cc.max_dim:
                 self.nonlinear_solve(comp_name, dt_factor=dt_factor)
         self.stopwatch("Volume reactions forward", stop=True)
@@ -825,7 +825,7 @@ class Model(object):
             self.stopping_conditions['F_abs'].update({comp_name: Fabs})
             #color_print(f"{'Computed F_abs for component '+comp_name+': ': <40} {Fabs:.4e}", color='green')
 
-        for sp_name, sp in self.sc.Dict.items():
+        for sp_name, sp in self.sc.items:
             uvec = self.dolfin_get_function_values(sp, ukey='u')
             ukvec = self.dolfin_get_function_values(sp, ukey='k')
             udiff = uvec - ukvec
@@ -1071,7 +1071,7 @@ class Model(object):
 
     def assign_initial_conditions(self):
         ukeys = ['k', 'n', 'u']
-        for sp_name, sp in self.sc.Dict.items():
+        for sp_name, sp in self.sc.items:
             comp_name = sp.compartment_name
             for ukey in ukeys:
                 self.dolfin_set_function_values(sp, ukey, sp.initial_condition)
