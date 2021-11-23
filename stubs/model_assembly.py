@@ -87,6 +87,9 @@ class ObjectContainer(object):
         "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
         return self[key]
 
+    def __setitem__(self, key, newvalue):
+        self.Dict[key] = newvalue
+
     def where_equals(self, property_name, value):
         """
         Links objects from ObjectContainer2 to ObjectContainer1 (the ObjectContainer invoking
