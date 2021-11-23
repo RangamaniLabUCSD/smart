@@ -2,6 +2,7 @@ import stubs
 import dolfin as d
 import pytest
 
+# Fixtures
 @pytest.fixture
 def mesh_filename(datadir):
     return str(datadir.joinpath('adjacent_cubes.xml'))
@@ -10,16 +11,7 @@ def mesh_filename(datadir):
 def dolfin_mesh(mesh_filename):
     return d.Mesh(mesh_filename)
 
-@pytest.fixture
-def stubs_mesh(mesh_filename):
-    return stubs.mesh.ParentMesh(mesh_filename=mesh_filename)
-
-@pytest.mark.stubs
-def test_stubs_mesh_load_dolfin_mesh(stubs_mesh):
-    "Make sure that stubs is loading the dolfin mesh when we create a ParentMesh"
-    assert stubs_mesh.dolfin_mesh.num_vertices() > 1
-    assert stubs_mesh.dolfin_mesh.num_cells() > 1
-
+# Tests
 @pytest.mark.dolfin
 def test_dolfin_cell_markers(dolfin_mesh):
     "Test if marker values (facets and cells) are loaded in from dolfin file"
@@ -29,7 +21,7 @@ def test_dolfin_cell_markers(dolfin_mesh):
     assert mf_3.array().size == dolfin_mesh.num_cells()
 
 @pytest.mark.dolfin
-def test_meshview(dolfin_mesh):
+def test_dolfin_meshview(dolfin_mesh):
     "Test that dolfin.MeshView() is extracting submeshes correctly"
     mf_3 = d.MeshFunction('size_t', dolfin_mesh, 3, value=dolfin_mesh.domains())
     submesh_11 = d.MeshView.create(mf_3, 11)

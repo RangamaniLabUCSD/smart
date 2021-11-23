@@ -45,7 +45,7 @@ class Model(object):
         self.params = ddict(list)
 
         self.idx = 0
-        self.NLidx = {} # dictionary: compartment name -> # of nonlinear iterations needed
+        self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
         self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
         self.t = 0.0
@@ -120,9 +120,9 @@ class Model(object):
         print("Assembling reactive and diffusive fluxes...\n")
         self.rc.reaction_to_fluxes()
         #self.rc.do_to_all('reaction_to_fluxes')
-        self.FD = self.rc.get_flux_container()
-        self.FD.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-        self.FD.do_to_all('flux_to_dolfin')
+        self.fc = self.rc.get_flux_container()
+        self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
+        self.fc.do_to_all('flux_to_dolfin')
  
         self.set_allow_extrapolation()
         # Turn fluxes into fenics/dolfin expressions
@@ -190,9 +190,9 @@ class Model(object):
         print("Assembling reactive and diffusive fluxes...\n")
         self.rc.reaction_to_fluxes()
         #self.rc.do_to_all('reaction_to_fluxes')
-        self.FD = self.rc.get_flux_container()
-        self.FD.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-        self.FD.do_to_all('flux_to_dolfin')
+        self.fc = self.rc.get_flux_container()
+        self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
+        self.fc.do_to_all('flux_to_dolfin')
  
         self.set_allow_extrapolation()
         # Turn fluxes into fenics/dolfin expressions
@@ -211,7 +211,7 @@ class Model(object):
         """
         Creates the actual dolfin objects for each flux. Checks units for consistency
         """
-        for j in self.FD.Dict.values():
+        for j in self.fc.Dict.values():
             total_scaling = 1.0 # all adjustments needed to get congruent units
             sp = j.spDict[j.species_name]
             prod = j.prod
@@ -329,7 +329,7 @@ class Model(object):
         split the forms into a bilinear and linear component, for Newton we
         simply solve F(u;v)=0.
         """
-        comp_list = [self.cc.Dict[key] for key in self.u.keys()]
+        comp_list = [self.cc[key] for key in self.u.keys()]
         self.split_forms = ddict(dict)
         form_types = set([f.form_type for f in self.Forms.form_list])
 
@@ -470,8 +470,8 @@ class Model(object):
         
         
 
-    #     com = self.cc.Dict[x_compartment]
-    #     #com_s = self.cc.Dict[s_compartment]
+    #     com = self.cc[x_compartment]
+    #     #com_s = self.cc[s_compartment]
     #     dx = com.dx
     #     ds = com.ds
 
@@ -483,13 +483,13 @@ class Model(object):
     #     max_dim=com.dimensionality
     #     mass=0
     #     for i in species_to_check:
-    #         s=self.sc.Dict[i]
+    #         s=self.sc[i]
     #         target_unit_dict[i] = ureg.molecule/com.compartment_units.units**s.dimensionality
     #         coefficient[i] = s.concentration_units.to(target_unit_dict[i]).to_tuple()[0]
     #         if s.dimensionality == max_dim:
     #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*dx)
     #         else:
-    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.cc.Dict[s.compartment_name].cell_marker))
+    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.cc[s.compartment_name].cell_marker))
     #     ##compartment unit^comp_dim
     #     return mass
 
@@ -505,13 +505,13 @@ class Model(object):
     #     if initial_guess_for_root is None:
     #         print("Using the initial condition from config files. Unites will be automatically converted!")
     #     coefficient_dict={}
-    #     target_unit = self.sc.Dict[list(self.sc.Dict.keys())[0]].concentration_units
+    #     target_unit = self.sc[list(self.sc.Dict.keys())[0]].concentration_units
     #     for i in self.sc.Dict:
     #         try:
-    #             coefficient_dict[i] = self.sc.Dict[i].concentration_units.to(target_unit).to_tuple()[0]
+    #             coefficient_dict[i] = self.sc[i].concentration_units.to(target_unit).to_tuple()[0]
     #         except:
     #             raise RuntimeError('Units mismatched for a well-mixed system')
-    #     initial_guess_for_root = [(coefficient_dict[i] * self.sc.Dict[i].initial_condition) for i in self.sc.Dict]
+    #     initial_guess_for_root = [(coefficient_dict[i] * self.sc[i].initial_condition) for i in self.sc.Dict]
     #     # if initial_guess_for_root is None:
     #     #     initial_guess_for_root = [0]*num_params
     #     #     ("Warning: The initial condition of species is not given")
@@ -533,18 +533,18 @@ class Model(object):
         
     #     sps = [i for i in self.sc.Dict]
     #     func_dict = {i: None for i in list(self.sc.Dict.keys())}
-    #     for f in self.FD.Dict:
-    #         sp = self.FD.Dict[f].species_name
+    #     for f in self.fc.Dict:
+    #         sp = self.fc[f].species_name
     #         if func_dict[sp] is None:
-    #             func_dict[sp] = self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
+    #             func_dict[sp] = self.fc[f].symEqn*self.fc[f].signed_stoich
     #         else:
-    #             func_dict[sp] += self.FD.Dict[f].symEqn*self.FD.Dict[f].signed_stoich
+    #             func_dict[sp] += self.fc[f].symEqn*self.fc[f].signed_stoich
             
             
     #     func_vector=[]
     #     for j in func_dict:    
     #         for i in self.pc.Dict:
-    #             func_dict[j] = func_dict[j].subs(i, self.pc.Dict[i].value)
+    #             func_dict[j] = func_dict[j].subs(i, self.pc[i].value)
             
     #         lam = sympy.lambdify(sps, func_dict[j])
     #         func_vector.append(lam)
@@ -772,14 +772,14 @@ class Model(object):
 
         if self.solver_system.nonlinear_solver.method == 'newton':
             self.stopwatch("Newton's method [%s]" % comp_name)
-            self.NLidx[comp_name], self.success[comp_name] = self.nonlinear_solver[comp_name].solve()
+            self.nl_idx[comp_name], self.success[comp_name] = self.nonlinear_solver[comp_name].solve()
             self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
-            Print(f"{self.NLidx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
+            Print(f"{self.nl_idx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
         # elif self.solver_system.nonlinear_solver.method == 'picard':
         #     self.stopwatch("Picard iteration method [%s]" % comp_name)
-        #     self.NLidx[comp_name], self.success[comp_name] = self.picard_loop(comp_name, dt_factor=dt_factor)
+        #     self.nl_idx[comp_name], self.success[comp_name] = self.picard_loop(comp_name, dt_factor=dt_factor)
         #     self.stopwatch("Picard iteration method [%s]" % comp_name)
-        #     Print(f"{self.NLidx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
+        #     Print(f"{self.nl_idx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
         else:
             raise ValueError("Unknown nonlinear solver method")
 
@@ -794,10 +794,10 @@ class Model(object):
 
     def adjust_dt(self):
         ## check if time step should be changed
-        #if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.NLidx.values()]):
+        #if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.nl_idx.values()]):
         #    self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
         #    Print("Increasing step size")
-        #elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.NLidx.values()]):
+        #elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.nl_idx.values()]):
         #    self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
         #    Print("Decreasing step size")
 
@@ -967,11 +967,11 @@ class Model(object):
     def init_solutions_and_plots(self):
         self.data.initSolutionFiles(self.sc, self.config)
         self.data.storeSolutionFiles(self.u, self.t, self.config)
-        self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.FD, self.NLidx)
-        self.data.initPlot(self.config, self.sc, self.FD)
+        self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx)
+        self.data.initPlot(self.config, self.sc, self.fc)
 
     def post_process(self):
-        self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.FD, self.NLidx)
+        self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx)
         self.data.compute_probe_values(self.u, self.sc)
         self.data.outputPickle()
         self.data.outputCSV()

@@ -1,11 +1,33 @@
 import stubs
 import pytest
 
-"""
-Test to see if stubs can write a sbmodel
-"""
+# Fixtures
+@pytest.fixture
+def mesh_filename(datadir):
+    return str(datadir.joinpath('adjacent_cubes.xml'))
+
+@pytest.fixture
+def stubs_mesh(mesh_filename):
+    return stubs.mesh.ParentMesh(mesh_filename=mesh_filename)
+
+@pytest.fixture
+def stubs_config():
+    return stubs.config.Config()
+
+@pytest.fixture
+def stubs_config():
+    return stubs.config.Config()
+
+# Tests
+@pytest.mark.stubs
+def test_stubs_mesh_load_dolfin_mesh(stubs_mesh):
+    "Make sure that stubs is loading the dolfin mesh when we create a ParentMesh"
+    assert stubs_mesh.dolfin_mesh.num_vertices() > 1
+    assert stubs_mesh.dolfin_mesh.num_cells() > 1
+
 @pytest.mark.stubs
 def test_stubs_define_sbmodel():
+    "Test to see if stubs can write a sbmodel"
     unit = stubs.unit # unit registry
 
     # initialize 
@@ -36,9 +58,21 @@ def test_stubs_define_sbmodel():
 
     # read in file
     p_in, s_in, c_in, r_in = stubs.common.read_sbmodel('pytest.sbmodel', output_type=tuple)
-    assert type(p_in) == stubs.model_building.ParameterDF
-    assert type(s_in) == stubs.model_building.SpeciesDF
-    assert type(c_in) == stubs.model_building.CompartmentDF
-    assert type(r_in) == stubs.model_building.ReactionDF
+    assert type(p_in) == stubs.model_assembly.ParameterContainer
+    assert type(s_in) == stubs.model_assembly.SpeciesContainer
+    assert type(c_in) == stubs.model_assembly.CompartmentContainer
+    assert type(r_in) == stubs.model_assembly.ReactionContainer
 
-    assert p_in.df.shape[0] == s_in.df.shape[0] == c_in.df.shape[0] == r_in.df.shape[0] == 1
+    assert p.df.shape[0] == s.df.shape[0] == c.df.shape[0] == r.df.shape[0] == 1
+    assert p_in.size == s_in.size == c_in.size == r_in.size == 1
+
+@pytest.mark.stubs
+def test_stubs_load_mesh(stubs_mesh):
+    "Test that stubs is loading the dolfin mesh when we create a ParentMesh"
+    assert stubs_mesh.dolfin_mesh.num_vertices() > 1
+    assert stubs_mesh.dolfin_mesh.num_cells() > 1
+    
+@pytest.mark.stubs
+def test_stubs_define_model():
+    "Test that stubs can generate a config file"
+    config = stubs.config.Config()

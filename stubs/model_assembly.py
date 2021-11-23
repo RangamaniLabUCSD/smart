@@ -63,13 +63,13 @@ class ObjectContainer(object):
         for obj in self.Dict.values():
             setattr(obj, property_name, item)
     def add(self, item):
-        self.Dict[item.name] = item
+        self[item.name] = item
     def remove(self, name):
         self.Dict.pop(name)
     def add_pandas_dataframe(self, df):
         for _, row in df.iterrows():
             itemDict = row.to_dict()
-            self.Dict[row.name] = self.ObjectClass(row.name, Dict=itemDict)
+            self[row.name] = self.ObjectClass(row.name, Dict=itemDict)
         self.dtypes.update(df.dtypes.to_dict())
     def get_property(self, property_name):
         # returns a dict of properties
@@ -77,6 +77,15 @@ class ObjectContainer(object):
         for key, obj in self.Dict.items():
             property_dict[key] = getattr(obj, property_name)
         return property_dict
+
+    @property
+    def size(self):
+        "Size of ObjectContainer"
+        return len(self.Dict)
+
+    def __getitem__(self, key):
+        "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
+        return self[key]
 
     def where_equals(self, property_name, value):
         """
@@ -277,7 +286,7 @@ class ObjectContainer(object):
 
             if print_all: properties_to_print = []
             for key in keyList:
-                self.Dict[key].print(properties_to_print=properties_to_print)
+                self[key].print(properties_to_print=properties_to_print)
         else:
             pass
 
@@ -408,8 +417,8 @@ class SpeciesContainer(ObjectContainer):
 
         V, u, v = {}, {}, {}
         for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = cc.Dict[compartment_name].dimensionality
-            cc.Dict[compartment_name].num_species = num_species
+            compartmentDim = cc[compartment_name].dimensionality
+            cc[compartment_name].num_species = num_species
             if rank==root:
                 print('Compartment %s (dimension: %d) has %d species associated with it' %
                       (compartment_name, compartmentDim, num_species))
@@ -430,7 +439,7 @@ class SpeciesContainer(ObjectContainer):
         # to function spaces of the surrounding mesh
         V['boundary'] = {}
         for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = cc.Dict[compartment_name].dimensionality
+            compartmentDim = cc[compartment_name].dimensionality
             if compartmentDim == cc.max_dim: # mesh may have boundaries
                 V['boundary'][compartment_name] = {}
                 for mesh_name, mesh in cc.meshes.items():
@@ -446,7 +455,7 @@ class SpeciesContainer(ObjectContainer):
         # to function spaces of the associated volume
         V['volume'] = {}
         for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = cc.Dict[compartment_name].dimensionality
+            compartmentDim = cc[compartment_name].dimensionality
             if compartmentDim == cc.min_dim: # mesh may be a boundary with a connected volume
                 V['volume'][compartment_name] = {}
                 for mesh_name, mesh in cc.meshes.items():
@@ -504,10 +513,10 @@ class CompartmentContainer(ObjectContainer):
 #        self.meshes[mesh_key] = d.Mesh(mesh_str)
 #
     def extract_submeshes(self, main_mesh_str='main_mesh', save_to_file=False):
-        main_mesh  = self.Dict[main_mesh_str]
+        main_mesh  = self[main_mesh_str]
         surfaceDim = main_mesh.dimensionality - 1
 
-        self.Dict[main_mesh_str].mesh = self.meshes[main_mesh_str]
+        self[main_mesh_str].mesh = self.meshes[main_mesh_str]
 
         vmesh = self.meshes[main_mesh_str]
         bmesh = d.BoundaryMesh(vmesh, "exterior")
@@ -592,7 +601,7 @@ class CompartmentContainer(ObjectContainer):
         for key, mesh in self.meshes.items():
             num_vertices = mesh.num_vertices()
             print('CPU %d: My partition of mesh %s has %d vertices' % (rank, key, num_vertices))
-            self.Dict[key].num_vertices = num_vertices
+            self[key].num_vertices = num_vertices
 
         self.bmesh          = bmesh
         self.bmesh_emap_0   = bmesh_emap_0
@@ -625,7 +634,7 @@ class CompartmentContainer(ObjectContainer):
                             +f" is not the same as volumeDim: {volumeDim}.")
 
         # Get volume and boundary mesh
-        #self.Dict[main_mesh_str].mesh   = self.meshes[main_mesh_str]
+        #self[main_mesh_str].mesh   = self.meshes[main_mesh_str]
         smesh           = d.BoundaryMesh(parent_mesh.dolfin_mesh, "exterior")
 
         # When smesh.entity_map() is called together with .array() it will return garbage values. We should only call 
@@ -720,7 +729,7 @@ class CompartmentContainer(ObjectContainer):
         for key, mesh in self.meshes.items():
             num_vertices = mesh.num_vertices()
             print('CPU %d: My partition of mesh %s has %d vertices' % (rank, key, num_vertices))
-            self.Dict[key].num_vertices = num_vertices
+            self[key].num_vertices = num_vertices
 
         self.bmesh          = bmesh
         self.bmesh_emap_0   = bmesh_emap_0
@@ -851,9 +860,9 @@ class Reaction(ObjectInstance):
                 spSet = varSet.intersection(sc.Dict.keys())
                 self.involved_species = self.involved_species.union(spSet)
 
-        self.involved_compartments = dict(set([(sc.Dict[sp_name].compartment_name, sc.Dict[sp_name].compartment) for sp_name in self.involved_species]))
+        self.involved_compartments = dict(set([(sc[sp_name].compartment_name, sc[sp_name].compartment) for sp_name in self.involved_species]))
         if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: cc.Dict[self.explicit_restriction_to_domain]})
+            self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
 
         if len(self.involved_compartments) not in (1,2):
             raise Exception("Number of compartments involved in a flux must be either one or two!")
@@ -941,7 +950,7 @@ class Flux(ObjectInstance):
         self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.spDict.values()])
 
         if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: cc.Dict[self.explicit_restriction_to_domain]})
+            self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
         if len(self.involved_compartments) not in (1,2):
             raise Exception("Number of compartments involved in a flux must be either one or two!")
     #def flux_to_dolfin(self):

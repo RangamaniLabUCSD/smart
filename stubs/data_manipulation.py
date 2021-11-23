@@ -41,7 +41,7 @@ class Data(object):
         self.fluxes = ddict(list)
         self.tvec=[]
         self.dtvec=[]
-        self.NLidxvec=[]
+        self.nl_idxvec=[]
         self.errors = {}
         self.parameters = ddict(list)
         #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
@@ -129,7 +129,7 @@ class Data(object):
         return {'min': umin, 'mean': umean, 'max': umax, 'std': ustd}
 
 
-    def compute_statistics(self, u, t, dt, sc, pc, cc, FD, NLidx):
+    def compute_statistics(self, u, t, dt, sc, pc, cc, fc, nl_idx):
         #for sp_name in speciesList:
         for sp_name, sp in sc.Dict.items():
             comp_name = self.solutions[sp_name]['comp_name']
@@ -150,7 +150,7 @@ class Data(object):
                 self.parameters[param.name].append(param.value)
 
         # store fluxes
-        flux_names = [flux_name for flux_name, flux in FD.Dict.items() if flux.track_value]
+        flux_names = [flux_name for flux_name, flux in fc.Dict.items() if flux.track_value]
         # remove forward/reverse flux labels
         temp = [flux_name.replace(' (r)','') for flux_name in flux_names]
         temp = [flux_name.replace(' (f)','') for flux_name in temp]
@@ -169,8 +169,8 @@ class Data(object):
         # compute (assemble) fluxes
         for i in flux_indices:
             flux_name = flux_names[i]
-            flux = FD.Dict[flux_name]
-            area_units = cc.Dict[flux.source_compartment].compartment_units**2
+            flux = fc[flux_name]
+            area_units = cc[flux.source_compartment].compartment_units**2
             scale_to_molecule_per_s = (1*flux.flux_units*area_units).to(ureg.molecule/ureg.s).magnitude
             #value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
             value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
@@ -180,10 +180,10 @@ class Data(object):
         for i,j in summed_flux_indices:
             flux_name_1 = flux_names[i]
             flux_name_2 = flux_names[j]
-            flux_1 = FD.Dict[flux_name_1]
-            flux_2 = FD.Dict[flux_name_2]
-            area_units_1 = cc.Dict[flux_1.source_compartment].compartment_units**2
-            area_units_2 = cc.Dict[flux_2.source_compartment].compartment_units**2
+            flux_1 = fc[flux_name_1]
+            flux_2 = fc[flux_name_2]
+            area_units_1 = cc[flux_1.source_compartment].compartment_units**2
+            area_units_2 = cc[flux_2.source_compartment].compartment_units**2
 
             scale_to_molecule_per_s_1 = (1*flux_1.flux_units*area_units_1).to(ureg.molecule/ureg.s).magnitude
             scale_to_molecule_per_s_2 = (1*flux_2.flux_units*area_units_2).to(ureg.molecule/ureg.s).magnitude
@@ -198,12 +198,12 @@ class Data(object):
 
         self.tvec.append(t)
         self.dtvec.append(dt)
-        if len(NLidx.values()) == 0:
-            self.NLidxvec.append(0)
+        if len(nl_idx.values()) == 0:
+            self.nl_idxvec.append(0)
         else:
-            self.NLidxvec.append(max(NLidx.values()))
+            self.nl_idxvec.append(max(nl_idx.values()))
 
-    #def computeProbeValues(self, u, t, dt, sc, pc, cc, FD, NLidx):
+    #def computeProbeValues(self, u, t, dt, sc, pc, cc, fc, nl_idx):
     def compute_probe_values(self, u, sc):
         """
         Computes the values of functions at various coordinates
@@ -212,8 +212,8 @@ class Data(object):
         #y_list = self.config.output['points_y']
 
         for sp_name, coord_list in self.config.probe_plot.items():
-            comp = sc.Dict[sp_name].compartment
-            sp_idx = sc.Dict[sp_name].compartment_index
+            comp = sc[sp_name].compartment
+            sp_idx = sc[sp_name].compartment_index
             if sp_name not in self.probe_solutions.keys():
                 self.probe_solutions[sp_name] = {}
             for coords in coord_list:
@@ -259,7 +259,7 @@ class Data(object):
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
-    def initPlot(self, config, sc, FD):
+    def initPlot(self, config, sc, fc):
         if rank==root:
             if not os.path.exists(config.directory['plots']):
                 os.makedirs(config.directory['plots'])
@@ -285,7 +285,7 @@ class Data(object):
                 self.plots['parameters'].add_subplot(subplotRows,subplotCols,idx+1)
 
         # flux plots
-        flux_names = [flux_name for flux_name, flux in FD.Dict.items() if flux.track_value]
+        flux_names = [flux_name for flux_name, flux in fc.Dict.items() if flux.track_value]
         numPlots = len(flux_names)
         if numPlots > 0:
             # remove forward/reverse flux labels
@@ -422,7 +422,7 @@ class Data(object):
         axes[0].set_yticks(dt_ticks)
         axes[0].set_yticklabels([str(dt) for dt in dt_ticks], fontsize=plot_settings['fontsize_small']*2)
         axes[1].set_ylabel('Newton iterations', fontsize=plot_settings['fontsize_med']*2, color='orange')
-        axes[1].plot(self.NLidxvec, color='orange')
+        axes[1].plot(self.nl_idxvec, color='orange')
         axes[1].tick_params(labelsize=plot_settings['fontsize_small']*2)
         axes[2].set_xlabel('Time [ms]', fontsize=plot_settings['fontsize_med']*2)
         indices = [int(x) for x in np.linspace(0,len(self.tvec)-1,nticks)]
@@ -544,7 +544,7 @@ class Data(object):
 #        else:
 #            direction = 'r'
 #        flux_expr = (reaction_expr+'_'+direction+'_%s') % to_spe.name
-#        local_f = model.FD.Dict[flux_expr]
+#        local_f = model.fc[flux_expr]
 #        flux_mean_val = np.round(d.assemble(local_f.dolfin_flux), 6)*local_f.total_scaling
 #        flux_min_val = np.round(d.assemble(local_f.prod*local_f.spDict[local_f.species_name].v*local_f.int_measure).get_local().min(), 6)*local_f.total_scaling
 #        flux_max_val = np.round(d.assemble(local_f.prod*local_f.spDict[local_f.species_name].v*local_f.int_measure).get_local().max(), 6)*local_f.total_scaling
@@ -555,9 +555,9 @@ class Data(object):
 #    fig, ax = plt.subplots(1,1, figsize=(10, 8))
 #    
 #    G=nx.DiGraph()
-#    reaction = model.rc.Dict[reaction_expr]
-#    lhs_list = [model.sc.Dict[i] for i in reaction.LHS]
-#    rhs_list = [model.sc.Dict[i] for i in reaction.RHS]
+#    reaction = model.rc[reaction_expr]
+#    lhs_list = [model.sc[i] for i in reaction.LHS]
+#    rhs_list = [model.sc[i] for i in reaction.RHS]
 #    if output=='detailed':
 #        reaction_f_node = reaction_node(reaction.eqn_f)
 #        reaction_r_node = reaction_node(reaction.eqn_r)
@@ -590,7 +590,7 @@ class Data(object):
 #        pos.update({lhs_list[i] : (1, 4 + (-1)**(i) * (1.5)**((i+1)//2)) for i in range(len(lhs_list))})
 #        pos.update({rhs_list[i] : (7, 4 + (-1)**(i) * (1.5)**((i+1)//2)) for i in range(len(rhs_list))})
 #        flux_expr = (reaction_expr+' ('+'f'+') [%s]') % lhs_list[1].name
-#        local_f = model.FD.Dict[flux_expr]
+#        local_f = model.fc[flux_expr]
 #        flux_mean_val = np.round(d.assemble(local_f.dolfin_flux), 6)*local_f.total_scaling
 #        flux_min_val = np.round(d.assemble(local_f.prod*local_f.spDict[local_f.species_name].v*local_f.int_measure).get_local().min(), 6)*local_f.total_scaling
 #        flux_max_val = np.round(d.assemble(local_f.prod*local_f.spDict[local_f.species_name].v*local_f.int_measure).get_local().max(), 6)*local_f.total_scaling
