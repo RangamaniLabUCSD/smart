@@ -43,9 +43,6 @@ def insert_dataframe_col(df, columnName, columnNumber=None, items=None):
 def nan_to_none(df):
     return df.replace({np.nan: None})
 
-
-
-
 def submesh_dof_to_mesh_dof(Vsubmesh, submesh, bmesh_emap_0, V, submesh_species_index=0, mesh_species_index=0, index=None):
     """
     Takes dof indices (single index or a list) on a submesh of a boundarymesh of a mesh and returns
@@ -307,6 +304,18 @@ def read_sbmodel(filepath, output_type=dict):
     sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
     cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
     rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
+
+    if output_type==dict:
+        return {'parameter_container': pc,   'species_container': sc, 
+                'compartment_container': cc, 'reaction_container': rc}
+    elif output_type==tuple:
+        return (pc, sc, cc, rc)
+
+def init_sbmodel(p, s, c, r, output_type=dict):
+    pc = stubs.model_assembly.ParameterContainer(p)
+    sc = stubs.model_assembly.SpeciesContainer(s)
+    cc = stubs.model_assembly.CompartmentContainer(c)
+    rc = stubs.model_assembly.ReactionContainer(r)
 
     if output_type==dict:
         return {'parameter_container': pc,   'species_container': sc, 

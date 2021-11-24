@@ -49,6 +49,12 @@ def test_stubs_define_sbmodel():
     assert p.df.shape[0] == s.df.shape[0] == c.df.shape[0] == r.df.shape[0] == 1
     assert p_in.size == s_in.size == c_in.size == r_in.size == 1
 
+    # creating the object containers directly from sbmodel
+    pc, sc, cc, rc = stubs.common.init_sbmodel(p,s,c,r,output_type=tuple)
+
+    # check that the first entry is the same no matter how it is loaded
+    assert [x.df.index[0] == list(x_in.keys)[0] == list(xc.keys)[0] for x, x_in, xc in zip([p,s,c,r], [p_in,s_in,c_in,r_in], [pc,sc,cc,rc])] 
+
 @pytest.mark.stubs_model_setup
 def test_stubs_load_mesh(stubs_mesh):
     "Test that stubs is loading the dolfin mesh when we create a ParentMesh"

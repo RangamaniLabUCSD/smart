@@ -30,7 +30,13 @@ import pint
 #             for key, value in to_df.items():
 #                 to_df[key] =  
 
-class ParameterDF(object):
+class ObjectDF(object):
+    """General dataframe wrapper class which can hold parameters, species, etc."""
+    def __init__(self):
+        pass
+
+
+class ParameterDF(ObjectDF):
     """
     A standard (non time-dependent) parameter has an associated value, unit,
     group [i.e. what physics does the parameter belong to?], notes, and a 
@@ -96,7 +102,7 @@ class ParameterDF(object):
 
 
 
-class SpeciesDF(object):
+class SpeciesDF(ObjectDF):
     """
     IC assumed to be in terms concentration units
     """
@@ -120,7 +126,7 @@ class SpeciesDF(object):
         self.df.to_json(name)
         print("Species generated successfully! Saved as %s" % name)
 
-class CompartmentDF(object):
+class CompartmentDF(ObjectDF):
     """
     Dimensionality refers to the topological dimension (e.g. a triangle is always 2d regardless it is embedded
     in R^2 or R^3.
@@ -140,7 +146,7 @@ class CompartmentDF(object):
         print("Compartment generated successfully! Saved as %s" % name)
 
 
-class ReactionDF(object):
+class ReactionDF(ObjectDF):
     """
     A reaction is specified by the reactants/products on the left hand side 
     (LHS), right hand side (RHS), kinetic parameters, the reaction type (STUBS

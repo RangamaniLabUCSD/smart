@@ -47,16 +47,22 @@ class ObjectContainer(object):
     """
     Parent class containing general methods used by all "containers"
     """
-    def __init__(self, ObjectClass, df=None, Dict=None):
+    def __init__(self, ObjectClass, data):#df=None, Dict=None):
         self.Dict = odict()
         self.dtypes = {}
         self.ObjectClass = ObjectClass
         self.properties_to_print = [] # properties to print
-#        self.name_key = name_key
-        if df is not None:
-            self.add_pandas_dataframe(df)
-        if Dict is not None:
-            self.Dict = odict(Dict)
+
+        # Load in data from either a stubs.model_building instance, dictionary, or pandas DataFrame
+        if isinstance(data, stubs.model_building.ObjectDF):
+            self.add_pandas_dataframe(data.df)
+        elif isinstance(data, dict):
+            self.Dict = odict(data)
+        elif isinstance(data, pandas.DataFrame):
+            self.add_pandas_dataframe(data)
+        else:
+            raise ValueError("Unknown data type.")
+
     def add_property(self, property_name, item):
         setattr(self, property_name, item)
     def add_property_to_all(self, property_name, item):
@@ -67,6 +73,8 @@ class ObjectContainer(object):
     def remove(self, name):
         self.Dict.pop(name)
     def add_pandas_dataframe(self, df):
+        # convert all the nans to nones
+        df = common.nan_to_none(df)
         for _, row in df.iterrows():
             itemDict = row.to_dict()
             self[row.name] = self.ObjectClass(row.name, Dict=itemDict)
@@ -358,8 +366,9 @@ class ObjectInstance(object):
 # ==============================================================================
 
 class ParameterContainer(ObjectContainer):
-    def __init__(self, df=None, Dict=None):
-        super().__init__(Parameter, df, Dict)
+    def __init__(self, data=None):
+        super().__init__(Parameter, data)
+
         self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'symExpr', 'notes', 'group']
 
 class Parameter(ObjectInstance):
@@ -391,8 +400,9 @@ class Parameter(ObjectInstance):
 
 
 class SpeciesContainer(ObjectContainer):
-    def __init__(self, df=None, Dict=None):
-        super().__init__(Species, df, Dict)
+    def __init__(self, data=None):
+        super().__init__(Species, data)
+
         self.properties_to_print = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
     def assemble_compartment_indices(self, rc, cc):
@@ -516,8 +526,9 @@ class Species(ObjectInstance):
         self.dof_map = {}
 
 class CompartmentContainer(ObjectContainer):
-    def __init__(self, df=None, Dict=None):
-        super().__init__(Compartment, df, Dict)
+    def __init__(self, data=None):
+        super().__init__(Compartment, data)
+
         self.properties_to_print = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
         self.meshes = {}
         self.vertex_mappings = {} # from submesh -> parent indices
@@ -786,8 +797,9 @@ class Compartment(ObjectInstance):
 
 
 class ReactionContainer(ObjectContainer):
-    def __init__(self, df=None, Dict=None):
-        super().__init__(Reaction, df, Dict)
+    def __init__(self, data=None):
+        super().__init__(Reaction, data)
+
         #self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f', 'eqn_r', 'paramDict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['name', 'LHS', 'RHS', 'eqn_f']#, 'eqn_r']
 
@@ -905,8 +917,9 @@ class Reaction(ObjectInstance):
 
 
 class FluxContainer(ObjectContainer):
-    def __init__(self, df=None, Dict=None):
-        super().__init__(Flux, df, Dict)
+    def __init__(self, data=None):
+        super().__init__(Flux, data)
+
         # self.properties_to_print = ['species_name', 'symEqn', 'sign', 'involved_species',
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
