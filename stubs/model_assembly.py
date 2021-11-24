@@ -8,7 +8,7 @@ from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
 from termcolor import colored
-import pandas as pd
+import pandas
 import dolfin as d
 import mpi4py.MPI as pyMPI
 import petsc4py.PETSc as PETSc
@@ -216,7 +216,7 @@ class ObjectContainer(object):
                 getattr(instance, method_name)(**kwargs)
     
     def get_pandas_dataframe(self, properties_to_print=[], include_idx=True):
-        df = pd.DataFrame()
+        df = pandas.DataFrame()
         if include_idx:
             if properties_to_print and 'idx' not in properties_to_print:
                 properties_to_print.insert(0, 'idx')
@@ -250,7 +250,7 @@ class ObjectContainer(object):
             if name == 'idx' and include_idx == False:
                 df = df.drop('idx',axis=1)
 
-        with pd.option_context("max_colwidth", 1000):
+        with pandas.option_context("max_colwidth", 1000):
             tex_str = df.to_latex(index=False, longtable=True, escape=escape)
             print(tex_str)
 
@@ -337,7 +337,7 @@ class ObjectInstance(object):
             dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in properties_to_print]))
         else:
             dict_to_convert = self.__dict__
-        return pd.Series(dict_to_convert, name=self.name)
+        return pandas.Series(dict_to_convert, name=self.name)
     def print(self, properties_to_print=[]):
         if rank==root:
             print("Name: " + self.name)

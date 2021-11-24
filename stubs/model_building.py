@@ -3,7 +3,7 @@ Classes/functions used to construct models
 """
 from stubs import unit
 
-import pandas as pd 
+import pandas
 import dolfin as d
 import pint 
 
@@ -20,8 +20,8 @@ import pint
 #         data_dict = dict()
 #         for property_name, property_type in property_types.items():
 #             data_dict.update({property_name, 
-#                              pd.Series([], dtype=property_type)})
-#         self.df = pd.DataFrame(data_dict)
+#                              pandas.Series([], dtype=property_type)})
+#         self.df = pandas.DataFrame(data_dict)
 
 #         def add(self, name, **kwargs):
 #             inputs = locals()
@@ -48,18 +48,18 @@ class ParameterDF(object):
     rapidly changing values.
     """
     def __init__(self):
-        self.df = pd.DataFrame({'value': pd.Series([], dtype=float),
-                                'unit': pd.Series([], dtype=object),
-                                'group': pd.Series([], dtype=str),
-                                'notes': pd.Series([], dtype=str),
-                                'is_time_dependent': pd.Series([], dtype=bool),
+        self.df = pandas.DataFrame({'value': pandas.Series([], dtype=float),
+                                'unit': pandas.Series([], dtype=object),
+                                'group': pandas.Series([], dtype=str),
+                                'notes': pandas.Series([], dtype=str),
+                                'is_time_dependent': pandas.Series([], dtype=bool),
                                 # is the data sampled from some discrete data?
-                                'sampling_file': pd.Series([], dtype=str), 
-                                'sampling_data': pd.Series([], dtype=object), 
-                                'preint_sampling_data': pd.Series([], dtype=object), 
-                                'dolfinConstant': pd.Series([], dtype=object),
-                                'symExpr': pd.Series([], dtype=object),
-                                'preintegrated_symExpr': pd.Series([], dtype=object)})
+                                'sampling_file': pandas.Series([], dtype=str), 
+                                'sampling_data': pandas.Series([], dtype=object), 
+                                'preint_sampling_data': pandas.Series([], dtype=object), 
+                                'dolfinConstant': pandas.Series([], dtype=object),
+                                'symExpr': pandas.Series([], dtype=object),
+                                'preintegrated_symExpr': pandas.Series([], dtype=object)})
 
     def append(self, name, value, unit, group, notes='', is_time_dependent=False,
                sampling_file='', sampling_data=None, dolfinConstant=None,
@@ -78,7 +78,7 @@ class ParameterDF(object):
                                 "a sympy expression or have discrete data!"\
                                 % name)
 
-        self.df = self.df.append(pd.Series({"value": value, "unit": str(unit),
+        self.df = self.df.append(pandas.Series({"value": value, "unit": str(unit),
                                             "group": group, "notes": notes,
                                             "is_time_dependent": is_time_dependent,
                                             # is the data sampled from some discrete data?
@@ -101,15 +101,15 @@ class SpeciesDF(object):
     IC assumed to be in terms concentration units
     """
     def __init__(self):
-        self.df = pd.DataFrame({'initial_condition': pd.Series([], dtype=float),
-                                'concentration_units': pd.Series([], dtype=object),
-                                'D': pd.Series([], dtype=float),
-                                'D_units': pd.Series([], dtype=object),
-                                'compartment_name': pd.Series([], dtype=str),
-                                'group': pd.Series([], dtype=str)})
+        self.df = pandas.DataFrame({'initial_condition': pandas.Series([], dtype=float),
+                                'concentration_units': pandas.Series([], dtype=object),
+                                'D': pandas.Series([], dtype=float),
+                                'D_units': pandas.Series([], dtype=object),
+                                'compartment_name': pandas.Series([], dtype=str),
+                                'group': pandas.Series([], dtype=str)})
 
     def append(self, name, group, units, IC, D, D_units, compartment_name):
-        self.df = self.df.append(pd.Series({"group": group,
+        self.df = self.df.append(pandas.Series({"group": group,
                                             "concentration_units": str(units),
                                             "initial_condition": IC, 
                                             "D": D,
@@ -126,12 +126,12 @@ class CompartmentDF(object):
     in R^2 or R^3.
     """
     def __init__(self):
-        self.df = pd.DataFrame({'dimensionality': pd.Series([], dtype=int),
-                                'compartment_units': pd.Series([], dtype=object),
-                                'cell_marker': pd.Series([], dtype=object)})
+        self.df = pandas.DataFrame({'dimensionality': pandas.Series([], dtype=int),
+                                'compartment_units': pandas.Series([], dtype=object),
+                                'cell_marker': pandas.Series([], dtype=object)})
 
     def append(self, name, dim, units, marker):
-        self.df = self.df.append(pd.Series({"dimensionality": dim,
+        self.df = self.df.append(pandas.Series({"dimensionality": dim,
                                            "compartment_units": str(units),
                                             "cell_marker": marker}, name=name))
 
@@ -162,23 +162,23 @@ class ReactionDF(object):
     track_value
     """
     def __init__(self):
-        self.df = pd.DataFrame(columns=["group", "LHS", "RHS",
+        self.df = pandas.DataFrame(columns=["group", "LHS", "RHS",
                                         "paramDict", "reaction_type",
                                         "explicit_restriction_to_domain", "speciesDict",
                                         "track_value"])
-        self.df = pd.DataFrame({'group': pd.Series([], dtype=str),
-                                'LHS': pd.Series([], dtype=object),
-                                'RHS': pd.Series([], dtype=object),
-                                'paramDict': pd.Series([], dtype=object),
-                                'reaction_type': pd.Series([], dtype=str),
-                                'explicit_restriction_to_domain': pd.Series([], dtype=object),
-                                'speciesDict': pd.Series([], dtype=object),
-                                'track_value': pd.Series([], dtype=bool)})
+        self.df = pandas.DataFrame({'group': pandas.Series([], dtype=str),
+                                'LHS': pandas.Series([], dtype=object),
+                                'RHS': pandas.Series([], dtype=object),
+                                'paramDict': pandas.Series([], dtype=object),
+                                'reaction_type': pandas.Series([], dtype=str),
+                                'explicit_restriction_to_domain': pandas.Series([], dtype=object),
+                                'speciesDict': pandas.Series([], dtype=object),
+                                'track_value': pandas.Series([], dtype=bool)})
     def append(self, name, group, LHS, RHS, paramDict,
                reaction_type="mass_action", explicit_restriction_to_domain=None,
                speciesDict={}, track_value=False):
 
-        self.df = self.df.append(pd.Series({"group": group, "LHS": LHS,
+        self.df = self.df.append(pandas.Series({"group": group, "LHS": LHS,
                                   "RHS": RHS, "paramDict": paramDict,
                                   "reaction_type": reaction_type,
                                   "explicit_restriction_to_domain": explicit_restriction_to_domain,

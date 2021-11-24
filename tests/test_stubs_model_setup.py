@@ -1,15 +1,6 @@
 import stubs
 import pytest
 
-# Fixtures
-@pytest.fixture
-def stubs_mesh(mesh_filename):
-    return stubs.mesh.ParentMesh(mesh_filename=mesh_filename)
-
-@pytest.fixture
-def stubs_config():
-    return stubs.config.Config()
-
 # Tests
 @pytest.mark.stubs_model_setup
 def test_stubs_mesh_load_dolfin_mesh(stubs_mesh):

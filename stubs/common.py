@@ -1,7 +1,7 @@
 """
 General functions: array manipulation, data i/o, etc
 """
-import pandas as pd
+import pandas
 import dolfin as d
 import numpy as np
 import scipy.interpolate as interp
@@ -299,10 +299,10 @@ def read_sbmodel(filepath, output_type=dict):
 
         line_idx += 1
 
-    pdf = pd.read_json(''.join(p_string)).sort_index()
-    sdf = pd.read_json(''.join(s_string)).sort_index()
-    cdf = pd.read_json(''.join(c_string)).sort_index()
-    rdf = pd.read_json(''.join(r_string)).sort_index()
+    pdf = pandas.read_json(''.join(p_string)).sort_index()
+    sdf = pandas.read_json(''.join(s_string)).sort_index()
+    cdf = pandas.read_json(''.join(c_string)).sort_index()
+    rdf = pandas.read_json(''.join(r_string)).sort_index()
     pc = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
     sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
     cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))

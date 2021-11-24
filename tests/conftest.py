@@ -1,4 +1,5 @@
 import pytest
+import stubs
 from pathlib import Path
 
 @pytest.fixture(scope='module')
@@ -33,3 +34,12 @@ def datadir(request):
 @pytest.fixture(scope='module')
 def mesh_filename(datadir):
     return str(datadir.joinpath('adjacent_cubes.xml'))
+
+@pytest.fixture(scope='module')
+def stubs_mesh(mesh_filename):
+    return stubs.mesh.ParentMesh(mesh_filename=mesh_filename)
+
+@pytest.fixture(scope='module')
+def stubs_config(request):
+    return stubs.config.Config()
+
