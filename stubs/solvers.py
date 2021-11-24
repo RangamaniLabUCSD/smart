@@ -24,7 +24,7 @@ root = 0
 
 
 class SolverSystem(object):
-    def __init__(self, final_t=None, initial_dt=None, multiphysics_solver=None, 
+    def __init__(self, final_t, initial_dt=None, multiphysics_solver=None, 
                  nonlinear_solver=None, linear_solver=None, 
                  ignore_surface_diffusion=False, auto_preintegrate=True,
                  adjust_dt=None):
@@ -46,8 +46,6 @@ class SolverSystem(object):
         self.auto_preintegrate          = auto_preintegrate
 
     def check_solver_system_validity(self):
-        if self.final_t is None:
-            raise ValueError("Please set a value for final_t (final time of simulation)")
         if self.final_t <= 0:
             raise ValueError("final_t msut be > 0")
         if self.initial_dt is None:

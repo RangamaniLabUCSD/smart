@@ -4,10 +4,6 @@ import pytest
 
 # Fixtures
 @pytest.fixture
-def mesh_filename(datadir):
-    return str(datadir.joinpath('adjacent_cubes.xml'))
-
-@pytest.fixture
 def dolfin_mesh(mesh_filename):
     return d.Mesh(mesh_filename)
 

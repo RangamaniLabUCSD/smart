@@ -3,10 +3,6 @@ import pytest
 
 # Fixtures
 @pytest.fixture
-def mesh_filename(datadir):
-    return str(datadir.joinpath('adjacent_cubes.xml'))
-
-@pytest.fixture
 def stubs_mesh(mesh_filename):
     return stubs.mesh.ParentMesh(mesh_filename=mesh_filename)
 
@@ -14,18 +10,14 @@ def stubs_mesh(mesh_filename):
 def stubs_config():
     return stubs.config.Config()
 
-@pytest.fixture
-def stubs_config():
-    return stubs.config.Config()
-
 # Tests
-@pytest.mark.stubs
+@pytest.mark.stubs_model_setup
 def test_stubs_mesh_load_dolfin_mesh(stubs_mesh):
     "Make sure that stubs is loading the dolfin mesh when we create a ParentMesh"
     assert stubs_mesh.dolfin_mesh.num_vertices() > 1
     assert stubs_mesh.dolfin_mesh.num_cells() > 1
 
-@pytest.mark.stubs
+@pytest.mark.stubs_model_setup
 def test_stubs_define_sbmodel():
     "Test to see if stubs can write a sbmodel"
     unit = stubs.unit # unit registry
@@ -66,13 +58,23 @@ def test_stubs_define_sbmodel():
     assert p.df.shape[0] == s.df.shape[0] == c.df.shape[0] == r.df.shape[0] == 1
     assert p_in.size == s_in.size == c_in.size == r_in.size == 1
 
-@pytest.mark.stubs
+@pytest.mark.stubs_model_setup
 def test_stubs_load_mesh(stubs_mesh):
     "Test that stubs is loading the dolfin mesh when we create a ParentMesh"
     assert stubs_mesh.dolfin_mesh.num_vertices() > 1
     assert stubs_mesh.dolfin_mesh.num_cells() > 1
     
-@pytest.mark.stubs
-def test_stubs_define_model():
-    "Test that stubs can generate a config file"
-    config = stubs.config.Config()
+@pytest.mark.stubs_model_setup
+def test_stubs_define_model(stubs_config, stubs_mesh):
+    "Test that stubs can create a full model file"
+    sbmodel = stubs.common.read_sbmodel('pytest.sbmodel')
+    # Define solvers
+    mps             = stubs.solvers.MultiphysicsSolver()
+    nls             = stubs.solvers.NonlinearNewtonSolver()
+    ls              = stubs.solvers.DolfinKrylovSolver()
+    solver_system   = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01, multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
+
+    model = stubs.model.Model(sbmodel, stubs_config, solver_system, parent_mesh=stubs_mesh)
+
+    assert type(model)==stubs.model.Model
+

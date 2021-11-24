@@ -30,4 +30,6 @@ def datadir(request):
             return path.joinpath(subdir)
         path = path.parent
 
-
+@pytest.fixture(scope='module')
+def mesh_filename(datadir):
+    return str(datadir.joinpath('adjacent_cubes.xml'))
