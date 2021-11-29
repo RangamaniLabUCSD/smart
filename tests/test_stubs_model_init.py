@@ -6,7 +6,7 @@ from stubs.common import init_sbmodel
 
 # Fixtures
 @pytest.fixture
-def stubs_3species_model(stubs_mesh, stubs_config):
+def stubs_model(stubs_mesh, stubs_config):
     unit = stubs.unit # unit registry
     # initialize 
     p, s, c, r = stubs.model_building.empty_sbmodel()
@@ -51,7 +51,8 @@ def stubs_config():
 
 # Tests
 @pytest.mark.stubs_model_init
-def test_stubs_model_init_part1_unit_assembly(stubs_mesh):
+def test_stubs_model_init_part1_unit_assembly(stubs_model):
+    model = stubs_model
     "Assembling Pint units"
     model.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
     model.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
@@ -61,4 +62,4 @@ def test_stubs_model_init_part1_unit_assembly(stubs_mesh):
     model.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
     model.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": model.config.reaction_database})
 
-    assert type(all([model.pc[param_key] == pint.Quantity for param_key in model.pc]))
+    assert all([isinstance(param.value_unit, pint.Quantity) for param in model.pc.values])
