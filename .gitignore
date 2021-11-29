@@ -89,3 +89,6 @@ Dockerfile_jgl
 
 # vs code
 **.code-workspace
+
+# debugging code
+debug_stubs.py

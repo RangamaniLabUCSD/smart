@@ -102,7 +102,7 @@ class ObjectContainer(object):
 
     def __getitem__(self, key):
         "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
-        return self[key]
+        return self.Dict[key]
     def __setitem__(self, key, newvalue):
         "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
         self.Dict[key] = newvalue
