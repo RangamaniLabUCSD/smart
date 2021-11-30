@@ -169,7 +169,7 @@ class ObjectContainer(object):
         for _, obj1 in self.items:
             obj1_value = getattr(obj1, property_name1)
             # if type dict, then match values of entries with ObjectContainer2
-            if type(obj1_value) == dict:
+            if isinstance(obj1_value, dict):
                 newDict = odict()
                 for key, value in obj1_value.items():
                     objList = ObjectContainer2.where_equals(property_name2, value)
@@ -374,7 +374,7 @@ class ParameterContainer(ObjectContainer):
 class Parameter(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
-    def assembleTimeDependentParameters(self):
+    def assemble_time_dependent_parameters(self):
         #TODO
         if not self.is_time_dependent:
             return

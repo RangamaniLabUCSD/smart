@@ -183,7 +183,60 @@ def color_print(full_text, color):
                 print(colored(text, color=color))
 
 # ====================================================
+# fancy printing
+# ====================================================
+def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_char='=',
+                             num_banners=0, newlines=1, format_type=None):
+    "Formatted text to stand out."
+    # some default options
+    if format_type == 'title':
+        text_color = 'magenta'; num_banners = 1; newlines = 2
+    elif format_type == 'subtitle':
+        text_color = 'green'; filler_char = '-'
+    elif format_type == 'log':
+        buffer_color='white'; text_color = 'green'; filler_char = '.'; newlines=0
+    elif format_type == 'log_important':
+        buffer_color='white'; text_color = 'magenta'; filler_char = '.'; newlines=0
+    elif format_type == 'log_urgent':
+        buffer_color='white'; text_color = 'red'; filler_char = '.'; newlines=0
+    elif format_type == 'timestep':
+        text_color = 'magenta'; num_banners = 2; filler_char = '.'; newlines=1
+    elif format_type == 'solverstep':
+        text_color = 'magenta'; num_banners = 1; filler_char = '.'; newlines=1
+    elif format_type is not None:
+        raise ValueError("Unknown formatting_type.")
+
+    # calculate optimal buffer size
+    min_buffer_size = 5
+    buffer_size = max([min_buffer_size, int((79 - len(title_text))/2 - 1)]) # terminal width == 80
+    title_str_len = (buffer_size+1)*2 + len(title_text)
+
+    # color/stylize buffer, text, and banner
+    buffer = colored(filler_char*buffer_size, buffer_color)
+    title_str = f"{buffer} {colored(title_text, text_color)} {buffer}"
+    banner = colored(filler_char*title_str_len, buffer_color)
+
+    # initial spacing
+    if newlines > 0: print('\n'*(newlines-1))
+    # print first banner
+    for _ in range(num_banners):
+        print(f"{banner}")
+    # print main text
+    print(title_str)
+    # print second banner
+    for _ in range(num_banners):
+        print(f"{banner}")
+    # end spacing
+    if newlines > 0: print('\n'*(newlines-1))
+
+# demonstrate built in options
+def _fancy_print_test():
+    for format_type in ['title', 'subtitle', 'log', 'log_important', 'log_urgent', 'timestep', 'solverstep']:
+        _fancy_print(format_type, format_type=format_type)
+
+# ====================================================
 # I/O
+# ====================================================
 
 def json_to_ObjectContainer(json_str, data_type=None):
     """

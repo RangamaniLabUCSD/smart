@@ -42,7 +42,6 @@ def stubs_model(stubs_mesh, stubs_config):
 
     model = stubs.model.Model(sbmodel, stubs_config, solver_system, parent_mesh=stubs_mesh)
 
-    assert type(model)==stubs.model.Model
     return model
 
 @pytest.fixture
@@ -52,11 +51,15 @@ def stubs_config():
 # Tests
 @pytest.mark.stubs_model_init
 def test_stubs_model_init_part1_unit_assembly(stubs_model):
-    model = stubs_model
     "Assembling Pint units"
+    # initialize
+    model = stubs_model
+    assert type(model)==stubs.model.Model
+
+    # assemble the units
     model.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
     model.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-    model.pc.do_to_all('assembleTimeDependentParameters')
+    model.pc.do_to_all('assemble_time_dependent_parameters')
     model.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
     model.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
     model.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})

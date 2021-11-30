@@ -16,6 +16,7 @@ import stubs.model_assembly
 import stubs.common as common
 from stubs import unit as ureg
 color_print = common.color_print
+from stubs.common import _fancy_print as fancy_print
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -69,14 +70,18 @@ class Model(object):
 
         self.data = stubs.data_manipulation.Data(self, config)
 
-
+#===============================================================================
+#===============================================================================
+# SOLVING
+#===============================================================================
+#===============================================================================
     def initialize(self):
         # parameter/unit assembly
         print("\n\n********** Model initialization (Part 1/6) **********")
         print("Assembling parameters and units...\n")
         self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
         self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        self.pc.do_to_all('assembleTimeDependentParameters')
+        self.pc.do_to_all('assemble_time_dependent_parameters')
         self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
         self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
         self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
@@ -135,15 +140,7 @@ class Model(object):
 
     def initialize_refactor(self):
         # parameter/unit assembly
-        print("\n\n********** Model initialization (Part 1/6) **********")
-        print("Assembling parameters and units...\n")
-        self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
-        self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        self.pc.do_to_all('assembleTimeDependentParameters')
-        self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-        self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
-        self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-        self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+        self.initialize_part1_assemble_units()
 
         # linking containers with one another
         print("\n\n********** Model initialization (Part 2/6) **********")
@@ -201,6 +198,39 @@ class Model(object):
         self.sort_forms()
 
         self.init_solutions_and_plots()
+
+    def initialize_part1_assemble_units(self):
+        self._init_print(1, 8, 'Assembling units...')
+        self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
+        self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+        self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+        self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
+        self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+
+    def initialize_part2_time_dependent_parameters(self):
+        self._init_print(2, 8, 'Assembling time dependent parameters...')
+        self.pc.do_to_all('assemble_time_dependent_parameters')
+
+    def initialize_part3_fluxes_for_known_reactions(self):
+        self._init_print(3, 8, 'Initializing flux equations for known reactions...')
+    
+        self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+
+    def _init_print(self, part, total_parts, print_text):
+        print(f"\n\n")
+        print(f"=============================================================================")
+        print(f"========== Model Initialization (Part {part}/{total_parts}) ==========")
+        print(f"=============================================================================")
+        print(print_text)
+        print("\n")
+    def _init_subpart_print(self, part, subpart, total_parts, print_text):
+        model_init_str = f"========== Model Initialization (Part {part_number}/{total_parts}) =========="
+        print(f"\n\n")
+        print(f"=============================================================================")
+        print(f"========== Model Initialization (Part {part_number}/{total_parts}) ==========")
+        print(f"=============================================================================")
+        print(print_text)
+        print("\n")
 
 #===============================================================================
 #===============================================================================
@@ -575,7 +605,7 @@ class Model(object):
         # if last time-step we passed a reset dt checkpoint then reset it now
         if self.reset_dt:
             new_dt = self.solver_system.adjust_dt[0][1]
-            color_print("(!!!) Adjusting time-step (dt = %f -> %f) to match config specified value" % (self.dt, new_dt), 'green')
+            fancy_print(f"(!!!) Adjusting time-step (dt = {self.dt} -> {new_dt}) to match config specified value", format_type='log')
             self.set_time(self.t, dt = new_dt)
             del(self.solver_system.adjust_dt[0])
             self.reset_dt = False
@@ -590,7 +620,7 @@ class Model(object):
             raise Exception("Next reset time is less than time at beginning of time-step.")
         if t0 < next_reset_time <= potential_t: # check if the full time-step would pass a reset dt checkpoint
             new_dt = max([next_reset_time - t0, next_reset_dt]) # this is needed otherwise very small time-steps might be taken which wont converge
-            color_print("(!!!) Adjusting time-step (dt = %f -> %f) to avoid passing reset dt checkpoint" % (self.dt, new_dt), 'blue')
+            fancy_print("(!!!) Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing reset dt checkpoint", format_type='log_important')
             self.set_time(self.t, dt=new_dt)
             # set a flag to change dt to the config specified value
             self.reset_dt = True
@@ -602,7 +632,7 @@ class Model(object):
         potential_t = self.t + self.dt
         if potential_t > self.final_t:
             new_dt = self.final_t - self.t 
-            color_print("(!!!) Adjusting time-step (dt = %f -> %f) to avoid passing final time" % (self.dt, new_dt), 'blue')
+            fancy_print("(!!!) Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
             self.set_time(self.t, dt=new_dt)
 
     def forward_time_step(self, dt_factor=1):
@@ -610,7 +640,7 @@ class Model(object):
         self.dT.assign(float(self.dt*dt_factor))
         self.t = float(self.t+self.dt*dt_factor)
         self.T.assign(self.t)
-        self.updateTimeDependentParameters(dt=self.dt*dt_factor)
+        self.update_time_dependent_parameters(dt=self.dt*dt_factor)
         Print("t: %f , dt: %f" % (self.t, self.dt*dt_factor))
 
     def stopwatch(self, key, stop=False, color='cyan'):
@@ -628,7 +658,7 @@ class Model(object):
             self.timings[key].append(elapsed_time)
             return elapsed_time
 
-    def updateTimeDependentParameters(self, t=None, t0=None, dt=None):
+    def update_time_dependent_parameters(self, t=None, t0=None, dt=None):
         """ Updates all time dependent parameters. Time-dependent parameters are 
         either defined either symbolically or through a data file, and each of 
         these can either be defined as a direct function of t, p(t), or a 
@@ -823,7 +853,6 @@ class Model(object):
             Fabs = np.linalg.norm(Fvec, ord=norm_type)
 
             self.stopping_conditions['F_abs'].update({comp_name: Fabs})
-            #color_print(f"{'Computed F_abs for component '+comp_name+': ': <40} {Fabs:.4e}", color='green')
 
         for sp_name, sp in self.sc.items:
             uvec = self.dolfin_get_function_values(sp, ukey='u')
@@ -835,8 +864,6 @@ class Model(object):
 
             self.stopping_conditions['udiff_abs'].update({sp_name: udiff_abs})
             self.stopping_conditions['udiff_rel'].update({sp_name: udiff_rel})
-            #color_print(f"{'Computed udiff_abs for species '+comp_name+': ': <40} {udiff_abs:.4e}", color='green')
-            #color_print(f"{'Computed udiff_rel for species '+comp_name+': ': <40} {udiff_rel:.4e}", color='green')
 
     def iterative_mpsolve(self, bcs=[]):
         """
@@ -846,7 +873,7 @@ class Model(object):
         self.idx += 1
         self.check_dt_resets()      # check if there is a manually prescribed time-step size
         self.check_dt_pass_tfinal() # check that we don't pass tfinal
-        color_print(f'\n *** Beginning time-step {self.idx} [time={self.t}, dt={self.dt}] ***\n', color='red')
+        fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', format_type='timestep')
 
         self.stopwatch("Total time step") # start a timer for the total time step
 
@@ -855,7 +882,7 @@ class Model(object):
         self.mpidx = 0
         while True: 
             self.mpidx += 1
-            color_print(f'\n * Multiphysics iteration {self.mpidx} for time-step {self.idx} [time={self.t}] *', color='green')
+            fancy_print(f'Multiphysics iteration {self.mpidx} for time-step {self.idx} [time={self.t}]', format_type='solverstep')
             # solve volume problem(s)
             self.volume_reactions_forward()
             self.update_solution_volume_to_boundary()
@@ -865,31 +892,46 @@ class Model(object):
             # decide whether to stop iterations
             self.compute_stopping_conditions()
             if self.solver_system.multiphysics_solver.eps_Fabs is not None:
+                max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
                 if all([x<self.solver_system.multiphysics_solver.eps_Fabs for x in self.stopping_conditions['F_abs'].values()]):
-                    color_print(f"All F_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_Fabs}." \
-                                  f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    fancy_print(f"All F_abs are below tolerance ({self.solver_system.multiphysics_solver.eps_Fabs:.4e}", format_type='log_important')
+                    fancy_print(f"Max F_abs is {max_Fabs:.4e} from component {max_comp_name}", format_type='log_important')
+                    fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
                     break
                 else: 
-                    max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
-                    color_print(f"{'One or more F_abs are above tolerance. Max F_abs is from component '+max_comp_name+': ': <40} {max_Fabs:.4e}", color='green')
+                    #max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
+                    #color_print(f"{'One or more F_abs are above tolerance. Max F_abs is from component '+max_comp_name+': ': <40} {max_Fabs:.4e}", color='green')
+                    fancy_print(f"One or more F_abs are above tolerance ({self.solver_system.multiphysics_solver.eps_Fabs:.4e}", format_type='log')
+                    fancy_print(f"Max F_abs is {max_Fabs:.4e} from component {max_comp_name}", format_type='log')
 
             if self.solver_system.multiphysics_solver.eps_udiff_abs is not None:
+                max_sp_name, max_udiffabs = max(self.stopping_conditions['udiff_abs'].items(), key=operator.itemgetter(1))
                 if all([x<self.solver_system.multiphysics_solver.eps_udiff_abs for x in self.stopping_conditions['udiff_abs'].values()]):
-                    color_print(f"All udiff_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_abs}." \
-                                  f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    #color_print(f"All udiff_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_abs}." \
+                    #              f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    fancy_print(f"All udiff_abs are below tolerance ({self.solver_system.multiphysics_solver.eps_udiff_abs:.4e})", format_type='log_important')
+                    fancy_print(f"Max udiff_abs is {max_udiffabs:.4e} from species {max_sp_name}", format_type='log_important')
+                    fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
                     break
                 else: 
-                    max_sp_name, max_udiffabs = max(self.stopping_conditions['udiff_abs'].items(), key=operator.itemgetter(1))
-                    color_print(f"{'One or more udiff_abs are above tolerance. Max udiff_abs is from species '+max_sp_name+': ': <40} {max_udiffabs:.4e}", color='green')
+                    #color_print(f"{'One or more udiff_abs are above tolerance. Max udiff_abs is from species '+max_sp_name+': ': <40} {max_udiffabs:.4e}", color='green')
+                    fancy_print(f"One or more udiff_abs are above tolerance ({self.solver_system.multiphysics_solver.eps_udiff_abs:.4e}", format_type='log')
+                    fancy_print(f"Max udiff_abs is {max_udiffabs:.4e} from species {max_sp_name}", format_type='log')
 
             if self.solver_system.multiphysics_solver.eps_udiff_rel is not None:
+                max_sp_name, max_udiffrel = max(self.stopping_conditions['udiff_rel'].items(), key=operator.itemgetter(1))
                 if all([x<self.solver_system.multiphysics_solver.eps_udiff_rel for x in self.stopping_conditions['udiff_rel'].values()]):
-                    color_print(f"All udiff_rel are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_rel}." \
-                                  f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    #color_print(f"All udiff_rel are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_rel}." \
+                    #              f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
+                    fancy_print(f"All udiff_rel are below tolerance ({self.solver_system.multiphysics_solver.eps_udiff_rel:.4e})", format_type='log_important')
+                    fancy_print(f"Max udiff_rel is {max_udiffrel:.4e} from species {max_sp_name}", format_type='log_important')
+                    fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
                     break
                 else: 
                     max_sp_name, max_udiffrel = max(self.stopping_conditions['udiff_rel'].items(), key=operator.itemgetter(1))
-                    color_print(f"{'One or more udiff_rel are above tolerance. Max udiff_rel is from species '+max_sp_name+': ': <40} {max_udiffrel:.4e}", color='green')
+                    #color_print(f"{'One or more udiff_rel are above tolerance. Max udiff_rel is from species '+max_sp_name+': ': <40} {max_udiffrel:.4e}", color='green')
+                    fancy_print(f"One or more udiff_rel are above tolerance ({self.solver_system.multiphysics_solver.eps_udiff_rel:.4e}", format_type='log')
+                    fancy_print(f"Max udiff_rel is {max_udiffabs:.4e} from species {max_sp_name}", format_type='log')
 
             # update previous (iteration) solution 
             self.update_solution(ukeys=['k'])
