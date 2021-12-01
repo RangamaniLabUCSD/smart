@@ -4,7 +4,7 @@ Pystubs Test
 
 Testing more verbose documentation.
 
-.. automodule:: stubs
+.. automodule:: stubs.model_assembly
 
 Testing explicit members
 ========================
