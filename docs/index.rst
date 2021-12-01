@@ -16,16 +16,16 @@ Systems biology models are converted by STUBS into the appropriate systems of re
    faq
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 3
    :caption: API Documentation:
 
    pystubs
 
 .. toctree::
-   :maxdepth: 1
-   :caption: API Documentation (test):
+   :maxdepth: 3
+   :caption: API Documentation (verbose):
 
-   pystubs_test
+   pystubs_verbose
 
 Indices and tables
 ==================
