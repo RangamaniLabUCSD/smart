@@ -3,8 +3,8 @@ import pytest
 
 # Tests
 @pytest.mark.stubs_model_setup
-def test_stubs_mesh_load_dolfin_mesh(stubs_mesh):
-    "Make sure that stubs is loading the dolfin mesh when we create a ParentMesh"
+def test_stubs_load_mesh(stubs_mesh):
+    "Test that stubs is loading the dolfin mesh when we create a ParentMesh"
     assert stubs_mesh.dolfin_mesh.num_vertices() > 1
     assert stubs_mesh.dolfin_mesh.num_cells() > 1
 
@@ -55,11 +55,6 @@ def test_stubs_define_sbmodel():
     # check that the first entry is the same no matter how it is loaded
     assert [x.df.index[0] == list(x_in.keys)[0] == list(xc.keys)[0] for x, x_in, xc in zip([p,s,c,r], [p_in,s_in,c_in,r_in], [pc,sc,cc,rc])] 
 
-@pytest.mark.stubs_model_setup
-def test_stubs_load_mesh(stubs_mesh):
-    "Test that stubs is loading the dolfin mesh when we create a ParentMesh"
-    assert stubs_mesh.dolfin_mesh.num_vertices() > 1
-    assert stubs_mesh.dolfin_mesh.num_cells() > 1
     
 @pytest.mark.stubs_model_setup
 def test_stubs_define_model(stubs_config, stubs_mesh):

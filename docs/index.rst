@@ -21,6 +21,11 @@ Systems biology models are converted by STUBS into the appropriate systems of re
 
    pystubs
 
+.. toctree::
+   :maxdepth: 1
+   :caption: API Documentation (test):
+
+   pystubs_test
 
 Indices and tables
 ==================
