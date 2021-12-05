@@ -375,7 +375,6 @@ class Parameter(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def assemble_time_dependent_parameters(self):
-        #TODO
         if not self.is_time_dependent:
             return
         # Parse the given string to create a sympy expression
@@ -537,7 +536,7 @@ class CompartmentContainer(ObjectContainer):
 #
     def extract_submeshes(self, main_mesh_str='main_mesh', save_to_file=False):
         main_mesh  = self[main_mesh_str]
-        surfaceDim = main_mesh.dimensionality - 1
+        surface_dim = main_mesh.dimensionality - 1
 
         self[main_mesh_str].mesh = self.meshes[main_mesh_str]
 
@@ -548,16 +547,16 @@ class CompartmentContainer(ObjectContainer):
         # should only call entity_map once to avoid this
         temp_emap_0  = bmesh.entity_map(0)
         bmesh_emap_0 = deepcopy(temp_emap_0.array())
-        temp_emap_n  = bmesh.entity_map(surfaceDim)
+        temp_emap_n  = bmesh.entity_map(surface_dim)
         bmesh_emap_n = deepcopy(temp_emap_n.array())
 
-        vmf          = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
-        bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)
-        vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
-        bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+        vmf          = d.MeshFunction("size_t", vmesh, surface_dim, vmesh.domains())
+        bmf          = d.MeshFunction("size_t", bmesh, surface_dim)
+        vmf_combined = d.MeshFunction("size_t", vmesh, surface_dim, vmesh.domains())
+        bmf_combined = d.MeshFunction("size_t", bmesh, surface_dim)
 
         # iterate through facets of bmesh (transfer markers from volume mesh function to boundary mesh function)
-        for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): 
+        for idx, facet in enumerate(d.entities(bmesh,surface_dim)): 
             vmesh_idx = bmesh_emap_n[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
@@ -570,7 +569,7 @@ class CompartmentContainer(ObjectContainer):
 
                 first_index_marker = comp.cell_marker[0] # combine into the first marker of the list 
                 comp.first_index_marker = first_index_marker
-                Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {first_index_marker}.")
+                Print(f"Combining markers {comp.cell_marker} (for compartment {comp_name}) into single marker {first_index_marker}.")
                 for marker_value in comp.cell_marker:
                     vmf_combined.array()[vmf.array() == marker_value] = first_index_marker
                     bmf_combined.array()[bmf.array() == marker_value] = first_index_marker
@@ -589,7 +588,7 @@ class CompartmentContainer(ObjectContainer):
             # interest with different species (e.g., PM, ER). By exporting the
             # submeshes in serial we can reload them back in in parallel.
 
-            if comp_name!=main_mesh_str and comp.dimensionality==surfaceDim:
+            if comp_name!=main_mesh_str and comp.dimensionality==surface_dim:
                 # # TODO: fix this (parallel submesh)
                 # if size > 1: # if we are running in parallel
                 #     Print("CPU %d: Loading submesh for %s from file" % (rank, comp_name))
@@ -646,15 +645,15 @@ class CompartmentContainer(ObjectContainer):
 
     def extract_submeshes_refactor(self, parent_mesh):
         # Get minimum and maximum dimensions of meshes being computed on.
-        volumeDim  = self.max_dim
-        surfaceDim = self.min_dim
-
+        volume_dim  = self.max_dim
+        surface_dim = self.min_dim
         # Check that dimensionality of components and mesh is acceptable
-        if (volumeDim - surfaceDim) not in [0,1]:
-            raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
-        if volumeDim != parent_mesh.dimensionality:
+        if volume_dim != parent_mesh.dimensionality:
             raise ValueError(f"Parent mesh has geometric dimension: {parent_mesh.dolfin_mesh.geometric_dimension()} which"
-                            +f" is not the same as volumeDim: {volumeDim}.")
+                            +f" is not the same as volume_dim: {volume_dim}.")
+
+        # Define mesh functions
+        #volume_mf = d.MeshFunction('size_t', parent_mesh.dolfin_mesh, volume_dim, 
 
         # Get volume and boundary mesh
         #self[main_mesh_str].mesh   = self.meshes[main_mesh_str]
@@ -664,7 +663,7 @@ class CompartmentContainer(ObjectContainer):
         # entity_map once to avoid this
         temp_emap_0     = smesh.entity_map(0)
         smesh_emap_0    = deepcopy(temp_emap_0.array()) # entity map to vertices
-        temp_emap_n     = smesh.entity_map(surfaceDim)
+        temp_emap_n     = smesh.entity_map(surface_dim)
         smesh_emap_n    = deepcopy(temp_emap_n.array()) # entity map to facets
 
         # Mesh functions
@@ -673,19 +672,19 @@ class CompartmentContainer(ObjectContainer):
         #
         #
         #
-        #vvmf         = d.MeshFunction("size_t", vmesh, volumeDim, vmesh.domains())  # cell markers for volume mesh
-        #vsmf         = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # facet markers for volume mesh
-        #smf          = d.MeshFunction("size_t", bmesh, surfaceDim)                  # cell markers for surface mesh
-        #vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains()) # 
-        #bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+        #vvmf         = d.MeshFunction("size_t", vmesh, volume_dim, vmesh.domains())  # cell markers for volume mesh
+        #vsmf         = d.MeshFunction("size_t", vmesh, surface_dim, vmesh.domains()) # facet markers for volume mesh
+        #smf          = d.MeshFunction("size_t", bmesh, surface_dim)                  # cell markers for surface mesh
+        #vmf_combined = d.MeshFunction("size_t", vmesh, surface_dim, vmesh.domains()) # 
+        #bmf_combined = d.MeshFunction("size_t", bmesh, surface_dim)
 
-        vmf          = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
-        bmf          = d.MeshFunction("size_t", bmesh, surfaceDim)
-        vmf_combined = d.MeshFunction("size_t", vmesh, surfaceDim, vmesh.domains())
-        bmf_combined = d.MeshFunction("size_t", bmesh, surfaceDim)
+        vmf          = d.MeshFunction("size_t", vmesh, surface_dim, vmesh.domains())
+        bmf          = d.MeshFunction("size_t", bmesh, surface_dim)
+        vmf_combined = d.MeshFunction("size_t", vmesh, surface_dim, vmesh.domains())
+        bmf_combined = d.MeshFunction("size_t", bmesh, surface_dim)
 
         # iterate through facets of bmesh (transfer markers from volume mesh function to boundary mesh function)
-        for idx, facet in enumerate(d.entities(bmesh,surfaceDim)): 
+        for idx, facet in enumerate(d.entities(bmesh,surface_dim)): 
             vmesh_idx = bmesh_emap_n[idx] # get the index of the face on vmesh corresponding to this face on bmesh
             vmesh_boundarynumber = vmf.array()[vmesh_idx] # get the value of the mesh function at this face
             bmf.array()[idx] = vmesh_boundarynumber # set the value of the boundary mesh function to be the same value
@@ -698,7 +697,7 @@ class CompartmentContainer(ObjectContainer):
 
                 first_index_marker = comp.cell_marker[0] # combine into the first marker of the list 
                 comp.first_index_marker = first_index_marker
-                Print(f"Combining markers {comp.cell_marker} (for component {comp_name}) into single marker {first_index_marker}.")
+                Print(f"Combining markers {comp.cell_marker} (for compartment {comp_name}) into single marker {first_index_marker}.")
                 for marker_value in comp.cell_marker:
                     vmf_combined.array()[vmf.array() == marker_value] = first_index_marker
                     bmf_combined.array()[bmf.array() == marker_value] = first_index_marker
@@ -717,7 +716,7 @@ class CompartmentContainer(ObjectContainer):
             # interest with different species (e.g., PM, ER). By exporting the
             # submeshes in serial we can reload them back in in parallel.
 
-            if comp_name!=main_mesh_str and comp.dimensionality==surfaceDim:
+            if comp_name!=main_mesh_str and comp.dimensionality==surface_dim:
                 # # TODO: fix this (parallel submesh)
                 # if size > 1: # if we are running in parallel
                 #     Print("CPU %d: Loading submesh for %s from file" % (rank, comp_name))
@@ -737,11 +736,11 @@ class CompartmentContainer(ObjectContainer):
                 #     d.File(save_str) << submesh
 
             # integration measures
-            if comp.dimensionality==volumeDim:
+            if comp.dimensionality==volume_dim:
                 comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined, metadata={'quadrature_degree': 3})
                 comp.ds_uncombined = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf, metadata={'quadrature_degree': 3})
                 comp.dP = None
-            elif comp.dimensionality<volumeDim:
+            elif comp.dimensionality<volume_dim:
                 comp.dP = d.Measure('dP', domain=comp.mesh)
                 comp.ds = None
             else:
@@ -775,7 +774,6 @@ class CompartmentContainer(ObjectContainer):
 
 
     def compute_scaling_factors(self):
-        self.do_to_all('compute_nvolume')
         for key, comp in self.items:
             comp.scale_to = {}
             for key2, comp2 in self.items:
@@ -785,6 +783,8 @@ class CompartmentContainer(ObjectContainer):
         comp_dims = [comp.dimensionality for comp in self.values]
         self.min_dim = min(comp_dims)
         self.max_dim = max(comp_dims)
+        if (self.max_dim - self.min_dim) not in [0,1]:
+            raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
 
 
 

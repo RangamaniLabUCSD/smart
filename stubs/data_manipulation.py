@@ -32,7 +32,6 @@ from stubs import unit as ureg
 
 class Data(object):
     def __init__(self, model, config):
-        # TODO: refactor data class
         self.model = model
         self.config = config
         self.append_flag = False
@@ -49,7 +48,7 @@ class Data(object):
         self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
 
-    def initSolutionFiles(self, sc, config):
+    def init_solution_files(self, sc, config):
         output_type = config.output_type
 
         for sp_name, sp in sc.items:
@@ -72,7 +71,7 @@ class Data(object):
                 raise Exception("Unknown solution file type")
 
 
-    def storeSolutionFiles(self, u, t, config):
+    def store_solution_files(self, u, t, config):
         output_type = config.output_type
 
         if config.flags['store_solutions']==False or output_type==None:
@@ -229,7 +228,7 @@ class Data(object):
                 self.probe_solutions[sp_name][coords].append(u_eval)
 
 
-    def computeError(self, u, comp_name, errorNormKey):
+    def compute_error(self, u, comp_name, errorNormKey):
         errorNormDict = {'L2': 2, 'Linf': np.Inf}
         if comp_name not in self.errors.keys():
             self.errors[comp_name] = {}
@@ -259,7 +258,7 @@ class Data(object):
 #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
 #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
-    def initPlot(self, config, sc, fc):
+    def init_plot(self, config, sc, fc):
         if rank==root:
             if not os.path.exists(config.directory['plots']):
                 os.makedirs(config.directory['plots'])
@@ -302,7 +301,7 @@ class Data(object):
                 for idx in range(numPlots):
                     self.plots['fluxes'].add_subplot(subplotRows,subplotCols,idx+1)
 
-    def plotParameters(self, config, figsize=(120,40)):
+    def plot_parameters(self, config, figsize=(120,40)):
         """
         Plots time dependent parameters
         """
@@ -328,7 +327,7 @@ class Data(object):
             #plt.tight_layout()
             self.plots['parameters'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_params', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
-    def plotFluxes(self, config, figsize=(120,120)):
+    def plot_fluxes(self, config, figsize=(120,120)):
         """
         Plots assembled fluxes
         Note: assemble(flux) (measure is a surface) [=]
@@ -360,7 +359,7 @@ class Data(object):
             self.plots['fluxes'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
-    def plotSolutions(self, config, sc, figsize=(160,160)):
+    def plot_solutions(self, config, sc, figsize=(160,160)):
         plot_settings = config.plot_settings
         dir_settings = config.directory
 
@@ -399,7 +398,7 @@ class Data(object):
         self.plots['solutions'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
 
 
-    def plotSolverStatus(self, config, figsize=(85,40)):
+    def plot_solver_status(self, config, figsize=(85,40)):
         plot_settings = config.plot_settings
         dir_settings = config.directory
         nticks=14
@@ -438,7 +437,7 @@ class Data(object):
         self.plots['solver_status'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_solver', figsize=figsize,dpi=300)
 
 
-    def outputPickle(self):
+    def output_pickle(self):
         """
         Outputs solution statistics as a serialized pickle
         """
@@ -471,7 +470,7 @@ class Data(object):
 
         Print('Solutions dumped into pickle.')
 
-    def outputCSV(self):
+    def output_csv(self):
         """
         Outputs solution statistics as a csv
         """

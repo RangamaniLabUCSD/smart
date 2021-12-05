@@ -50,19 +50,12 @@ def stubs_config():
 
 # Tests
 @pytest.mark.stubs_model_init
-def test_stubs_model_init_part1_unit_assembly(stubs_model):
-    "Assembling Pint units"
+def test_stubs_model_init(stubs_model):
+    "Test the different parts of model initialization"
     # initialize
     model = stubs_model
     assert type(model)==stubs.model.Model
 
-    # assemble the units
-    model.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
-    model.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-    model.pc.do_to_all('assemble_time_dependent_parameters')
-    model.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-    model.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
-    model.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-    model.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": model.config.reaction_database})
-
-    assert all([isinstance(param.value_unit, pint.Quantity) for param in model.pc.values])
+    model.initialize_step_1()
+    model.initialize_step_2()
+    model.initialize_step_3()

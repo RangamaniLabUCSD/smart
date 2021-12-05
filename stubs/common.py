@@ -186,23 +186,23 @@ def color_print(full_text, color):
 # fancy printing
 # ====================================================
 def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_char='=',
-                             num_banners=0, newlines=1, format_type=None):
+                             num_banners=0, newlines=[0,0], left_justify=False, format_type=None):
     "Formatted text to stand out."
     # some default options
     if format_type == 'title':
-        text_color = 'magenta'; num_banners = 1; newlines = 2
+        text_color = 'magenta'; num_banners = 1; newlines = [1,0]
     elif format_type == 'subtitle':
-        text_color = 'green'; filler_char = '-'
+        text_color = 'green'; filler_char = '.'; left_justify=True
     elif format_type == 'log':
-        buffer_color='white'; text_color = 'green'; filler_char = '.'; newlines=0
+        buffer_color='white'; text_color = 'green'; filler_char = '.'; left_justify=True
     elif format_type == 'log_important':
-        buffer_color='white'; text_color = 'magenta'; filler_char = '.'; newlines=0
+        buffer_color='white'; text_color = 'magenta'; filler_char = '.'
     elif format_type == 'log_urgent':
-        buffer_color='white'; text_color = 'red'; filler_char = '.'; newlines=0
+        buffer_color='white'; text_color = 'red'; filler_char = '.'
     elif format_type == 'timestep':
-        text_color = 'magenta'; num_banners = 2; filler_char = '.'; newlines=1
+        text_color = 'magenta'; num_banners = 2; filler_char = '.'; newlines=[1,1]
     elif format_type == 'solverstep':
-        text_color = 'magenta'; num_banners = 1; filler_char = '.'; newlines=1
+        text_color = 'magenta'; num_banners = 1; filler_char = '.'; newlines=[1,1]
     elif format_type is not None:
         raise ValueError("Unknown formatting_type.")
 
@@ -210,14 +210,18 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     min_buffer_size = 5
     buffer_size = max([min_buffer_size, int((79 - len(title_text))/2 - 1)]) # terminal width == 80
     title_str_len = (buffer_size+1)*2 + len(title_text)
+    parity=1 if title_str_len==78 else 0
 
     # color/stylize buffer, text, and banner
-    buffer = colored(filler_char*buffer_size, buffer_color)
-    title_str = f"{buffer} {colored(title_text, text_color)} {buffer}"
-    banner = colored(filler_char*title_str_len, buffer_color)
+    buffer = lambda buffer_size: colored(filler_char*buffer_size, buffer_color)
+    if left_justify:
+        title_str=f"{colored(title_text, text_color)} {buffer(buffer_size*2+1+parity)}"
+    else:
+        title_str = f"{buffer(buffer_size)} {colored(title_text, text_color)} {buffer(buffer_size+parity)}"
+    banner = colored(filler_char*(title_str_len+parity), buffer_color)
 
     # initial spacing
-    if newlines > 0: print('\n'*(newlines-1))
+    if newlines[0] > 0: print('\n'*(newlines[0]-1))
     # print first banner
     for _ in range(num_banners):
         print(f"{banner}")
@@ -227,10 +231,10 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     for _ in range(num_banners):
         print(f"{banner}")
     # end spacing
-    if newlines > 0: print('\n'*(newlines-1))
+    if newlines[1] > 0: print('\n'*(newlines[1]-1))
 
 # demonstrate built in options
-def _fancy_print_test():
+def _fancy_print_options():
     for format_type in ['title', 'subtitle', 'log', 'log_important', 'log_urgent', 'timestep', 'solverstep']:
         _fancy_print(format_type, format_type=format_type)
 

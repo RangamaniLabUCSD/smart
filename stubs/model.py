@@ -139,19 +139,16 @@ class Model(object):
 
 
     def initialize_refactor(self):
-        # parameter/unit assembly
-        self.initialize_part1_assemble_units()
+        # Initializations independent to each object container
+        self.initialize_step1_assemble_units()
+        self.initialize_step2_time_dependent_parameters()
+        self.initialize_step3_fluxes_for_known_reactions()
 
-        # linking containers with one another
-        print("\n\n********** Model initialization (Part 2/6) **********")
-        print("Linking different containers with one another...\n")
-        self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
-        self.sc.link_object(self.cc,'compartment_name','name','compartment')
-        self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-        self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
-
-        # meshes
+        # Initializations dependent on other object containers
+        self.initialize_step4_link_container_properties()
+        self.initialize_step5_count_species_per_compartment()
+ 
+        # Mesh related initializations
         print("\n\n********** Model initialization (Part 3/6) **********")
         print("Loading in mesh and computing statistics...\n")
         self.cc.get_min_max_dim()
@@ -198,40 +195,120 @@ class Model(object):
         self.sort_forms()
 
         self.init_solutions_and_plots()
+    
+    def initialize_refactor_2(self):
+        self.initialize_step_1()
+        self.initialize_step_2()
+        self.initialize_step_3()
+        self.initialize_step_4()
 
-    def initialize_part1_assemble_units(self):
-        self._init_print(1, 8, 'Assembling units...')
+    def initialize_step_1(self):
+        "Independent initializations (only requires information from one container at a time)"
+        fancy_print(f"Independent Initializations (step 1 of ZZ)", format_type='title')
+        self.initialize_step_1_1_assemble_units()
+        self.initialize_step_1_2_time_dependent_parameters()
+        self.initialize_step_1_3_fluxes_for_known_reactions()
+        self.initialize_step_1_4_misc()
+        fancy_print(f"Step 1 of initialization completed successfully!", text_color='magenta')
+    def initialize_step_3(self):
+        "Mesh-related initializations"
+        fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type='title')
+        self.initialize_step_3_1_define_meshfunctions()
+        #self.initialize_step_3_2_get_submesh_stats()
+        fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
+    def initialize_step_2(self):
+        "Cross-container dependent initializations (requires information from multiple containers)"
+        fancy_print(f"Cross-Container Dependent Initializations (step 2 of ZZ)", format_type='title')
+        self.initialize_step_2_1_link_container_properties()
+        self.initialize_step_2_2_count_species_per_compartment()
+        fancy_print(f"Step 2 of initialization completed successfully!", text_color='magenta')
+
+    # Step 1 - Cross-container Independent Initialization
+    def initialize_step_1_1_assemble_units(self):
+        fancy_print(f"Assembling units", format_type='log')
         self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
         self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
         self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
         self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
         self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-
-    def initialize_part2_time_dependent_parameters(self):
-        self._init_print(2, 8, 'Assembling time dependent parameters...')
+    def initialize_step_1_2_time_dependent_parameters(self):
+        fancy_print(f"Assembling time dependent parameters", format_type='log')
         self.pc.do_to_all('assemble_time_dependent_parameters')
-
-    def initialize_part3_fluxes_for_known_reactions(self):
-        self._init_print(3, 8, 'Initializing flux equations for known reactions...')
-    
+    def initialize_step_1_3_fluxes_for_known_reactions(self):
+        fancy_print(f"Initializing flux equations for known reactions", format_type='log')
         self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+    def initialize_step_1_4_misc(self):
+        fancy_print(f"Miscellanious independent initializations", format_type='log')
+        self.cc.get_min_max_dim()
 
-    def _init_print(self, part, total_parts, print_text):
-        print(f"\n\n")
-        print(f"=============================================================================")
-        print(f"========== Model Initialization (Part {part}/{total_parts}) ==========")
-        print(f"=============================================================================")
-        print(print_text)
-        print("\n")
-    def _init_subpart_print(self, part, subpart, total_parts, print_text):
-        model_init_str = f"========== Model Initialization (Part {part_number}/{total_parts}) =========="
-        print(f"\n\n")
-        print(f"=============================================================================")
-        print(f"========== Model Initialization (Part {part_number}/{total_parts}) ==========")
-        print(f"=============================================================================")
-        print(print_text)
-        print("\n")
+    # Step 2 - Cross-container Dependent Initialization
+    def initialize_step_2_1_link_container_properties(self):
+        fancy_print(f"Linking container properties", format_type='log')
+        self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
+        self.sc.link_object(self.cc,'compartment_name','name','compartment')
+        self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+    def initialize_step_2_2_count_species_per_compartment(self):
+        fancy_print(f"Counting the number of active species per compartment", format_type='log')
+        self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
+        self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
 
+    # Step 3 - Mesh Initializations
+    def initialize_step_3_1_define_meshfunctions(self):
+        fancy_print(f"Defining MeshFunctions", format_type='log')
+        # Aliases
+        mesh = self.parent_mesh.dolfin_mesh
+        volume_dim = self.cc.max_dim
+        surface_dim = self.cc.min_dim
+
+        # Check that there is a parent_mesh loaded
+        if not isinstance(self.parent_mesh, stubs.mesh.ParentMesh):
+            raise ValueError("There is no parent mesh.")
+        # Check that dimensionality of compartments and mesh is acceptable
+        if volume_dim != self.parent_mesh.dimensionality:
+            raise ValueError(f"Parent mesh has geometric dimension: {self.parent_mesh.dimensionality} which"
+                            +f" is not the same as the maximum compartment dimension: {volume_dim}.")
+        # Define mesh functions
+        volume_mf  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
+        surface_mf = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+        volume_mf_combined  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
+        surface_mf_combined = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+
+        # Combine markers in a list
+        for comp_name, comp in self.cc.items:
+            if type(comp.cell_marker) == list:
+                if not all([type(x)==int for x in comp.cell_marker]):
+                    raise ValueError("Cell markers were given as a list but not all elements were ints.")
+
+                first_index_marker = comp.cell_marker[0] # combine into the first marker of the list 
+                fancy_print(f"List of markers given for component {comp_name}, combining into single marker, {first_index_marker}")
+                comp.first_index_marker = first_index_marker
+                for marker_value in comp.cell_marker:
+                    volume_mf_combined.array()[volume_mf.array() == marker_value] = first_index_marker
+                    surface_mf_combined.array()[surface_mf.array() == marker_value] = first_index_marker
+            elif type(comp.cell_marker) == int:
+                comp.first_index_marker = comp.cell_marker
+                volume_mf_combined.array()[volume_mf.array() == comp.cell_marker] = comp.cell_marker
+                surface_mf_combined.array()[surface_mf.array() == comp.cell_marker] = comp.cell_marker
+            else:
+                raise ValueError("Cell markers must either be provided as an int or list of ints")
+
+#    def initialize_step_3_2_extract_submeshes(self):
+#        fancy_print(f"Extracting submeshes", format_type='log')
+#        # Aliases
+#        mesh = self.parent_mesh.dolfin_mesh
+#        volume_dim = self.cc.max_dim
+#        surface_dim = self.cc.min_dim
+#
+#        # Use MeshView to extract the submeshes
+#        d.MeshView(volume_mf, )
+#
+
+
+    def initialize_step_3_2_get_submesh_stats(self):
+        fancy_print(f"Getting stats on submeshes", format_type='log')
+        self.cc.do_to_all('compute_nvolume')
+        self.cc.compute_scaling_factors()
+        
 #===============================================================================
 #===============================================================================
 # PROBLEM SETUP
@@ -895,14 +972,14 @@ class Model(object):
                 max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
                 if all([x<self.solver_system.multiphysics_solver.eps_Fabs for x in self.stopping_conditions['F_abs'].values()]):
                     fancy_print(f"All F_abs are below tolerance ({self.solver_system.multiphysics_solver.eps_Fabs:.4e}", format_type='log_important')
-                    fancy_print(f"Max F_abs is {max_Fabs:.4e} from component {max_comp_name}", format_type='log_important')
+                    fancy_print(f"Max F_abs is {max_Fabs:.4e} from compartment {max_comp_name}", format_type='log_important')
                     fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
                     break
                 else: 
                     #max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
-                    #color_print(f"{'One or more F_abs are above tolerance. Max F_abs is from component '+max_comp_name+': ': <40} {max_Fabs:.4e}", color='green')
+                    #color_print(f"{'One or more F_abs are above tolerance. Max F_abs is from compartment '+max_comp_name+': ': <40} {max_Fabs:.4e}", color='green')
                     fancy_print(f"One or more F_abs are above tolerance ({self.solver_system.multiphysics_solver.eps_Fabs:.4e}", format_type='log')
-                    fancy_print(f"Max F_abs is {max_Fabs:.4e} from component {max_comp_name}", format_type='log')
+                    fancy_print(f"Max F_abs is {max_Fabs:.4e} from compartment {max_comp_name}", format_type='log')
 
             if self.solver_system.multiphysics_solver.eps_udiff_abs is not None:
                 max_sp_name, max_udiffabs = max(self.stopping_conditions['udiff_abs'].items(), key=operator.itemgetter(1))
@@ -975,7 +1052,7 @@ class Model(object):
 #             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
 
 #             # update temporary value of u
-#             self.data.computeError(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
+#             self.data.compute_error(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
 #             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
 #             # Exit if error tolerance or max iterations is reached
@@ -1007,23 +1084,23 @@ class Model(object):
 #===============================================================================
 #===============================================================================
     def init_solutions_and_plots(self):
-        self.data.initSolutionFiles(self.sc, self.config)
-        self.data.storeSolutionFiles(self.u, self.t, self.config)
+        self.data.init_solution_files(self.sc, self.config)
+        self.data.store_solution_files(self.u, self.t, self.config)
         self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx)
-        self.data.initPlot(self.config, self.sc, self.fc)
+        self.data.init_plot(self.config, self.sc, self.fc)
 
     def post_process(self):
         self.data.compute_statistics(self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx)
         self.data.compute_probe_values(self.u, self.sc)
-        self.data.outputPickle()
-        self.data.outputCSV()
+        self.data.output_pickle()
+        self.data.output_csv()
 
     def plot_solution(self):
-        self.data.storeSolutionFiles(self.u, self.t, self.config)
-        self.data.plotParameters(self.config)
-        self.data.plotSolutions(self.config, self.sc)
-        self.data.plotFluxes(self.config)
-        self.data.plotSolverStatus(self.config)
+        self.data.store_solution_files(self.u, self.t, self.config)
+        self.data.plot_parameters(self.config)
+        self.data.plot_solutions(self.config, self.sc)
+        self.data.plot_fluxes(self.config)
+        self.data.plot_solver_status(self.config)
 
 
 

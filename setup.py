@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     platforms=['Linux', 'Mac OS-X'],
-    version='0.1.4',
+    version='0.1.5',
     license='LGPLv3',
 
     # Which Python importable modules should be included when your package is installed
@@ -37,6 +37,7 @@ setup(
         'Pint',
         'scipy>=1.1.0',
         'sympy',
+        'dataclasses',
         'tabulate',
         'termcolor',
         'pytest',

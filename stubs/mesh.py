@@ -98,7 +98,7 @@ class ParentMesh(_Mesh):
         self.mesh_filename = mesh_filename
         super().__init__(name=name, _is_parent_mesh=True, dimensionality=None,
                          mesh_filename=mesh_filename)
-        self.dimensionality = self.dolfin_mesh.geometric_dimension
+        self.dimensionality = self.dolfin_mesh.geometric_dimension()
 
 #     def get_full_boundary_mesh(self):
 # m       = self.dolfin_mesh
