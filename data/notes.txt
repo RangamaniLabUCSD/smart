@@ -5,5 +5,12 @@ Bounds of coordinates are min=[-1,-1,-2] and max=[1,1,2]
 The outermost surface has marker value 2, the shared surface has marker value 4
 The cube with a smaller z value has marker value 12, the cube with a larger z value has marker value 11
 
+# analytical values for geometry
+Volume(Total) = 16
+Volume(11) = Volume(12) = 8
+
+Area(2) = 40
+Area(4) = 4
+
 
 

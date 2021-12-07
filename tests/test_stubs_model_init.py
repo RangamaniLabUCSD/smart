@@ -56,6 +56,6 @@ def test_stubs_model_init(stubs_model):
     model = stubs_model
     assert type(model)==stubs.model.Model
 
-    model.initialize_step_1()
-    model.initialize_step_2()
-    model.initialize_step_3()
+    model._initialize_step_1()
+    model._initialize_step_2()
+    model._initialize_step_3()

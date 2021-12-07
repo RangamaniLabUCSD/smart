@@ -14,6 +14,7 @@ from scipy.integrate import solve_ivp
 import stubs
 import stubs.model_assembly
 import stubs.common as common
+from stubs.mesh import ChildMesh
 from stubs import unit as ureg
 color_print = common.color_print
 from stubs.common import _fancy_print as fancy_print
@@ -45,6 +46,7 @@ class Model(object):
         self.parent_mesh = parent_mesh
         self.params = ddict(list)
 
+        # Solver related parameters
         self.idx = 0
         self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
@@ -57,18 +59,42 @@ class Model(object):
         self.linear_iterations = None
         self.reset_dt = False
 
+        # Timers
         self.timers = {}
         self.timings = ddict(list)
 
+        # Functional forms
         self.Forms = stubs.model_assembly.FormContainer()
         self.a = {}
         self.L = {}
         self.F = {}
+
+        # Solvers
         self.nonlinear_solver = {}
         self.linear_solver = {}
         self.scipy_odes = {}
 
+        # Post processed data
         self.data = stubs.data_manipulation.Data(self, config)
+
+    @property
+    def child_meshes(self):
+        return self.parent_mesh.child_meshes
+
+    @property
+    def min_dim(self):
+        dim                         = min([comp.dimensionality for comp in self.cc.values])
+        self._min_dim               = dim 
+        self.cc._min_dim            = dim
+        self.parent_mesh._min_dim   = dim
+        return self._min_dim
+    @property
+    def max_dim(self):
+        dim                         = max([comp.dimensionality for comp in self.cc.values])
+        self._max_dim               = dim
+        self.cc._max_dim            = dim
+        self.parent_mesh._max_dim   = dim
+        return self._max_dim
 
 #===============================================================================
 #===============================================================================
@@ -197,69 +223,74 @@ class Model(object):
         self.init_solutions_and_plots()
     
     def initialize_refactor_2(self):
-        self.initialize_step_1()
-        self.initialize_step_2()
-        self.initialize_step_3()
-        self.initialize_step_4()
+        self._initialize_step_1()
+        self._initialize_step_2()
+        self._initialize_step_3()
+        self._initialize_step_4()
 
-    def initialize_step_1(self):
+    def _initialize_step_1(self):
         "Independent initializations (only requires information from one container at a time)"
         fancy_print(f"Independent Initializations (step 1 of ZZ)", format_type='title')
-        self.initialize_step_1_1_assemble_units()
-        self.initialize_step_1_2_time_dependent_parameters()
-        self.initialize_step_1_3_fluxes_for_known_reactions()
-        self.initialize_step_1_4_misc()
+        self._initialize_step_1_1_assemble_units()
+        self._initialize_step_1_2_time_dependent_parameters()
+        self._initialize_step_1_3_fluxes_for_known_reactions()
+        self._initialize_step_1_4_check_validity()
         fancy_print(f"Step 1 of initialization completed successfully!", text_color='magenta')
-    def initialize_step_3(self):
-        "Mesh-related initializations"
-        fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type='title')
-        self.initialize_step_3_1_define_meshfunctions()
-        #self.initialize_step_3_2_get_submesh_stats()
-        fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
-    def initialize_step_2(self):
+    def _initialize_step_2(self):
         "Cross-container dependent initializations (requires information from multiple containers)"
         fancy_print(f"Cross-Container Dependent Initializations (step 2 of ZZ)", format_type='title')
-        self.initialize_step_2_1_link_container_properties()
-        self.initialize_step_2_2_count_species_per_compartment()
+        self._initialize_step_2_1_link_container_properties()
+        self._initialize_step_2_2_count_species_per_compartment()
         fancy_print(f"Step 2 of initialization completed successfully!", text_color='magenta')
+    def _initialize_step_3(self):
+        "Mesh-related initializations"
+        fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type='title')
+        self._initialize_step_3_1_define_child_meshes()
+        self._initialize_step_3_2_get_mesh_functions()
+        self._initialize_step_3_3_extract_submeshes()
+        fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
 
     # Step 1 - Cross-container Independent Initialization
-    def initialize_step_1_1_assemble_units(self):
+    def _initialize_step_1_1_assemble_units(self):
         fancy_print(f"Assembling units", format_type='log')
         self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
         self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
         self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
         self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
         self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-    def initialize_step_1_2_time_dependent_parameters(self):
+    def _initialize_step_1_2_time_dependent_parameters(self):
         fancy_print(f"Assembling time dependent parameters", format_type='log')
         self.pc.do_to_all('assemble_time_dependent_parameters')
-    def initialize_step_1_3_fluxes_for_known_reactions(self):
+    def _initialize_step_1_3_fluxes_for_known_reactions(self):
         fancy_print(f"Initializing flux equations for known reactions", format_type='log')
         self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
-    def initialize_step_1_4_misc(self):
-        fancy_print(f"Miscellanious independent initializations", format_type='log')
-        self.cc.get_min_max_dim()
+    def _initialize_step_1_4_check_validity(self):
+        fancy_print(f"Check that container components are valid", format_type='log')
+        if (self.max_dim - self.min_dim) not in [0,1]:
+            raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
+        if self.max_dim > self.parent_mesh.dimensionality:
+            raise ValueError("Maximum dimension of a compartment is higher than the topological dimension of parent mesh.")
+        # non-negative initial conditions
+        assert all([s.initial_condition>=0 for s in self.sc.values])
 
     # Step 2 - Cross-container Dependent Initialization
-    def initialize_step_2_1_link_container_properties(self):
+    def _initialize_step_2_1_link_container_properties(self):
         fancy_print(f"Linking container properties", format_type='log')
         self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
         self.sc.link_object(self.cc,'compartment_name','name','compartment')
         self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-    def initialize_step_2_2_count_species_per_compartment(self):
+    def _initialize_step_2_2_count_species_per_compartment(self):
         fancy_print(f"Counting the number of active species per compartment", format_type='log')
         self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
         self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
 
     # Step 3 - Mesh Initializations
-    def initialize_step_3_1_define_meshfunctions(self):
-        fancy_print(f"Defining MeshFunctions", format_type='log')
+    def _initialize_step_3_1_define_child_meshes(self):
+        fancy_print(f"Defining ChildMeshes", format_type='log')
         # Aliases
         mesh = self.parent_mesh.dolfin_mesh
-        volume_dim = self.cc.max_dim
-        surface_dim = self.cc.min_dim
-
+        volume_dim = self.max_dim
+        surface_dim = self.min_dim
         # Check that there is a parent_mesh loaded
         if not isinstance(self.parent_mesh, stubs.mesh.ParentMesh):
             raise ValueError("There is no parent mesh.")
@@ -267,47 +298,51 @@ class Model(object):
         if volume_dim != self.parent_mesh.dimensionality:
             raise ValueError(f"Parent mesh has geometric dimension: {self.parent_mesh.dimensionality} which"
                             +f" is not the same as the maximum compartment dimension: {volume_dim}.")
-        # Define mesh functions
-        volume_mf  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
-        surface_mf = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
-        volume_mf_combined  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
-        surface_mf_combined = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
 
-        # Combine markers in a list
-        for comp_name, comp in self.cc.items:
-            if type(comp.cell_marker) == list:
-                if not all([type(x)==int for x in comp.cell_marker]):
-                    raise ValueError("Cell markers were given as a list but not all elements were ints.")
+        # Define child meshes
+        for comp in self.cc.values:
+            comp.mesh = ChildMesh(self.parent_mesh, comp)
 
-                first_index_marker = comp.cell_marker[0] # combine into the first marker of the list 
-                fancy_print(f"List of markers given for component {comp_name}, combining into single marker, {first_index_marker}")
-                comp.first_index_marker = first_index_marker
-                for marker_value in comp.cell_marker:
-                    volume_mf_combined.array()[volume_mf.array() == marker_value] = first_index_marker
-                    surface_mf_combined.array()[surface_mf.array() == marker_value] = first_index_marker
-            elif type(comp.cell_marker) == int:
-                comp.first_index_marker = comp.cell_marker
-                volume_mf_combined.array()[volume_mf.array() == comp.cell_marker] = comp.cell_marker
-                surface_mf_combined.array()[surface_mf.array() == comp.cell_marker] = comp.cell_marker
-            else:
-                raise ValueError("Cell markers must either be provided as an int or list of ints")
+        # Check validity (one ChildMesh for each compartment)
+        assert len(self.child_meshes) == self.cc.size
 
-#    def initialize_step_3_2_extract_submeshes(self):
-#        fancy_print(f"Extracting submeshes", format_type='log')
-#        # Aliases
-#        mesh = self.parent_mesh.dolfin_mesh
-#        volume_dim = self.cc.max_dim
-#        surface_dim = self.cc.min_dim
+    def _initialize_step_3_2_get_mesh_functions(self):
+        fancy_print(f"Defining MeshFunctions", format_type='log')
+        self.parent_mesh.get_mesh_functions()
+        self.mf = self.parent_mesh.mf
+
+    def _initialize_step_3_3_extract_submeshes(self):
+        """ Use dolfin.MeshView.create() to extract submeshes """
+        fancy_print(f"Extracting submeshes", format_type='log')
+        # Aliases
+        mesh = self.parent_mesh.dolfin_mesh
+        # Loop through child meshes and extract submeshes
+        for cm in self.child_meshes:
+            cm.extract_submesh()
+
+#    def _initialize_step_3_4_get_integration_measures(self):
+#        # Loop through child meshes and get integration measures
+#        for cm in self.child_meshes:
 #
-#        # Use MeshView to extract the submeshes
-#        d.MeshView(volume_mf, )
 #
+#        if comp.dimensionality==volume_dim:
+#            comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined, metadata={'quadrature_degree': 3})
+#            comp.ds_uncombined = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf, metadata={'quadrature_degree': 3})
+#            comp.dP = None
+#        elif comp.dimensionality<volume_dim:
+#            comp.dP = d.Measure('dP', domain=comp.mesh)
+#            comp.ds = None
+#        else:
+#            raise Exception(f"Internal error: {comp_name} has a dimension larger than then the volume dimension.")
+#        comp.dx = d.Measure('dx', domain=comp.mesh, metadata={'quadrature_degree': 3})
+#
+#        pass
 
 
-    def initialize_step_3_2_get_submesh_stats(self):
-        fancy_print(f"Getting stats on submeshes", format_type='log')
-        self.cc.do_to_all('compute_nvolume')
-        self.cc.compute_scaling_factors()
+    # def _initialize_step_3_3_get_submesh_stats(self):
+    #     fancy_print(f"Getting stats on submeshes", format_type='log')
+    #     self.cc.do_to_all('compute_nvolume')
+    #     self.cc.compute_scaling_factors()
         
 #===============================================================================
 #===============================================================================

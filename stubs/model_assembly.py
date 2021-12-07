@@ -771,28 +771,22 @@ class CompartmentContainer(ObjectContainer):
         #           "in parallel.")
         #     exit()
 
-
-
     def compute_scaling_factors(self):
         for key, comp in self.items:
             comp.scale_to = {}
             for key2, comp2 in self.items:
                 if key != key2:
                     comp.scale_to.update({key2: comp.nvolume / comp2.nvolume})
-    def get_min_max_dim(self):
-        comp_dims = [comp.dimensionality for comp in self.values]
-        self.min_dim = min(comp_dims)
-        self.max_dim = max(comp_dims)
-        if (self.max_dim - self.min_dim) not in [0,1]:
-            raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
-
-
 
 class Compartment(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)
     def compute_nvolume(self):
         self.nvolume = d.assemble(d.Constant(1.0)*self.dx) * self.compartment_units ** self.dimensionality
+
+    @property
+    def dolfin_mesh(self):
+        return self.mesh.submesh
 
 
 
