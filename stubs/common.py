@@ -368,7 +368,7 @@ def read_sbmodel(filepath, output_type=dict):
     elif output_type==tuple:
         return (pc, sc, cc, rc)
 
-def init_sbmodel(p, s, c, r, output_type=dict):
+def create_sbmodel(p, s, c, r, output_type=dict):
     pc = stubs.model_assembly.ParameterContainer(p)
     sc = stubs.model_assembly.SpeciesContainer(s)
     cc = stubs.model_assembly.CompartmentContainer(c)

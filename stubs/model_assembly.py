@@ -514,8 +514,6 @@ class SpeciesContainer(ObjectContainer):
 
 
 
-
-
 class Species(ObjectInstance):
     def __init__(self, name, Dict=None):
         super().__init__(name, Dict)

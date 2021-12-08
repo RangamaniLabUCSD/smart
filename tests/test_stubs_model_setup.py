@@ -50,7 +50,7 @@ def test_stubs_define_sbmodel():
     assert p_in.size == s_in.size == c_in.size == r_in.size == 1
 
     # creating the object containers directly from sbmodel
-    pc, sc, cc, rc = stubs.common.init_sbmodel(p,s,c,r,output_type=tuple)
+    pc, sc, cc, rc = stubs.common.create_sbmodel(p,s,c,r,output_type=tuple)
 
     # check that the first entry is the same no matter how it is loaded
     assert [x.df.index[0] == list(x_in.keys)[0] == list(xc.keys)[0] for x, x_in, xc in zip([p,s,c,r], [p_in,s_in,c_in,r_in], [pc,sc,cc,rc])] 

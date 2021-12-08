@@ -62,6 +62,13 @@ class _Mesh(object):
         if self.dolfin_mesh is None:
             raise ValueError("Mesh must have an associated dolfin_mesh to compute coordinate bounds")
         return {'min': self.dolfin_mesh.coordinates().min(axis=0), 'max': self.dolfin_mesh.coordinates().max(axis=0)}
+    
+    @property
+    def mesh_view(self):
+        return self.dolfin_mesh.topology().mapping()
+    @property
+    def id(self):
+        return self.dolfin_mesh.id()
         
 
 class ParentMesh(_Mesh):
@@ -75,6 +82,12 @@ class ParentMesh(_Mesh):
         self.child_meshes = []
         # get mesh functions
         #self.mesh_functions = self.get_mesh_functions()
+
+    def load_mesh_from_xml(self, mesh_filename):
+        self.dolfin_mesh = d.Mesh(mesh_filename)
+        self.dimensionality = self.dolfin_mesh.topology().dim()
+        self.mesh_filename = mesh_filename
+        print(f"Mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
 
     def get_mesh_functions(self):
         # Aliases
@@ -112,12 +125,6 @@ class ParentMesh(_Mesh):
         
         self.mf = mf 
 
-    def load_mesh_from_xml(self, mesh_filename):
-        self.dolfin_mesh = d.Mesh(mesh_filename)
-        self.dimensionality = self.dolfin_mesh.topology().dim()
-        self.mesh_filename = mesh_filename
-        print(f"Mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
-
 class ChildMesh(_Mesh):
     """
     Sub mesh of a parent mesh
@@ -142,6 +149,13 @@ class ChildMesh(_Mesh):
             assert type(marker) == int
             self.marker_list = None
             self.primary_marker = marker
+    
+    @property
+    def cell_mapping_to_parent(self):
+        return self.mesh_view[self.parent_mesh.id].cell_map()
+    @property
+    def vertex_mapping_to_parent(self):
+        return self.mesh_view[self.parentmesh.id].vertex_map()
 
     def set_parent_mesh(self, parent_mesh):
         # remove existing parent mesh if not None

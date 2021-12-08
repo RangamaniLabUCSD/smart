@@ -2,7 +2,7 @@ import stubs
 import pytest
 import pint
 
-from stubs.common import init_sbmodel
+from stubs.common import create_sbmodel
 
 # Fixtures
 @pytest.fixture
@@ -33,7 +33,7 @@ def stubs_model(stubs_mesh, stubs_config):
     r.append('A+X <-> B', 'First reaction', ['A','X'], ['B'], {"on": "kf", "off": "kr"})
     r.append('B linear degredation', 'second reaction', ['B'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
 
-    sbmodel = stubs.common.init_sbmodel(p,s,c,r)
+    sbmodel = stubs.common.create_sbmodel(p,s,c,r)
     # Define solvers
     mps             = stubs.solvers.MultiphysicsSolver()
     nls             = stubs.solvers.NonlinearNewtonSolver()
