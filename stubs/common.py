@@ -7,6 +7,7 @@ import numpy as np
 import scipy.interpolate as interp
 import os
 import re
+import pint
 from termcolor import colored
 import stubs
 from pandas import read_json
@@ -269,7 +270,38 @@ def json_to_ObjectContainer(json_str, data_type=None):
 
 
 
-def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
+# def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
+#     """
+#     Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
+#     a .sbmodel file (a convenient concatenation of .json files with syntax
+#     similar to .xml)
+#     """
+#     f = open(filepath, "w")
+
+#     f.write("<sbmodel>\n")
+#     # parameters
+#     f.write("<parameters>\n")
+#     pdf.df.to_json(f)
+#     f.write("\n</parameters>\n")
+#     # species
+#     f.write("<species>\n")
+#     sdf.df.to_json(f)
+#     f.write("\n</species>\n")
+#     # compartments
+#     f.write("<compartments>\n")
+#     cdf.df.to_json(f)
+#     f.write("\n</compartments>\n")
+#     # reactions
+#     f.write("<reactions>\n")
+#     rdf.df.to_json(f)
+#     f.write("\n</reactions>\n")
+
+#     f.write("</sbmodel>\n")
+#     f.close()
+#     print(f"sbmodel file saved successfully as {filepath}!")
+
+
+def write_sbmodel(filepath, pc, sc, cc, rc):
     """
     Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
     a .sbmodel file (a convenient concatenation of .json files with syntax
@@ -368,14 +400,33 @@ def read_sbmodel(filepath, output_type=dict):
     elif output_type==tuple:
         return (pc, sc, cc, rc)
 
-def create_sbmodel(p, s, c, r, output_type=dict):
-    pc = stubs.model_assembly.ParameterContainer(p)
-    sc = stubs.model_assembly.SpeciesContainer(s)
-    cc = stubs.model_assembly.CompartmentContainer(c)
-    rc = stubs.model_assembly.ReactionContainer(r)
+# def create_sbmodel(p, s, c, r, output_type=dict):
+#     pc = stubs.model_assembly.ParameterContainer(p)
+#     sc = stubs.model_assembly.SpeciesContainer(s)
+#     cc = stubs.model_assembly.CompartmentContainer(c)
+#     rc = stubs.model_assembly.ReactionContainer(r)
 
-    if output_type==dict:
-        return {'parameter_container': pc,   'species_container': sc, 
-                'compartment_container': cc, 'reaction_container': rc}
-    elif output_type==tuple:
-        return (pc, sc, cc, rc)
+#     if output_type==dict:
+#         return {'parameter_container': pc,   'species_container': sc, 
+#                 'compartment_container': cc, 'reaction_container': rc}
+#     elif output_type==tuple:
+#         return (pc, sc, cc, rc)
+
+def empty_sbmodel():
+    pc = stubs.model_assembly.ParameterContainer()
+    sc = stubs.model_assembly.SpeciesContainer()
+    cc = stubs.model_assembly.CompartmentContainer()
+    rc = stubs.model_assembly.ReactionContainer()
+    return pc, sc, cc, rc 
+
+def pint_unit_to_quantity(pint_unit):
+    if not isinstance(pint_unit, pint.Unit):
+        raise TypeError("Input must be a pint unit")
+    return pint.Quantity(1, pint_unit)
+
+def pint_quantity_to_unit(pint_quantity):
+    if not isinstance(pint_quantity, pint.Quantity):
+        raise TypeError("Input must be a pint quantity")
+    if pint_quantity.magnitude != 1.0:
+        raise ValueError("Trying to convert a pint quantity into a unit with magnitude != 1")
+    return pint_quantity.units

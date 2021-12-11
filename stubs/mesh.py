@@ -3,7 +3,7 @@ Wrapper around dolfin mesh class (originally for submesh implementation - possib
 """
 import dolfin as d
 
-# class _Mesh(object):
+# class _Mesh:
 #     """
 #     General mesh class
 #     """
@@ -49,7 +49,7 @@ import dolfin as d
 # extract submeshes ()
 
 
-class _Mesh(object):
+class _Mesh:
     """
     General mesh class
     """

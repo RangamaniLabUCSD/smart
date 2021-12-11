@@ -1,6 +1,6 @@
 <sbmodel>
 <parameters>
-{"value":{"kdeg":5.0},"unit":{"kdeg":"1 \/ second"},"group":{"kdeg":"degradation rate"},"notes":{"kdeg":""},"is_time_dependent":{"kdeg":false},"sampling_file":{"kdeg":""},"sampling_data":{"kdeg":null},"preint_sampling_data":{"kdeg":null},"dolfinConstant":{"kdeg":null},"symExpr":{"kdeg":null},"preintegrated_symExpr":{"kdeg":null}}
+{"value":{"kdeg":5.0},"unit":{"kdeg":"1 \/ second"},"group":{"kdeg":"degradation rate"},"notes":{"kdeg":""},"is_time_dependent":{"kdeg":false},"sampling_file":{"kdeg":""},"sampling_data":{"kdeg":null},"preint_sampling_data":{"kdeg":null},"dolfinConstant":{"kdeg":null},"sym_expr":{"kdeg":null},"preintegrated_sym_expr":{"kdeg":null}}
 </parameters>
 <species>
 {"initial_condition":{"B":10.0},"concentration_units":{"B":"micromolar"},"D":{"B":1.0},"D_units":{"B":"micrometer ** 2 \/ second"},"compartment_name":{"B":"cyto"},"group":{"B":"cytosolic"}}
@@ -9,6 +9,6 @@
 {"dimensionality":{"cyto":3},"compartment_units":{"cyto":"micrometer"},"cell_marker":{"cyto":1}}
 </compartments>
 <reactions>
-{"group":{"B linear degredation":"example reaction"},"LHS":{"B linear degredation":["B"]},"RHS":{"B linear degredation":[]},"paramDict":{"B linear degredation":{"on":"kdeg"}},"reaction_type":{"B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"B linear degredation":null},"speciesDict":{"B linear degredation":{}},"track_value":{"B linear degredation":false}}
+{"group":{"B linear degredation":"example reaction"},"lhs":{"B linear degredation":["B"]},"rhs":{"B linear degredation":[]},"param_dict":{"B linear degredation":{"on":"kdeg"}},"reaction_type":{"B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"B linear degredation":null},"species_dict":{"B linear degredation":{}},"track_value":{"B linear degredation":false}}
 </reactions>
 </sbmodel>

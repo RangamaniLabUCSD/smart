@@ -1,21 +1,26 @@
 """
 Model class. Consists of parameters, species, etc. and is used for simulation
 """
-import dolfin as d
 from collections import defaultdict as ddict
+from dataclasses import dataclass
+
+import dolfin as d
 import petsc4py.PETSc as PETSc
+
 Print = PETSc.Sys.Print
-from termcolor import colored
-import numpy as np
 import operator
+
+import numpy as np
 import sympy
 from scipy.integrate import solve_ivp
+from termcolor import colored
 
 import stubs
-import stubs.model_assembly
 import stubs.common as common
-from stubs.mesh import ChildMesh
+import stubs.model_assembly
 from stubs import unit as ureg
+from stubs.mesh import ChildMesh
+
 color_print = common.color_print
 from stubs.common import _fancy_print as fancy_print
 
@@ -31,19 +36,21 @@ root = 0
 # Model class. Consists of parameters, species, etc. and is used for simulation
 # ==============================================================================
 # ==============================================================================
-class Model(object):
-    def __init__(self, sbmodel, config, solver_system, parent_mesh=None):
-        self.pc = sbmodel['parameter_container']
-        self.sc = sbmodel['species_container']
-        self.cc = sbmodel['compartment_container']
-        self.rc = sbmodel['reaction_container']
-        self.config = config
+@dataclass
+class Model:
+    pc: stubs.model_assembly.ParameterContainer
+    sc: stubs.model_assembly.SpeciesContainer
+    cc: stubs.model_assembly.CompartmentContainer
+    rc: stubs.model_assembly.ReactionContainer
+    config: stubs.config.Config
+    solver_system: stubs.solvers.SolverSystem
+    parent_mesh: stubs.mesh.ParentMesh
+
+    def __post_init__(self):
         # Check that solver_system is valid
-        solver_system.check_solver_system_validity()
-        self.solver_system = solver_system
+        self.solver_system.check_solver_system_validity()
         self.solver_system.make_dolfin_parameter_dict()
 
-        self.parent_mesh = parent_mesh
         self.params = ddict(list)
 
         # Solver related parameters
@@ -52,10 +59,10 @@ class Model(object):
         self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
         self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
         self.t = 0.0
-        self.dt = solver_system.initial_dt
+        self.dt = self.solver_system.initial_dt
         self.T = d.Constant(self.t)
         self.dT = d.Constant(self.dt)
-        self.final_t = solver_system.final_t
+        self.final_t = self.solver_system.final_t
         self.linear_iterations = None
         self.reset_dt = False
 
@@ -75,8 +82,8 @@ class Model(object):
         self.scipy_odes = {}
 
         # Post processed data
-        self.data = stubs.data_manipulation.Data(self, config)
-
+        self.data = stubs.data_manipulation.Data(self, self.config)
+ 
     @property
     def child_meshes(self):
         return self.parent_mesh.child_meshes
@@ -116,11 +123,11 @@ class Model(object):
         # linking containers with one another
         print("\n\n********** Model initialization (Part 2/6) **********")
         print("Linking different containers with one another...\n")
-        self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
-        self.sc.link_object(self.cc,'compartment_name','name','compartment')
-        self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        self.rc._link_object(self.pc,'param_dict','name','paramDictValues', value_is_key=True)
+        self.sc._link_object(self.cc,'compartment_name','name','compartment')
+        self.sc._copy_linked_property('compartment', 'dimensionality', 'dimensionality')
         self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-        self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
+        self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
 
         # meshes
         print("\n\n********** Model initialization (Part 3/6) **********")
@@ -253,11 +260,7 @@ class Model(object):
     # Step 1 - Cross-container Independent Initialization
     def _initialize_step_1_1_assemble_units(self):
         fancy_print(f"Assembling units", format_type='log')
-        self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
         self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-        self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
-        self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
     def _initialize_step_1_2_time_dependent_parameters(self):
         fancy_print(f"Assembling time dependent parameters", format_type='log')
         self.pc.do_to_all('assemble_time_dependent_parameters')
@@ -276,13 +279,13 @@ class Model(object):
     # Step 2 - Cross-container Dependent Initialization
     def _initialize_step_2_1_link_container_properties(self):
         fancy_print(f"Linking container properties", format_type='log')
-        self.rc.link_object(self.pc,'paramDict','name','paramDictValues', value_is_key=True)
-        self.sc.link_object(self.cc,'compartment_name','name','compartment')
-        self.sc.copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+        self.rc._link_object(self.pc,'param_dict','name','paramDictValues', value_is_key=True)
+        self.sc._link_object(self.cc,'compartment_name','name','compartment')
+        self.sc._copy_linked_property('compartment', 'dimensionality', 'dimensionality')
     def _initialize_step_2_2_count_species_per_compartment(self):
         fancy_print(f"Counting the number of active species per compartment", format_type='log')
         self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-        self.rc.link_object(self.sc,'involved_species','name','involved_species_link')
+        self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
 
     # Step 3 - Mesh Initializations
     def _initialize_step_3_1_define_child_meshes(self):
@@ -355,7 +358,7 @@ class Model(object):
         """
         for j in self.fc.values:
             total_scaling = 1.0 # all adjustments needed to get congruent units
-            sp = j.spDict[j.species_name]
+            sp = j.species_dict[j.species_name]
             prod = j.prod
             unit_prod = j.unit_prod
             # first, check unit consistency
@@ -418,7 +421,7 @@ class Model(object):
 
             setattr(j, 'dolfin_flux', dolfin_flux)
 
-            BRform = -prod*sp.v*j.int_measure # by convention, terms are all defined as if they were on the LHS of the equation e.g. F(u;v)=0
+            BRform = -prod*sp.v*j.int_measure # by convention, terms are all defined as if they were on the lhs of the equation e.g. F(u;v)=0
             self.Forms.add(stubs.model_assembly.Form(BRform, sp, form_key, flux_name=j.name))
 
 
@@ -678,9 +681,9 @@ class Model(object):
     #     for f in self.fc.Dict:
     #         sp = self.fc[f].species_name
     #         if func_dict[sp] is None:
-    #             func_dict[sp] = self.fc[f].symEqn*self.fc[f].signed_stoich
+    #             func_dict[sp] = self.fc[f].sym_eqn*self.fc[f].signed_stoich
     #         else:
-    #             func_dict[sp] += self.fc[f].symEqn*self.fc[f].signed_stoich
+    #             func_dict[sp] += self.fc[f].sym_eqn*self.fc[f].signed_stoich
             
             
     #     func_vector=[]
@@ -805,19 +808,19 @@ class Model(object):
             if not param.is_time_dependent:
                 continue
             # use value by evaluating symbolic expression
-            if param.symExpr and not param.preintegrated_symExpr:
-                newValue = float(param.symExpr.subs({'t': t}).evalf())
+            if param.sym_expr and not param.preintegrated_sym_expr:
+                newValue = float(param.sym_expr.subs({'t': t}).evalf())
                 value_assigned += 1
                 print(f"Parameter {param_name} assigned by symbolic expression")
 
             # calculate a preintegrated expression by subtracting previous value
             # and dividing by time-step
-            if param.symExpr and param.preintegrated_symExpr:
+            if param.sym_expr and param.preintegrated_sym_expr:
                 if t0 is None:
                     raise Exception("Must provide a time interval for"\
                                     "pre-integrated variables.")
-                a = param.preintegrated_symExpr.subs({'t': t0}).evalf()
-                b = param.preintegrated_symExpr.subs({'t': t}).evalf()
+                a = param.preintegrated_sym_expr.subs({'t': t0}).evalf()
+                b = param.preintegrated_sym_expr.subs({'t': t}).evalf()
                 newValue = float((b-a)/dt)
                 value_assigned += 1
                 print(f"Parameter {param_name} assigned by preintegrated symbolic expression")

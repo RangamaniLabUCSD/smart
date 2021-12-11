@@ -22,7 +22,7 @@ rank = comm.rank
 size = comm.size
 root = 0
 
-class Config(object):
+class Config:
     """
     Refactored config 
          - directories

@@ -23,7 +23,7 @@ size = comm.size
 root = 0
 
 
-class SolverSystem(object):
+class SolverSystem:
     def __init__(self, final_t, initial_dt=None, multiphysics_solver=None, 
                  nonlinear_solver=None, linear_solver=None, 
                  ignore_surface_diffusion=False, auto_preintegrate=True,
@@ -90,7 +90,7 @@ class SolverSystem(object):
 
 
 # Base Solver class
-class Solver(object):
+class Solver:
     def __init__(self, framework='dolfin'):
         self.framework = framework
 
