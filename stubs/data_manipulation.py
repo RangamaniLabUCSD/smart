@@ -532,7 +532,7 @@ class Data:
 #    def in_edge(G, from_spe, reaction_node):
 #        eq = reaction_node.eqn
 #        eq_temp = eq.diff(from_spe.name).subs([(x.name,1) for x in lhs_list+rhs_list])
-#        for pname, p in reaction.paramDictValues.items():
+#        for pname, p in reaction.parameters.items():
 #            eq_temp = eq_temp.subs(pname, p.value)
 #        G.add_edge(from_spe, reaction_node, flux_val = eq_temp, is_inhibitor = (eq_temp>0), edge_type = 'in')
 #        return G
@@ -545,8 +545,8 @@ class Data:
 #        flux_expr = (reaction_expr+'_'+direction+'_%s') % to_spe.name
 #        local_f = model.fc[flux_expr]
 #        flux_mean_val = np.round(d.assemble(local_f.dolfin_flux), 6)*local_f.total_scaling
-#        flux_min_val = np.round(d.assemble(local_f.prod*local_f.species_dict[local_f.species_name].v*local_f.int_measure).get_local().min(), 6)*local_f.total_scaling
-#        flux_max_val = np.round(d.assemble(local_f.prod*local_f.species_dict[local_f.species_name].v*local_f.int_measure).get_local().max(), 6)*local_f.total_scaling
+#        flux_min_val = np.round(d.assemble(local_f.prod*local_f.species_map[local_f.species_name].v*local_f.int_measure).get_local().min(), 6)*local_f.total_scaling
+#        flux_max_val = np.round(d.assemble(local_f.prod*local_f.species_map[local_f.species_name].v*local_f.int_measure).get_local().max(), 6)*local_f.total_scaling
 #        reaction_node.set_data(flux_min_val, flux_max_val,flux_mean_val)
 #        G.add_edge(reaction_node, to_spe, flux_val = flux_mean_val, is_inhibitor = None, edge_type = 'out')
 #        return G
@@ -591,8 +591,8 @@ class Data:
 #        flux_expr = (reaction_expr+' ('+'f'+') [%s]') % lhs_list[1].name
 #        local_f = model.fc[flux_expr]
 #        flux_mean_val = np.round(d.assemble(local_f.dolfin_flux), 6)*local_f.total_scaling
-#        flux_min_val = np.round(d.assemble(local_f.prod*local_f.species_dict[local_f.species_name].v*local_f.int_measure).get_local().min(), 6)*local_f.total_scaling
-#        flux_max_val = np.round(d.assemble(local_f.prod*local_f.species_dict[local_f.species_name].v*local_f.int_measure).get_local().max(), 6)*local_f.total_scaling
+#        flux_min_val = np.round(d.assemble(local_f.prod*local_f.species_map[local_f.species_name].v*local_f.int_measure).get_local().min(), 6)*local_f.total_scaling
+#        flux_max_val = np.round(d.assemble(local_f.prod*local_f.species_map[local_f.species_name].v*local_f.int_measure).get_local().max(), 6)*local_f.total_scaling
 #        reaction_node.set_data(flux_min_val, flux_max_val,flux_mean_val)
 #        pos.update({reaction_node:(4,4)})
 #        edges = [(x, reaction_node) for x in lhs_list+rhs_list]

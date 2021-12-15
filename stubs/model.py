@@ -12,6 +12,7 @@ import operator
 
 import numpy as np
 import sympy
+from sympy.parsing.sympy_parser import parse_expr
 from scipy.integrate import solve_ivp
 from termcolor import colored
 
@@ -30,14 +31,11 @@ size = comm.size
 root = 0
 
 
-
-# ==============================================================================
-# ==============================================================================
-# Model class. Consists of parameters, species, etc. and is used for simulation
-# ==============================================================================
-# ==============================================================================
 @dataclass
 class Model:
+    """
+    Main stubs class. Consists of parameters, species, compartments, reactions, and can be simulated.
+    """
     pc: stubs.model_assembly.ParameterContainer
     sc: stubs.model_assembly.SpeciesContainer
     cc: stubs.model_assembly.CompartmentContainer
@@ -103,151 +101,90 @@ class Model:
         self.parent_mesh._max_dim   = dim
         return self._max_dim
 
-#===============================================================================
-#===============================================================================
-# SOLVING
-#===============================================================================
-#===============================================================================
-    def initialize(self):
-        # parameter/unit assembly
-        print("\n\n********** Model initialization (Part 1/6) **********")
-        print("Assembling parameters and units...\n")
-        self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
-        self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-        self.pc.do_to_all('assemble_time_dependent_parameters')
-        self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-        self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
-        self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-        self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
+    # ==============================================================================
+    # Model - Initialization
+    # ==============================================================================
 
-        # linking containers with one another
-        print("\n\n********** Model initialization (Part 2/6) **********")
-        print("Linking different containers with one another...\n")
-        self.rc._link_object(self.pc,'param_dict','name','paramDictValues', value_is_key=True)
-        self.sc._link_object(self.cc,'compartment_name','name','compartment')
-        self.sc._copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-        self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-        self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
+    # def initialize(self):
+    #     # parameter/unit assembly
+    #     print("\n\n********** Model initialization (Part 1/6) **********")
+    #     print("Assembling parameters and units...\n")
+    #     self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
+    #     self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
+    #     self.pc.do_to_all('assemble_time_dependent_parameters')
+    #     self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
+    #     self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
+    #     self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
+    #     self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
 
-        # meshes
-        print("\n\n********** Model initialization (Part 3/6) **********")
-        print("Loading in mesh and computing statistics...\n")
-        setattr(self.cc, 'meshes', {self.parent_mesh.name: self.parent_mesh.mesh})
-        self.cc.extract_submeshes(save_to_file=False)
-        self.cc.compute_scaling_factors()
+    #     # linking containers with one another
+    #     print("\n\n********** Model initialization (Part 2/6) **********")
+    #     print("Linking different containers with one another...\n")
+    #     self.rc._link_object(self.pc,'param_map','name','parameters', value_is_key=True)
+    #     self.sc._link_object(self.cc,'compartment_name','name','compartment')
+    #     self.sc._copy_linked_property('compartment', 'dimensionality', 'dimensionality')
+    #     self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
+    #     self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
 
-        # Associate species and compartments
-        print("\n\n********** Model initialization (Part 4/6) **********")
-        print("Associating species with compartments...\n")
-        num_species_per_compartment = self.rc.get_species_compartment_counts(self.sc, self.cc)
-        self.cc.get_min_max_dim()
-        self.sc.assemble_compartment_indices(self.rc, self.cc)
-        self.cc.add_property_to_all('is_in_a_reaction', False)
-        self.cc.add_property_to_all('V', None)
+    #     # meshes
+    #     print("\n\n********** Model initialization (Part 3/6) **********")
+    #     print("Loading in mesh and computing statistics...\n")
+    #     setattr(self.cc, 'meshes', {self.parent_mesh.name: self.parent_mesh.mesh})
+    #     self.cc.extract_submeshes(save_to_file=False)
+    #     self.cc.compute_scaling_factors()
 
-        # dolfin functions
-        print("\n\n********** Model initialization (Part 5/6) **********")
-        print("Creating dolfin functions and assinging initial conditions...\n")
-        self.sc.assemble_dolfin_functions(self.rc, self.cc)
-        self.u = self.sc.u
-        self.v = self.sc.v
-        self.V = self.sc.V
-        self.assign_initial_conditions()
+    #     # Associate species and compartments
+    #     print("\n\n********** Model initialization (Part 4/6) **********")
+    #     print("Associating species with compartments...\n")
+    #     num_species_per_compartment = self.rc.get_species_compartment_counts(self.sc, self.cc)
+    #     self.cc.get_min_max_dim()
+    #     self.sc.assemble_compartment_indices(self.rc, self.cc)
+    #     self.cc.add_property_to_all('is_in_a_reaction', False)
+    #     self.cc.add_property_to_all('V', None)
 
-        print("\n\n********** Model initialization (Part 6/6) **********")
-        print("Assembling reactive and diffusive fluxes...\n")
-        self.rc.reaction_to_fluxes()
-        #self.rc.do_to_all('reaction_to_fluxes')
-        self.fc = self.rc.get_flux_container()
-        self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-        self.fc.do_to_all('flux_to_dolfin')
+    #     # dolfin functions
+    #     print("\n\n********** Model initialization (Part 5/6) **********")
+    #     print("Creating dolfin functions and assinging initial conditions...\n")
+    #     self.sc.assemble_dolfin_functions(self.rc, self.cc)
+    #     self.u = self.sc.u
+    #     self.v = self.sc.v
+    #     self.V = self.sc.V
+    #     self.assign_initial_conditions()
+
+    #     print("\n\n********** Model initialization (Part 6/6) **********")
+    #     print("Assembling reactive and diffusive fluxes...\n")
+    #     self.rc.reaction_to_fluxes()
+    #     #self.rc.do_to_all('reaction_to_fluxes')
+    #     self.fc = self.rc.get_flux_container()
+    #     self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
+    #     self.fc.do_to_all('flux_to_dolfin')
  
-        self.set_allow_extrapolation()
-        # Turn fluxes into fenics/dolfin expressions
-        self.assemble_reactive_fluxes()
-        self.assemble_diffusive_fluxes()
-        self.sort_forms()
+    #     self.set_allow_extrapolation()
+    #     # Turn fluxes into fenics/dolfin expressions
+    #     self.assemble_reactive_fluxes()
+    #     self.assemble_diffusive_fluxes()
+    #     self.sort_forms()
 
-        self.init_solutions_and_plots()
+    #     self.init_solutions_and_plots()
 
 
     def initialize_refactor(self):
-        # Initializations independent to each object container
-        self.initialize_step1_assemble_units()
-        self.initialize_step2_time_dependent_parameters()
-        self.initialize_step3_fluxes_for_known_reactions()
-
-        # Initializations dependent on other object containers
-        self.initialize_step4_link_container_properties()
-        self.initialize_step5_count_species_per_compartment()
- 
-        # Mesh related initializations
-        print("\n\n********** Model initialization (Part 3/6) **********")
-        print("Loading in mesh and computing statistics...\n")
-        self.cc.get_min_max_dim()
-        #setattr(self.cc, 'meshes', {self.mesh.name: self.mesh.mesh})
-        #self.cc.extract_submeshes('cyto', save_to_file=False)
-        if self.parent_mesh is not None:
-            self.cc.extract_submeshes_refactor(self.parent_mesh, save_to_file=False)
-        else:
-            raise ValueError("There is no parent mesh.")
-        self.cc.compute_scaling_factors()
-
-        # Associate species and compartments
-        print("\n\n********** Model initialization (Part 4/6) **********")
-        print("Associating species with compartments...\n")
-        _ = self.rc.get_species_compartment_counts(self.sc, self.cc)
-        self.sc.assemble_compartment_indices(self.rc, self.cc)
-
-        # should be able to comment these two out
-        self.cc.add_property_to_all('is_in_a_reaction', False)
-        self.cc.add_property_to_all('V', None)
-
-        # dolfin functions
-        print("\n\n********** Model initialization (Part 5/6) **********")
-        print("Creating dolfin functions and assinging initial conditions...\n")
-        self.sc.assemble_dolfin_functions(self.rc, self.cc)
-        self.u = self.sc.u
-        self.v = self.sc.v
-        self.V = self.sc.V
-        self.assign_initial_conditions()
-
-        # Assembling fluxes from reactions
-        print("\n\n********** Model initialization (Part 6/6) **********")
-        print("Assembling reactive and diffusive fluxes...\n")
-        self.rc.reaction_to_fluxes()
-        #self.rc.do_to_all('reaction_to_fluxes')
-        self.fc = self.rc.get_flux_container()
-        self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-        self.fc.do_to_all('flux_to_dolfin')
- 
-        self.set_allow_extrapolation()
-        # Turn fluxes into fenics/dolfin expressions
-        self.assemble_reactive_fluxes()
-        self.assemble_diffusive_fluxes()
-        self.sort_forms()
-
-        self.init_solutions_and_plots()
-    
-    def initialize_refactor_2(self):
         self._initialize_step_1()
         self._initialize_step_2()
         self._initialize_step_3()
         self._initialize_step_4()
 
     def _initialize_step_1(self):
-        "Independent initializations (only requires information from one container at a time)"
-        fancy_print(f"Independent Initializations (step 1 of ZZ)", format_type='title')
-        self._initialize_step_1_1_assemble_units()
-        self._initialize_step_1_2_time_dependent_parameters()
-        self._initialize_step_1_3_fluxes_for_known_reactions()
-        self._initialize_step_1_4_check_validity()
+        "Checking validity of model"
+        fancy_print(f"Checking validity of model (step 1 of ZZ)", format_type='title')
+        self._initialize_step_1_1_check_validity()
         fancy_print(f"Step 1 of initialization completed successfully!", text_color='magenta')
     def _initialize_step_2(self):
         "Cross-container dependent initializations (requires information from multiple containers)"
         fancy_print(f"Cross-Container Dependent Initializations (step 2 of ZZ)", format_type='title')
-        self._initialize_step_2_1_link_container_properties()
-        self._initialize_step_2_2_count_species_per_compartment()
+        self._initialize_step_2_1_reactions_to_symbolic_strings()
+        self._initialize_step_2_2_link_container_properties()
+        self._initialize_step_2_3_count_species_per_compartment()
         fancy_print(f"Step 2 of initialization completed successfully!", text_color='magenta')
     def _initialize_step_3(self):
         "Mesh-related initializations"
@@ -258,34 +195,66 @@ class Model:
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
 
     # Step 1 - Cross-container Independent Initialization
-    def _initialize_step_1_1_assemble_units(self):
-        fancy_print(f"Assembling units", format_type='log')
-        self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-    def _initialize_step_1_2_time_dependent_parameters(self):
-        fancy_print(f"Assembling time dependent parameters", format_type='log')
-        self.pc.do_to_all('assemble_time_dependent_parameters')
-    def _initialize_step_1_3_fluxes_for_known_reactions(self):
-        fancy_print(f"Initializing flux equations for known reactions", format_type='log')
-        self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
-    def _initialize_step_1_4_check_validity(self):
+    def _initialize_step_1_1_check_validity(self):
         fancy_print(f"Check that container components are valid", format_type='log')
+
+        # Mesh dimensionality
         if (self.max_dim - self.min_dim) not in [0,1]:
             raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
         if self.max_dim > self.parent_mesh.dimensionality:
             raise ValueError("Maximum dimension of a compartment is higher than the topological dimension of parent mesh.")
-        # non-negative initial conditions
-        assert all([s.initial_condition>=0 for s in self.sc.values])
+        # Ensure there are no naming conflicts
+        all_keys = set()
+        containers = [self.pc, self.sc, self.cc, self.rc]
+        for keys in [c.keys for c in containers]:
+            all_keys = all_keys.union(keys)
+        if sum([c.size for c in containers]) != len(all_keys):
+            raise ValueError("Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name.")
 
     # Step 2 - Cross-container Dependent Initialization
-    def _initialize_step_2_1_link_container_properties(self):
+    def _initialize_step_2_1_reactions_to_symbolic_strings(self):
+        fancy_print(f"Initializing flux equations for known reactions", format_type='log')
+
+        self.reactions_to_symbolic_flux_strings()
+        # Make sure custom reactions have all parameters/species defined
+        for reaction in self.rc.values:
+            for eqn in ['eqn_r', 'eqn_f']:
+                var_set     = {str(x) for x in getattr(reaction,eqn).free_symbols}
+                param_set   = var_set.intersection(self.pc.keys)
+                species_set = var_set.intersection(self.sc.keys)
+                if len(param_set) + len(species_set) != len(var_set):
+                    raise NameError(f"Reaction {reaction.name} refers to a parameter or species that is not in the model.")
+
+    def _initialize_step_2_2_link_container_properties(self):
         fancy_print(f"Linking container properties", format_type='log')
-        self.rc._link_object(self.pc,'param_dict','name','paramDictValues', value_is_key=True)
-        self.sc._link_object(self.cc,'compartment_name','name','compartment')
-        self.sc._copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-    def _initialize_step_2_2_count_species_per_compartment(self):
+
+        # Link parameters, species, and compartments to reactions
+        for reaction in self.rc.values:
+            reaction.parameters   = {param_name: self.pc[param_name] for param_name in reaction.param_map.values()}
+            reaction.species      = {species_name: self.sc[species_name] for species_name in reaction.species_map.values()}
+            compartment_names     = [species.compartment_name for species in reaction.species]
+            if reaction.explicit_restriction_to_domain:
+                compartment_names.append(reaction.explicit_restriction_to_domain)
+            reaction.compartments = {compartment_name: self.cc[compartment_name] for compartment_name in compartment_names}
+
+            if len(reaction.compartments) not in [1,2,3]:
+                raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
+        
+        # Throw a warning if there is an unused parameter, species, or compartment
+        if len(set([]))
+
+        # Link compartments and compartment dimensionality to species
+        for species in self.sc.values:
+            species.compartment = self.cc[species.compartment_name]
+            species.dimensionality = self.cc[species.compartment_name].dimensionality
+
+    def _initialize_step_2_3_count_species_per_compartment(self):
+        #TODO
         fancy_print(f"Counting the number of active species per compartment", format_type='log')
-        self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-        self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
+        self.rc_get_involved_compartments()
+    
+        #self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
+        #self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
 
     # Step 3 - Mesh Initializations
     def _initialize_step_3_1_define_child_meshes(self):
@@ -347,18 +316,79 @@ class Model:
     #     self.cc.do_to_all('compute_nvolume')
     #     self.cc.compute_scaling_factors()
         
-#===============================================================================
-#===============================================================================
-# PROBLEM SETUP
-#===============================================================================
-#===============================================================================
+
+    def reactions_to_symbolic_flux_strings(self):
+        """
+        Turn all reactions into unsigned symbolic flux strings
+        """
+        for rxn in self.rc.values:
+            rxn_type = rxn.reaction_type
+            # Mass action has a forward and reverse flux
+            if rxn_type == 'mass_action':
+                rxn_sym_str = rxn.param_map['on']
+                for sp_name in rxn.lhs:
+                    rxn_sym_str += '*' + sp_name
+                rxn.eqn_f = parse_expr(rxn_sym_str)
+
+                rxn_sym_str = rxn.param_map['off']
+                for sp_name in rxn.rhs:
+                    rxn_sym_str += '*' + sp_name
+                rxn.eqn_r = parse_expr(rxn_sym_str)
+
+            elif rxn_type == 'mass_action_forward':
+                rxn_sym_str = rxn.param_map['on']
+                for sp_name in rxn.lhs:
+                    rxn_sym_str += '*' + sp_name
+                rxn.eqn_f = parse_expr(rxn_sym_str)
+
+            # Custom reaction
+            elif rxn_type in self.config.reaction_database.keys():
+                rxn_sym_str = self.config.reaction_database[rxn_type]
+                #rxn._custom_reaction(self.config.reaction_database[rxn_type])
+                rxn_expr = parse_expr(rxn_sym_str)
+                rxn_expr = rxn_expr.subs(rxn.param_map)
+                rxn_expr = rxn_expr.subs(rxn.species_map)
+                rxn.eqn_f = rxn_expr
+
+            else:
+                raise ValueError("Reaction %s does not seem to have an associated equation" % rxn.name)
+
+    def cc_get_involved_species(self):
+        """
+        Returns a Counter object with the number of times a species appears in each compartment
+        """
+        self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
+        all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.values] for sp in species_set])
+        for sp_name, sp in sc.items:
+            if sp in all_involved_species:
+                sp.is_in_a_reaction = True
+ 
+        compartment_counts = [sp.compartment_name for sp in all_involved_species]
+ 
+        return Counter(compartment_counts)
+
+        # used to get number of active species in each compartment
+        self.involved_species = set(self.lhs + self.rhs)
+        for eqn in ['eqn_r', 'eqn_f']:
+            if hasattr(self, eqn):
+                var_set = {str(x) for x in self.eqn_f.free_symbols}
+                species_set = var_set.intersection(sc.keys)
+                self.involved_species = self.involved_species.union(species_set)
+
+        self.involved_compartments = dict(set([(sc[sp_name].compartment_name, sc[sp_name].compartment) for sp_name in self.involved_species]))
+        if self.explicit_restriction_to_domain:
+            self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
+
+        if len(self.involved_compartments) not in (1,2):
+            raise Exception("Number of compartments involved in a flux must be either one or two!")
+
     def assemble_reactive_fluxes(self):
         """
         Creates the actual dolfin objects for each flux. Checks units for consistency
         """
         for j in self.fc.values:
             total_scaling = 1.0 # all adjustments needed to get congruent units
-            sp = j.species_dict[j.species_name]
+            sp = j.species_map[j.species_name]
             prod = j.prod
             unit_prod = j.unit_prod
             # first, check unit consistency
@@ -518,13 +548,9 @@ class Model:
 #                for form_type in form_types:
 #                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
-#===============================================================================
-#===============================================================================
-# SOLVING
-#===============================================================================
-#===============================================================================
-
-
+    #===============================================================================
+    # Model - Solving
+    #=============================================================================== 
     def solve_single_timestep(self, plot_period=1):
         # Solve using specified multiphysics scheme 
         if self.solver_system.multiphysics_solver.method == "iterative":
@@ -556,144 +582,6 @@ class Model:
 
         self.stopwatch("Total simulation", stop=True)
         Print("Solver finished with %d total time steps." % self.idx)
-
-## Yuan's code
-    # def solve_2(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
-    #     ## solve
-    #     self.init_solver_and_plots()
-
-    #     self.stopwatch("Total simulation")
-    #     self.mass=[]
-    #     while True:
-    #         if check_mass:
-    #             assert x_compartment is not None
-    #             self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
-    #         #Solve using specified multiphysics scheme 
-    #         if self.solver_system.multiphysics_solver.method == "iterative":
-    #             self.iterative_mpsolve()
-    #         else:
-    #             raise Exception("I don't know what operator splitting scheme to use")
-
-
-    # def solve(self, plot_period=1, store_solutions=True, check_mass=False, species_to_check=None, x_compartment=None):
-    #     ## solve
-    #     self.init_solver_and_plots()
-
-    #     self.stopwatch("Total simulation")
-    #     self.mass=[]
-    #     while True:
-    #         if check_mass:
-    #             assert x_compartment is not None
-    #             self.mass.append((self.t, self.compute_mass_step(species_to_check=species_to_check,x_compartment=x_compartment)))
-    #         #Solve using specified multiphysics scheme 
-    #         if self.solver_system.multiphysics_solver.method == "iterative":
-    #             self.iterative_mpsolve()
-    #         else:
-    #             raise Exception("I don't know what operator splitting scheme to use")
-
-
-    #         # post processing
-    #         self.compute_statistics()
-    #         if self.idx % plot_period == 0 or self.t >= self.final_t:
-    #             self.plot_solution(store_solutions=store_solutions)
-    #             self.plot_solver_status()
-
-            
-
-    #         # if we've reached final time
-    #         if self.t >= self.final_t:
-    #             break
-    #         #self.solve_step(plot_period, store_solutions)
-    #     if check_mass:
-    #         mass_list = [i[1] for i in self.mass]
-    #         assert abs((max(mass_list)-min(mass_list))/max(mass_list)) <=0.05
-    #     self.stopwatch("Total simulation", stop=True)
-    #     Print("Solver finished with %d total time steps." % self.idx)
-
-    # def compute_mass_step(self,species_to_check=None, x_compartment='cyto'):
-    #     #seperate function with keyword
-        
-        
-
-    #     com = self.cc[x_compartment]
-    #     #com_s = self.cc[s_compartment]
-    #     dx = com.dx
-    #     ds = com.ds
-
-    #     if species_to_check is None:
-    #         print('Assuming mass of all species are conserved, and the stiochiometry coefficient for every species is one')
-    #         species_to_check = {i: 1 for i in self.sc.Dict}
-    #     target_unit_dict={}
-    #     coefficient = {}
-    #     max_dim=com.dimensionality
-    #     mass=0
-    #     for i in species_to_check:
-    #         s=self.sc[i]
-    #         target_unit_dict[i] = ureg.molecule/com.compartment_units.units**s.dimensionality
-    #         coefficient[i] = s.concentration_units.to(target_unit_dict[i]).to_tuple()[0]
-    #         if s.dimensionality == max_dim:
-    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*dx)
-    #         else:
-    #             mass+=species_to_check[i]*coefficient[i]*d.assemble(s.u['u']*ds(self.cc[s.compartment_name].cell_marker))
-    #     ##compartment unit^comp_dim
-    #     return mass
-
-
-    # def solve_zero_d(self,t_span,initial_guess_for_root=None):
-    #         func_vector = self.get_lambdified()[0]
-    #         func_vector_t = lambda t,y:func_vector(y)
-
-    #         return self.de_solver(func_vector_t, t_span,initial_guess_for_root)
-
-    # def de_solver(self, func_vectors, t_span,initial_guess_for_root=None, root_check=True, max_step=0.01, jac=False, method='RK45'):
-    #     #assert initial_guess_for_root is not None
-    #     if initial_guess_for_root is None:
-    #         print("Using the initial condition from config files. Unites will be automatically converted!")
-    #     coefficient_dict={}
-    #     target_unit = self.sc[list(self.sc.keys)[0]].concentration_units
-    #     for i in self.sc.Dict:
-    #         try:
-    #             coefficient_dict[i] = self.sc[i].concentration_units.to(target_unit).to_tuple()[0]
-    #         except:
-    #             raise RuntimeError('Units mismatched for a well-mixed system')
-    #     initial_guess_for_root = [(coefficient_dict[i] * self.sc[i].initial_condition) for i in self.sc.Dict]
-    #     # if initial_guess_for_root is None:
-    #     #     initial_guess_for_root = [0]*num_params
-    #     #     ("Warning: The initial condition of species is not given")
-    #     # if root_check:
-    #     #     root_info = optimize.root(lambda y:func_vectors(0, y),initial_guess_for_root,jac=jac)
-    #     #     if root_info.success:
-    #     #         root = root_info.x
-    #     #         if (((initial_guess_for_root - root)/initial_guess_for_root)>0.1).any():
-    #     #             print("Initial guess doesn't match root condition")
-    #     #     else:
-    #     #         raise Exception('Unable to find initial condition: unable to find root')
-    #     # else:
-    #     root = initial_guess_for_root
-    #     sol = solve_ivp(func_vectors, t_span, root, max_step=max_step, method=method)
-    #     #returns u
-    #     return sol
-    
-    # def get_lambdified(self):
-        
-    #     sps = [i for i in self.sc.Dict]
-    #     func_dict = {i: None for i in list(self.sc.keys)}
-    #     for f in self.fc.Dict:
-    #         sp = self.fc[f].species_name
-    #         if func_dict[sp] is None:
-    #             func_dict[sp] = self.fc[f].sym_eqn*self.fc[f].signed_stoich
-    #         else:
-    #             func_dict[sp] += self.fc[f].sym_eqn*self.fc[f].signed_stoich
-            
-            
-    #     func_vector=[]
-    #     for j in func_dict:    
-    #         for i in self.pc.Dict:
-    #             func_dict[j] = func_dict[j].subs(i, self.pc[i].value)
-            
-    #         lam = sympy.lambdify(sps, func_dict[j])
-    #         func_vector.append(lam)
-    #     return lambda u:[f(*u) for f in func_vector], func_dict
 
     def set_time(self, t, dt=None):
         if not dt:
@@ -1116,11 +1004,9 @@ class Model:
 #         return self.pidx, success
 
 
-#===============================================================================
-#===============================================================================
-# POST-PROCESSING
-#===============================================================================
-#===============================================================================
+    #===============================================================================
+    # Model - Post-processing
+    #===============================================================================
     def init_solutions_and_plots(self):
         self.data.init_solution_files(self.sc, self.config)
         self.data.store_solution_files(self.u, self.t, self.config)
@@ -1143,8 +1029,9 @@ class Model:
 
 
 
-##### DATA_MANIPULATION
-
+    #===============================================================================
+    # Model - Data manipulation
+    #===============================================================================
     # get the values of function u from subspace idx of some mixed function space, V
     def dolfin_get_dof_indices(self, sp):#V, species_idx):
         """

@@ -9,6 +9,6 @@
 {"dimensionality":{"cyto":3},"compartment_units":{"cyto":"micrometer"},"cell_marker":{"cyto":1}}
 </compartments>
 <reactions>
-{"group":{"A+X <-> B":"First reaction","B linear degredation":"second reaction"},"lhs":{"A+X <-> B":["A","X"],"B linear degredation":["B"]},"rhs":{"A+X <-> B":["B"],"B linear degredation":[]},"param_dict":{"A+X <-> B":{"on":"kf","off":"kr"},"B linear degredation":{"on":"kdeg"}},"reaction_type":{"A+X <-> B":"mass_action","B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"A+X <-> B":null,"B linear degredation":null},"species_dict":{"A+X <-> B":{},"B linear degredation":{}},"track_value":{"A+X <-> B":false,"B linear degredation":false}}
+{"group":{"A+X <-> B":"First reaction","B linear degredation":"second reaction"},"lhs":{"A+X <-> B":["A","X"],"B linear degredation":["B"]},"rhs":{"A+X <-> B":["B"],"B linear degredation":[]},"param_map":{"A+X <-> B":{"on":"kf","off":"kr"},"B linear degredation":{"on":"kdeg"}},"reaction_type":{"A+X <-> B":"mass_action","B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"A+X <-> B":null,"B linear degredation":null},"species_map":{"A+X <-> B":{},"B linear degredation":{}},"track_value":{"A+X <-> B":false,"B linear degredation":false}}
 </reactions>
 </sbmodel>

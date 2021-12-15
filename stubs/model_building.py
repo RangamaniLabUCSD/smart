@@ -160,7 +160,7 @@
 #     located.
 
 #     If a reaction is dependent on species that are not in the lhs or rhs they
-#     are placed into species_dict 
+#     are placed into species_map 
 
 #     track_value allows tracking/recording of the flux values for a particular
 #     species involved in a reaction. e.g. in a reaction A+X <-> B we may be
@@ -169,26 +169,26 @@
 #     """
 #     def __init__(self):
 #         self.df = pandas.DataFrame(columns=["group", "lhs", "rhs",
-#                                         "param_dict", "reaction_type",
-#                                         "explicit_restriction_to_domain", "species_dict",
+#                                         "param_map", "reaction_type",
+#                                         "explicit_restriction_to_domain", "species_map",
 #                                         "track_value"])
 #         self.df = pandas.DataFrame({'group': pandas.Series([], dtype=str),
 #                                 'lhs': pandas.Series([], dtype=object),
 #                                 'rhs': pandas.Series([], dtype=object),
-#                                 'param_dict': pandas.Series([], dtype=object),
+#                                 'param_map': pandas.Series([], dtype=object),
 #                                 'reaction_type': pandas.Series([], dtype=str),
 #                                 'explicit_restriction_to_domain': pandas.Series([], dtype=object),
-#                                 'species_dict': pandas.Series([], dtype=object),
+#                                 'species_map': pandas.Series([], dtype=object),
 #                                 'track_value': pandas.Series([], dtype=bool)})
-#     def append(self, name, group, lhs, rhs, param_dict,
+#     def append(self, name, group, lhs, rhs, param_map,
 #                reaction_type="mass_action", explicit_restriction_to_domain=None,
-#                species_dict={}, track_value=False):
+#                species_map={}, track_value=False):
 
 #         self.df = self.df.append(pandas.Series({"group": group, "lhs": lhs,
-#                                   "rhs": rhs, "param_dict": param_dict,
+#                                   "rhs": rhs, "param_map": param_map,
 #                                   "reaction_type": reaction_type,
 #                                   "explicit_restriction_to_domain": explicit_restriction_to_domain,
-#                                   "species_dict": species_dict,
+#                                   "species_map": species_map,
 #                                   "track_value": track_value}, name=name))#, ignore_index=True)
 
 #     def write_json(self, name='reactions.json'):

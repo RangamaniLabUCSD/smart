@@ -467,115 +467,6 @@ class ObjectContainer:
     # ------------------------------------------------------------------------------
     # Mostly methods called by Model.initialize()
     # ==============================================================================
-    # TODO - move this to Model()
-    def _where_equals(self, property_name, value):
-        """
-        Links objects from ObjectContainer2 to ObjectContainer1 (the ObjectContainer invoking
-        this method).
-
-        Parameters
-        ----------
-        property_name : str
-            Name of property to check values of
-        value : variable type
-            Value to check against
-
-        Example Usage
-        -------------
-        cc._where_equals('compartment_name', 'cyto')
-
-        Returns
-        -------
-        objectList: list
-            List of objects from ObjectContainer that matches the criterion
-        """
-        objList = []
-        for key, obj in self.items:
-            if getattr(obj, property_name) == value:
-                objList.append(obj)
-        return objList
-
-    # TODO - move this to Model()
-    def _link_object(self, ObjectContainer2, property_name1, property_name2, linked_name, value_is_key=False):
-        """
-        Links objects from ObjectContainer2 to ObjectContainer1 (the ObjectContainer invoking
-        this method).
-
-        Parameters
-        ----------
-        with_attribution : bool, Optional, default: True
-            Set whether or not to display who the quote is from
-        ObjectContainer2 : ObjectContainer type
-            ObjectContainer with objects we are linking to
-        property_name1 : str
-            Name of property of object in ObjectContainer1 to match
-        property_name2 : str
-            Name of property of object in ObjectContainer2 to match
-        linked_name : str
-            Name of new property in ObjectContainer1 with linked object
-
-        Example Usage
-        -------------
-        sc = {'key0': sd0, 'key1': sd1}; cc = {'key0': cd0, 'key1': cd1}
-        sd0.compartment_name == 'cyto'
-        cd0.name == 'cyto'
-        >> sc._link_object(cc,'compartment_name','name','compartment')
-        sd0.compartment == cd0
-
-        Returns
-        -------
-        ObjectContainer1 : ObjectContainer
-            ObjectContainer where each object has an added property linking to some
-            object from ObjectContainer2
-        """
-        for _, obj1 in self.items:
-            obj1_value = getattr(obj1, property_name1)
-            # if type dict, then match values of entries with ObjectContainer2
-            if isinstance(obj1_value, dict):
-                newDict = odict()
-                for key, value in obj1_value.items():
-                    objList = ObjectContainer2._where_equals(property_name2, value)
-                    if len(objList) != 1:
-                        raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
-                                        % (property_name2, value, objList))
-                    if value_is_key:
-                        newDict.update({value: objList[0]})
-                    else:
-                        newDict.update({key: objList[0]})
-
-                setattr(obj1, linked_name, newDict)
-            #elif type(obj1_value) == list or type(obj1_value) == set:
-            #    newList = []
-            #    for value in obj1_value:
-            #        objList = ObjectContainer2._where_equals(property_name2, value)
-            #        if len(objList) != 1:
-            #            raise Exception('Either none or more than one objects match this condition')
-            #        newList.append(objList[0])
-            #    setattr(obj1, linked_name, newList)
-            elif type(obj1_value) == list or type(obj1_value) == set:
-                newDict = odict()
-                for value in obj1_value:
-                    objList = ObjectContainer2._where_equals(property_name2, value)
-                    if len(objList) != 1:
-                        raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
-                                        % (property_name2, value, objList))
-                    newDict.update({value: objList[0]})
-                setattr(obj1, linked_name, newDict)
-            # standard behavior
-            else:
-                objList = ObjectContainer2._where_equals(property_name2, obj1_value)
-                if len(objList) != 1:
-                    raise Exception("Property %s with value %s does not match %s (either none or more than one objects match)"
-                                    % (property_name2, obj1_value, objList))
-                setattr(obj1, linked_name, objList[0])
-
-    def _copy_linked_property(self, linked_name, linked_name_property, property_name):
-        """
-        Convenience function to copy a property from a linked object
-        """
-        for _, obj in self.items:
-            linked_obj = getattr(obj, linked_name)
-            setattr(obj, property_name, getattr(linked_obj, linked_name_property))
 
     # ==============================================================================
     # ObjectContainer - Printing/data-formatting related methods
@@ -676,13 +567,14 @@ class ObjectInstance:
     # def fromDict(self, Dict):
     #     for key, item in Dict.items():
     #         setattr(self, key, item)
-    def convert_pint_quantity_to_unit(self):
+    def _convert_pint_quantity_to_unit(self):
         # strip the magnitude and keep the units. Warn if magnitude!=1
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Quantity):
                 setattr(self, name, common.pint_quantity_to_unit(attr))
         
-    def check_type_validity(self):
+    def _check_input_type_validity(self):
+        "Check that the inputs have the same type (or are convertible) to the type hint."
         for field in dataclasses.fields(self):
             value = getattr(self, field.name)
             if not isinstance(value, field.type):
@@ -691,27 +583,11 @@ class ObjectInstance:
                 except:
                     raise TypeError(f"Object \"{self.name}\" type error: the attribute \"{field.name}\" is expected to be {field.type}, got {type(value)} instead. "
                                     f"Conversion to the expected type was attempted but unsuccessful.")
-    def convert_pint_unit_to_quantity(self):
+    def _convert_pint_unit_to_quantity(self):
         # convert pint units to quantity
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Unit):
                 setattr(self, name, common.pint_unit_to_quantity(attr))
-
-    def combineDicts(self, dict1=None, dict2=None, new_dict_name=None):
-        setattr(self, new_dict_name, getattr(self,dict1).update(getattr(self,dict2)))
-    def assemble_units(self, value_name=None, unit_name='unit', assembled_name=None):
-        """
-        Simply multiplies a value by a unit (pint type) to create a pint "Quantity" object
-        """
-        if not assembled_name:
-            assembled_name = unit_name
-
-        value = 1 if not value_name else getattr(self, value_name)
-        #value = getattr(self, value_name)
-        unit = getattr(self, unit_name)
-        if type(unit) == str:
-            unit = ureg(unit)
-        setattr(self, assembled_name, value*unit)
 
     def get_pandas_series(self, properties_to_print=[], idx=None):
         if properties_to_print:
@@ -758,17 +634,20 @@ class Parameter(ObjectInstance):
     preintegrated_sym_expr: str=''
 
     def __post_init__(self):
-        self.convert_pint_quantity_to_unit()
-        self.check_type_validity()
-        self.convert_pint_unit_to_quantity()
+        self._convert_pint_quantity_to_unit()
+        self._check_input_type_validity()
+        self._convert_pint_unit_to_quantity()
         self.check_validity()
+
+        self.value_unit = self.value*self.unit
+        self._assemble_time_dependent_parameters()
 
     def check_validity(self):
         if self.is_time_dependent:
             if all([x=='' for x in [self.sampling_file, self.sym_expr, self.preintegrated_sym_expr]]):
                 raise ValueError(f"Parameter {self.name} is marked as time dependent but is not defined in terms of time.")
 
-    def assemble_time_dependent_parameters(self):
+    def _assemble_time_dependent_parameters(self):
         if not self.is_time_dependent:
             return
         # Parse the given string to create a sympy expression
@@ -921,9 +800,9 @@ class Species(ObjectInstance):
         self.is_an_added_species = False
         self.dof_map = {}
 
-        self.convert_pint_quantity_to_unit()
-        self.check_type_validity()
-        self.convert_pint_unit_to_quantity()
+        self._convert_pint_quantity_to_unit()
+        self._check_input_type_validity()
+        self._convert_pint_unit_to_quantity()
         self.check_validity()
 
     def check_validity(self):
@@ -1208,9 +1087,9 @@ class Compartment(ObjectInstance):
     cell_marker: int
     
     def __post_init__(self):
-        self.convert_pint_quantity_to_unit()
-        self.check_type_validity()
-        self.convert_pint_unit_to_quantity()
+        self._convert_pint_quantity_to_unit()
+        self._check_input_type_validity()
+        self._convert_pint_unit_to_quantity()
         self.check_validity()
     
     def check_validity(self):
@@ -1233,7 +1112,7 @@ class ReactionContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Reaction)
 
-        #self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_dict', 'reaction_type', 'explicit_restriction_to_domain', 'group']
+        #self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_map', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f']#, 'eqn_r']
 
     def get_species_compartment_counts(self, sc, cc):
@@ -1250,6 +1129,7 @@ class ReactionContainer(ObjectContainer):
 
         return Counter(compartment_counts)
 
+
     def reaction_to_fluxes(self):
         self.do_to_all('reaction_to_fluxes')
         flux_list = []
@@ -1265,15 +1145,21 @@ class Reaction(ObjectInstance):
     name: str
     lhs: list
     rhs: list
-    param_dict: dict
+    param_map: dict
     reaction_type: str='mass_action'
-    species_dict: dict = dataclasses.field(default_factory=dict)
+    species_map: dict = dataclasses.field(default_factory=dict)
     explicit_restriction_to_domain: str=''
     track_value: bool=False
 
     def __post_init__(self):
-        self.check_type_validity()
+        self._check_input_type_validity()
         self.check_validity()
+
+        # Finish initializing the species map
+        for species_name in set(self.lhs + self.rhs):
+            if species_name not in self.species_map:
+                self.species_map[species_name] = species_name
+
 
     def check_validity(self):
         # Type checking
@@ -1281,14 +1167,14 @@ class Reaction(ObjectInstance):
             raise TypeError(f"Reaction {self.name} requires a list of strings as input for lhs.")
         if not all([isinstance(x, str) for x in self.rhs]):
             raise TypeError(f"Reaction {self.name} requires a list of strings as input for rhs.")
-        if not all([type(k)==str and type(v)==str for (k,v) in self.param_dict.items()]):
-            raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for param_dict.")
-        if self.species_dict:
-            if not all([k==str and v==str for (k,v) in self.species_dict.items()]):
-                raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for species_dict.")
+        if not all([type(k)==str and type(v)==str for (k,v) in self.param_map.items()]):
+            raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for param_map.")
+        if self.species_map:
+            if not all([k==str and v==str for (k,v) in self.species_map.items()]):
+                raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for species_map.")
 
     # def __init__(self, name, Dict=None, eqn_f_str=None, eqn_r_str=None,
-    #              explicit_restriction_to_domain=False, species_dict={}, track_value=False):
+    #              explicit_restriction_to_domain=False, species_map={}, track_value=False):
     #     if eqn_f_str:
     #         print("Reaction %s: using the specified equation for the forward flux: %s" % (name, eqn_f_str))
     #         self.eqn_f = parse_expr(eqn_f_str)
@@ -1299,55 +1185,38 @@ class Reaction(ObjectInstance):
     #     self.track_value = track_value
     #     super().__init__(name, Dict)
 
-    def initialize_flux_equations_for_known_reactions(self, reaction_database={}):
-        """
-        Generates unsigned forward/reverse flux equations for common/known reactions
-        """
-        if self.reaction_type == 'mass_action':
-            rxnSymStr = self.param_dict['on']
-            for sp_name in self.lhs:
-                rxnSymStr += '*' + sp_name
-            self.eqn_f = parse_expr(rxnSymStr)
+    # def initialize_flux_equations_for_known_reactions(self, reaction_database={}):
+    #     """
+    #     Generates unsigned forward/reverse flux equations for common/known reactions
+    #     """
+    #     if self.reaction_type == 'mass_action':
+    #         rxn_sym_str = self.param_map['on']
+    #         for sp_name in self.lhs:
+    #             rxn_sym_str += '*' + sp_name
+    #         self.eqn_f = parse_expr(rxn_sym_str)
 
-            rxnSymStr = self.param_dict['off']
-            for sp_name in self.rhs:
-                rxnSymStr += '*' + sp_name
-            self.eqn_r = parse_expr(rxnSymStr)
+    #         rxn_sym_str = self.param_map['off']
+    #         for sp_name in self.rhs:
+    #             rxn_sym_str += '*' + sp_name
+    #         self.eqn_r = parse_expr(rxn_sym_str)
 
-        elif self.reaction_type == 'mass_action_forward':
-            rxnSymStr = self.param_dict['on']
-            for sp_name in self.lhs:
-                rxnSymStr += '*' + sp_name
-            self.eqn_f = parse_expr(rxnSymStr)
+    #     elif self.reaction_type == 'mass_action_forward':
+    #         rxn_sym_str = self.param_map['on']
+    #         for sp_name in self.lhs:
+    #             rxn_sym_str += '*' + sp_name
+    #         self.eqn_f = parse_expr(rxn_sym_str)
 
-        elif self.reaction_type in reaction_database.keys():
-            self.custom_reaction(reaction_database[self.reaction_type])
+    #     elif self.reaction_type in reaction_database.keys():
+    #         self._custom_reaction(reaction_database[self.reaction_type])
 
-        else:
-            raise Exception("Reaction %s does not seem to have an associated equation" % self.name)
+    #     else:
+    #         raise Exception("Reaction %s does not seem to have an associated equation" % self.name)
 
-
-    def custom_reaction(self, sym_str):
+    def _custom_reaction(self, sym_str):
         rxn_expr = parse_expr(sym_str)
-        rxn_expr = rxn_expr.subs(self.param_dict)
-        rxn_expr = rxn_expr.subs(self.species_dict)
+        rxn_expr = rxn_expr.subs(self.param_map)
+        rxn_expr = rxn_expr.subs(self.species_map)
         self.eqn_f = rxn_expr
-
-    def get_involved_species_and_compartments(self, sc=None, cc=None):
-        # used to get number of active species in each compartment
-        self.involved_species = set(self.lhs + self.rhs)
-        for eqn in ['eqn_r', 'eqn_f']:
-            if hasattr(self, eqn):
-                var_set = {str(x) for x in self.eqn_f.free_symbols}
-                species_set = var_set.intersection(sc.keys)
-                self.involved_species = self.involved_species.union(species_set)
-
-        self.involved_compartments = dict(set([(sc[sp_name].compartment_name, sc[sp_name].compartment) for sp_name in self.involved_species]))
-        if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
-
-        if len(self.involved_compartments) not in (1,2):
-            raise Exception("Number of compartments involved in a flux must be either one or two!")
 
     def reaction_to_fluxes(self):
         self.flux_list = []
@@ -1364,13 +1233,13 @@ class Reaction(ObjectInstance):
                 sign = -1 if species_name in self.lhs else 1
                 signed_stoich = sign*stoich
                 self.flux_list.append(Flux(flux_name, species_name, self.eqn_f, signed_stoich, self.involved_species_link,
-                                          self.paramDictValues, self.group, self, self.explicit_restriction_to_domain, track))
+                                          self.parameters, self.group, self, self.explicit_restriction_to_domain, track))
             if hasattr(self, 'eqn_r'):
                 flux_name = self.name + '_r_' + species_name
                 sign = 1 if species_name in self.lhs else -1
                 signed_stoich = sign*stoich
                 self.flux_list.append(Flux(flux_name, species_name, self.eqn_r, signed_stoich, self.involved_species_link,
-                                          self.paramDictValues, self.group, self, self.explicit_restriction_to_domain, track))
+                                          self.parameters, self.group, self, self.explicit_restriction_to_domain, track))
 
 
 
@@ -1390,8 +1259,8 @@ class Flux(ObjectInstance):
     species_name: str
     sym_eqn: sympy.Symbol
     signed_stoich: int
-    species_dict: dict
-    param_dict: dict
+    species_map: dict
+    param_map: dict
     group: str
     parent_reaction: Reaction
     explicit_restriction_to_domain: str=''
@@ -1401,10 +1270,10 @@ class Flux(ObjectInstance):
         self.tracked_values = []
         self.sym_list = [str(x) for x in self.sym_eqn.free_symbols]
         self.lambda_eqn = sympy.lambdify(self.sym_list, self.sym_eqn, modules=['sympy','numpy'])
-        self.involved_species = list(self.species_dict.keys())
-        self.involved_parameters = list(self.param_dict.keys())
+        self.involved_species = list(self.species_map.keys())
+        self.involved_parameters = list(self.param_map.keys())
 
-        self.check_type_validity()
+        self._check_input_type_validity()
         self.check_validity()
     
     def check_validity(self):
@@ -1423,16 +1292,15 @@ class Flux(ObjectInstance):
 
     def get_involved_species_parameters_compartment(self, cc):
         sym_str_list = {str(x) for x in self.sym_list}
-        self.involved_species = sym_str_list.intersection(self.species_dict.keys())
+        self.involved_species = sym_str_list.intersection(self.species_map.keys())
         self.involved_species.add(self.species_name)
-        self.involved_parameters = sym_str_list.intersection(self.param_dict.keys())
+        self.involved_parameters = sym_str_list.intersection(self.param_map.keys())
 
-        # truncate species_dict and param_dict so they only contain the species and parameters we need
-        self.species_dict = dict((k, self.species_dict[k]) for k in self.involved_species if k in self.species_dict)
-        self.param_dict = dict((k, self.param_dict[k]) for k in self.involved_parameters if k in self.param_dict)
+        # truncate species_map and param_map so they only contain the species and parameters we need
+        self.species_map = dict((k, self.species_map[k]) for k in self.involved_species if k in self.species_map)
+        self.param_map = dict((k, self.param_map[k]) for k in self.involved_parameters if k in self.param_map)
 
-        #self.involved_compartments = set([sp.compartment for sp in self.species_dict.values()])
-        self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.species_dict.values()])
+        self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.species_map.values()])
 
         if self.explicit_restriction_to_domain:
             self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
@@ -1441,7 +1309,7 @@ class Flux(ObjectInstance):
     #def flux_to_dolfin(self):
 
     def get_flux_dimensionality(self):
-        destination_compartment = self.species_dict[self.species_name].compartment
+        destination_compartment = self.species_map[self.species_name].compartment
         destination_dim = destination_compartment.dimensionality
         comp_names = set(self.involved_compartments.keys())
         comp_dims = set([comp.dimensionality for comp in self.involved_compartments.values()])
@@ -1466,7 +1334,7 @@ class Flux(ObjectInstance):
             self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
 
     def get_flux_units(self):
-        sp = self.species_dict[self.species_name]
+        sp = self.species_map[self.species_name]
         compartment_units = sp.compartment.compartment_units
         # a boundary flux
         if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]):
@@ -1498,7 +1366,7 @@ class Flux(ObjectInstance):
 
         for var_name in self.sym_list:
             if var_name in self.involved_species:
-                comp_name = self.species_dict[var_name].compartment_name
+                comp_name = self.species_map[var_name].compartment_name
                 umap.update({var_name: 'u'+comp_name})
 
         new_eqn = self.sym_eqn.subs(umap)
@@ -1512,7 +1380,7 @@ class Flux(ObjectInstance):
         self.is_linear_wrt_comp = is_linear_wrt_comp
 
     def get_integration_measure(self, cc, solver_system):
-        sp = self.species_dict[self.species_name]
+        sp = self.species_map[self.species_name]
         flux_dim = self.flux_dimensionality
         min_dim = min(cc.get_property('dimensionality').values())
         max_dim = max(cc.get_property('dimensionality').values())
@@ -1543,8 +1411,8 @@ class Flux(ObjectInstance):
             self.ukeys[var_name] = self.get_ukey(var_name, solver_system)
 
     def get_ukey(self, var_name, solver_system):
-        sp = self.species_dict[self.species_name]
-        var = self.species_dict[var_name]
+        sp = self.species_map[self.species_name]
+        var = self.species_map[var_name]
 
         if solver_system.nonlinear_solver.method == 'newton':
             # if var.dimensionality > sp.dimensionality:
@@ -1586,14 +1454,14 @@ class Flux(ObjectInstance):
         value_dict = {}
 
         for var_name in [str(x) for x in self.sym_list]:
-            if var_name in self.param_dict.keys():
-                var = self.param_dict[var_name]
+            if var_name in self.param_map.keys():
+                var = self.param_map[var_name]
                 if var.is_time_dependent:
                     value_dict[var_name] = var.dolfinConstant * var.unit
                 else:
                     value_dict[var_name] = var.value_unit
-            elif var_name in self.species_dict.keys():
-                var = self.species_dict[var_name]
+            elif var_name in self.species_map.keys():
+                var = self.species_map[var_name]
                 ukey = self.ukeys[var_name]
                 value_dict[var_name] = var.u[ukey]
 

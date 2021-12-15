@@ -36,7 +36,7 @@ c.append('er'   , 3, unit.um, 3)
 # name, notes, left hand side of reaction, right hand side of reaction, kinetic
 # parameters
 r.append('B <-X-> A', 'Leak from ER to cyto', ['B'], ['A'], {"perm": "kf"},
-         reaction_type='leak_dynamic', species_dict={'uhigh': 'B', 'ulow': 'A'})
+         reaction_type='leak_dynamic', species_map={'uhigh': 'B', 'ulow': 'A'})
 
 #r.append('B linear degredation', 'second reaction', ['B'], [], {"on": "kdeg"}, reaction_type='mass_action_forward')
 

@@ -9,6 +9,6 @@
 {"dimensionality":{"cyto":3},"compartment_units":{"cyto":"micrometer"},"cell_marker":{"cyto":1}}
 </compartments>
 <reactions>
-{"group":{"B linear degredation":"example reaction"},"lhs":{"B linear degredation":["B"]},"rhs":{"B linear degredation":[]},"param_dict":{"B linear degredation":{"on":"kdeg"}},"reaction_type":{"B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"B linear degredation":null},"species_dict":{"B linear degredation":{}},"track_value":{"B linear degredation":false}}
+{"group":{"B linear degredation":"example reaction"},"lhs":{"B linear degredation":["B"]},"rhs":{"B linear degredation":[]},"param_map":{"B linear degredation":{"on":"kdeg"}},"reaction_type":{"B linear degredation":"mass_action_forward"},"explicit_restriction_to_domain":{"B linear degredation":null},"species_map":{"B linear degredation":{}},"track_value":{"B linear degredation":false}}
 </reactions>
 </sbmodel>
