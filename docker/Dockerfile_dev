@@ -17,17 +17,16 @@ RUN apt-get -qq update && \
     apt-get -qq -y install \
     curl \
     vim \
-    htop \
+    htop && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# bpython dev version
-RUN cd $FENICS_HOME/gitrepos && \
-    cd $FENICS_HOME/gitrepos && \
-    git clone https://github.com/bpython/bpython.git && \
-    cd bpython && \
-    python3 -m pip install typing_extensions && \
-    python3 setup.py install
+## bpython dev version
+#RUN cd $FENICS_HOME && \
+#    git clone https://github.com/bpython/bpython.git && \
+#    cd bpython && \
+#    python3 -m pip install typing_extensions && \
+#    python3 setup.py install
 
 # Install desired packages using pip
 # *not sure why, but when run in a single line the dependencies for stubs aren't installed
