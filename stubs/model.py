@@ -168,6 +168,11 @@ class Model:
 
 
     def initialize_refactor(self):
+        """
+        Notes:
+        * Now works with sub-volumes
+        * Removed scale_factor (too ambiguous)
+        """
         self._init_1()
         self._init_2()
         self._init_3()
@@ -188,13 +193,16 @@ class Model:
         self._init_2_4_check_for_unused_parameters_species_compartments()
         self._init_2_5_link_compartments_to_species()
         self._init_2_6_link_species_to_compartments()
+        self._init_2_7_get_species_compartment_indices()
         fancy_print(f"Step 2 of initialization completed successfully!", text_color='magenta')
     def _init_3(self):
         "Mesh-related initializations"
         fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type='title')
         self._init_3_1_define_child_meshes()
-        self._init_3_2_get_mesh_functions()
+        self._init_3_2_get_parent_mesh_functions()
         self._init_3_3_extract_submeshes()
+        self._init_3_4_get_child_mesh_functions()
+        self._init_3_5_get_integration_measures()
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
 
     # Step 1 - Checking model validity
@@ -309,11 +317,18 @@ class Model:
     def _init_2_6_link_species_to_compartments(self):
         fancy_print(f"Linking species to compartments", format_type='log')
         # An species is considered to be "in a compartment" if it is involved in a reaction there
-        self.cc.add_property_to_all('species', {})
         for species in self.sc.values:
             species.compartment.species.update({species.name: species})
         for compartment in self.cc.values:
             compartment.num_species = len(compartment.species)
+    
+    def _init_2_7_get_species_compartment_indices(self):
+        fancy_print(f"Getting indices for species for each compartment", format_type='log')
+        index = 0
+        for compartment in self.cc.values:
+            for species in list(compartment.species.values()):
+                species.compartment_index = index
+                index += 1
 
     # Step 3 - Mesh Initializations
     def _init_3_1_define_child_meshes(self):
@@ -352,28 +367,6 @@ class Model:
         fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')
         for mesh in self.parent_mesh.all_meshes.values():
             mesh.get_integration_measures()
-
-#
-#
-#        if comp.dimensionality==volume_dim:
-#            comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined, metadata={'quadrature_degree': 3})
-#            comp.ds_uncombined = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf, metadata={'quadrature_degree': 3})
-#            comp.dP = None
-#        elif comp.dimensionality<volume_dim:
-#            comp.dP = d.Measure('dP', domain=comp.mesh)
-#            comp.ds = None
-#        else:
-#            raise Exception(f"Internal error: {comp_name} has a dimension larger than then the volume dimension.")
-#        comp.dx = d.Measure('dx', domain=comp.mesh, metadata={'quadrature_degree': 3})
-#
-#        pass
-
-
-    # def _init_3_3_get_submesh_stats(self):
-    #     fancy_print(f"Getting stats on submeshes", format_type='log')
-    #     self.cc.do_to_all('compute_nvolume')
-    #     self.cc.compute_scaling_factors()
-        
 
     def reactions_to_symbolic_flux_strings(self):
         """
