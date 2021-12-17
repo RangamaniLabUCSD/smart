@@ -1104,7 +1104,7 @@ class Compartment(ObjectInstance):
 
     @property
     def dolfin_mesh(self):
-        return self.mesh.submesh
+        return self.mesh.dolfin_mesh
 
 
 

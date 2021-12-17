@@ -3,6 +3,7 @@ Model class. Consists of parameters, species, etc. and is used for simulation
 """
 from collections import defaultdict as ddict
 from dataclasses import dataclass
+from cached_property import cached_property
 import itertools
 
 import dolfin as d
@@ -87,20 +88,17 @@ class Model:
     def child_meshes(self):
         return self.parent_mesh.child_meshes
 
-    @property
+    @cached_property
     def min_dim(self):
         dim                         = min([comp.dimensionality for comp in self.cc.values])
-        self._min_dim               = dim 
-        self.cc._min_dim            = dim
-        self.parent_mesh._min_dim   = dim
-        return self._min_dim
-    @property
+        self.parent_mesh.min_dim    = dim
+        return dim
+    @cached_property
     def max_dim(self):
         dim                         = max([comp.dimensionality for comp in self.cc.values])
-        self._max_dim               = dim
-        self.cc._max_dim            = dim
-        self.parent_mesh._max_dim   = dim
-        return self._max_dim
+        self.max_dim                = dim
+        self.parent_mesh.max_dim    = dim
+        return dim
 
     # ==============================================================================
     # Model - Initialization
@@ -331,10 +329,9 @@ class Model:
         # Check validity (one child mesh for each compartment)
         assert len(self.child_meshes) == self.cc.size
 
-    def _init_3_2_get_mesh_functions(self):
-        fancy_print(f"Defining mesh functions", format_type='log')
+    def _init_3_2_get_parent_mesh_functions(self):
+        fancy_print(f"Defining parent mesh functions", format_type='log')
         self.parent_mesh.get_mesh_functions()
-        self.mf = self.parent_mesh.mf
 
     def _init_3_3_extract_submeshes(self):
         """ Use dolfin.MeshView.create() to extract submeshes """
@@ -345,9 +342,17 @@ class Model:
         for cm in self.child_meshes.values():
             cm.extract_submesh()
 
-#    def _init_3_4_get_integration_measures(self):
-#        # Loop through child meshes and get integration measures
-#        for cm in self.child_meshes:
+    def _init_3_4_get_child_mesh_functions(self):
+        fancy_print(f"Defining child mesh functions", format_type='log')
+        # this requires mapping information from the parent mesh functions
+        for mesh in self.parent_mesh.child_meshes.values():
+            mesh.get_mesh_functions()
+
+    def _init_3_5_get_integration_measures(self):
+        fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')
+        for mesh in self.parent_mesh.all_meshes.values():
+            mesh.get_integration_measures()
+
 #
 #
 #        if comp.dimensionality==volume_dim:

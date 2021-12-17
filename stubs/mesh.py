@@ -4,6 +4,7 @@ Wrapper around dolfin mesh class (originally for submesh implementation - possib
 import dolfin as d
 from stubs.common import _fancy_print as fancy_print
 import numpy as np
+from cached_property import cached_property
 
 class _Mesh:
     """
@@ -14,53 +15,101 @@ class _Mesh:
         self.dimensionality     = dimensionality
         self.dolfin_mesh        = None
 
-    @property
+    @cached_property
     def mesh_view(self):
         return self.dolfin_mesh.topology().mapping()
     @property
     def id(self):
         return self.dolfin_mesh.id()
+    @property
+    def is_volume_mesh(self):
+        return self.dimensionality == self.parent_mesh.dimensionality
     
+    # Number of entities
     def get_num_entities(self, dimension):
         "Get the number of entities in this mesh with a certain topological dimension"
         return self.dolfin_mesh.topology().size(dimension)
-
-    @property
+    @cached_property
     def num_cells(self):
         return self.get_num_entities(self.dimensionality)
-    @property
+    @cached_property
     def num_facets(self):
         return self.get_num_entities(self.dimensionality-1)
-    @property
+    @cached_property
     def num_vertices(self):
         return self.get_num_entities(0)
     
-    # Index mapping
+    # Entity mapping
     def _get_entities(self, dimension):
         num_vertices_per_entity = dimension+1 # for a simplex
         return np.reshape(self.dolfin_mesh.topology()(dimension, 0)(), (self.get_num_entities(dimension), dimension+1))
-
-    @property
+    @cached_property
     def cells(self):
         return self.dolfin_mesh.cells()
-    @property
+    @cached_property
     def facets(self):
         # By default dolfin only stores cells - we must call dolfin_mesh.init() in order to access index maps for other dimensions
         return self._get_entities(self.dimensionality-1)
-    @property
+    @cached_property
+    def subfacets(self):
+        return self._get_entities(self.dimensionality-2)
+    @cached_property
     def vertices(self):
         return self.dolfin_mesh.coordinates()
+    def get_entities(self, dimension):
+        "We use this function so that values are cached and we don't need to recompute each time"
+        if dimension == self.dimensionality:
+            return self.cells
+        elif dimension == self.dimensionality - 1:
+            return self.facets
+        elif dimension == self.dimensionality - 2:
+            return self.subfacets
+        elif dimension == 0:
+            return self.vertices
+        else:
+            raise ValueError(f"Unknown entities for given dimension {dimension}")
 
-    @property
+            
+
+    # Coordinates of entities
+    @cached_property
     def cell_coordinates(self):
         return self.vertices[self.cells]
-    @property
+    @cached_property
     def facet_coordinates(self):
         return self.vertices[self.facets]
+    
+    # Generalized volume
+    @cached_property
+    def nvolume(self):
+        return d.assemble(1*self.dx)
 
     def get_mesh_coordinate_bounds(self):
         return {'min': self.vertices.min(axis=0), 'max': self.vertices.max(axis=0)}
 
+    # FIXME
+    # Integration measures
+    # def get_integration_measures(self):
+    #     # Aliases
+    #     mesh = self.dolfin_mesh
+    #     #mf = self.parent_mesh.mf # FIXME
+
+    #     # Markers on the boundary mesh of this child mesh
+    #     if self.is_volume_mesh:
+    #         self.ds            = d.Measure('ds', domain=mesh, subdomain_data=mf['surf'])
+    #         if 'surf_uncombined' in mf:
+    #             self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=mf['surf_uncombined'])
+    #         self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['vol'])
+    #         if 'vol_uncombined' in mf:
+    #             self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['vol_uncombined'])
+    #         #comp.dP = None
+    #     else:
+    #         self.ds = None
+    #         self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['surf'])
+    #         #comp.dP = d.Measure('dP', domain=comp.mesh)
+
+    def get_mesh_functions(self):
+        self.mf = self._get_mesh_functions()
         
 class ParentMesh(_Mesh):
     """
@@ -71,8 +120,13 @@ class ParentMesh(_Mesh):
         self.name = name
         self.load_mesh_from_xml(mesh_filename)
         self.child_meshes = {}
+        self.parent_mesh = self
         # get mesh functions
         #self.mesh_functions = self.get_mesh_functions()
+    
+    @property
+    def all_meshes(self):
+        return dict(list(self.child_meshes.items()) + list({self.name: self}.items()))
 
     def load_mesh_from_xml(self, mesh_filename):
         self.dolfin_mesh = d.Mesh(mesh_filename)
@@ -81,12 +135,12 @@ class ParentMesh(_Mesh):
         self.mesh_filename = mesh_filename
         print(f"Mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
 
-    def get_mesh_functions(self):
+    def _get_mesh_functions(self):
         # Aliases
         mesh        = self.dolfin_mesh
-        has_surface = self._min_dim < self._max_dim
-        volume_dim  = self._max_dim
-        surface_dim = self._min_dim
+        has_surface = self.min_dim < self.max_dim
+        volume_dim  = self.max_dim
+        surface_dim = self.min_dim
 
         # Check validity
         if self.dolfin_mesh is None:
@@ -110,12 +164,12 @@ class ParentMesh(_Mesh):
             if cm.marker_list is None:
                 continue
             for marker in cm.marker_list:
-                if cm.dimensionality == self._max_dim:
+                if cm.dimensionality == self.max_dim:
                     mf['vol'].array()[mf['vol_uncombined'].array() == marker] = cm.primary_marker
-                if cm.dimensionality < self._max_dim:
+                if cm.dimensionality < self.max_dim:
                     mf['surf'].array()[mf['surf_uncombined'].array() == marker] = cm.primary_marker
         
-        self.mf = mf 
+        return mf
 
 class ChildMesh(_Mesh):
     """
@@ -142,18 +196,44 @@ class ChildMesh(_Mesh):
             self.marker_list = None
             self.primary_marker = marker
     
-    @property
-    def mapping_child_cell_to_parent_entity(self):
+    @cached_property
+    def map_cell_to_parent_entity(self):
+        """
+        We use the word 'entity' to be dimensionally-agnostic.
+        If the child has topological dimension one lower than the parent, then the child's cell is the parent's facet.
+        """
         return np.array(self.mesh_view[self.parent_mesh.id].cell_map())
-    @property
-    def mapping_child_vertex_to_parent_vertex(self):
+    @cached_property
+    def map_facet_to_parent_entity(self):
+        """
+        We use parent indices as our "grounding point" for conversion
+        Conversion is:
+        self.map_facet_to_parent_vertex:         child facet -> child vertex -> parent vertex
+        loop self.parent_mesh to invert its map: parent vertex -> parent_entity
+        """
+        mapping = []
+        # Aliases
+        pm_entities = self.parent_mesh.get_entities(self.dimensionality-1)
+        list_of_sets = [set(pm_entities[entity_idx,:]) for entity_idx in range(pm_entities.shape[0])]
+
+        # parent_vertex to parent entity
+        for child_facet_idx in range(self.facets.shape[0]):
+            subset = set(self.map_facet_to_parent_vertex[child_facet_idx,:])
+            entity_idx = list_of_sets.index(subset)
+            mapping.append(entity_idx)
+        
+        return np.array(mapping)
+
+    # combination maps
+    @cached_property
+    def map_cell_to_parent_vertex(self):
+        return self.map_vertex_to_parent_vertex[self.cells]
+    @cached_property
+    def map_facet_to_parent_vertex(self):
+        return self.map_vertex_to_parent_vertex[self.facets]
+    @cached_property
+    def map_vertex_to_parent_vertex(self):
         return np.array(self.mesh_view[self.parent_mesh.id].vertex_map())
-    @property
-    def mapping_child_cell_to_parent_vertex(self):
-        return self.mapping_child_vertex_to_parent_vertex[self.cells]
-    @property
-    def is_surface_mesh(self):
-        return self.dimensionality < self.parent_mesh.dimensionality
 
 
     def set_parent_mesh(self, parent_mesh):
@@ -167,46 +247,31 @@ class ChildMesh(_Mesh):
             self.parent_mesh.child_meshes.update({self.name: self})
 
     def extract_submesh(self):
-        if self.dimensionality == self.parent_mesh._max_dim:
-            self.mf = self.parent_mesh.mf['vol']
-        elif self.dimensionality < self.parent_mesh._max_dim:
-            self.mf = self.parent_mesh.mf['surf']
-
-        self.dolfin_mesh = d.MeshView.create(self.mf, self.primary_marker)
+        mf_type = 'vol' if self.is_volume_mesh else 'surf'
+        self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
+            
         self.dolfin_mesh.init()
     
-    # def get_integration_measures(self):
-    #     # Aliases
-    #     comp = self.compartment
-    #     mesh = self.dolfin_mesh
-    #     parent_mesh = self.parent_mesh.dolfin_mesh
 
-    #     # Markers on the boundary mesh of this child mesh
-    #     if self.dimensionality == self.parent_mesh._max_dim:
-    #         self.ds            = d.Measure('ds', domain=mesh, subdomain_data=vmf)
-    #         self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=vmf)
-    #         #comp.dP = None
-    #     elif comp.dimensionality < self.parent_mesh._max_dim:
-    #         #comp.dP = d.Measure('dP', domain=comp.mesh)
-    #         comp.ds = None
+    def _get_mesh_functions(self):
+        "Child mesh functions require transfering data from parent mesh functions"
+        assert hasattr(self.parent_mesh, 'mf')
+        # Alias
+        pmf = self.parent_mesh.mf
 
-    #     comp.dx = d.Measure('dx', domain=mesh)
+        # initialize
+        self.mf         = dict()
+        self.mf['vol']  = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+        self.mf['surf'] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality-1, value=0)
 
-        
-        
+#        # Easiest case, just directly transfer from parent_mesh mesh function
+#        if self.is_volume_mesh:
+#            # local cell index = local cell index -> parent cell index -> parent mesh function value
+#            self.mf['vol'].array()  = pmf['vol'].array()[self.map_cell_to_parent_entity]
+#            #self.mf['surf'].array() = pmf['surf'].array()[]
 
-    #         # integration measures
-    #         if comp.dimensionality==main_mesh.dimensionality:
-    #             comp.ds = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf_combined)
-    #             comp.ds_uncombined = d.Measure('ds', domain=comp.mesh, subdomain_data=vmf)
-    #             comp.dP = None
-    #         elif comp.dimensionality<main_mesh.dimensionality:
-    #             comp.dP = d.Measure('dP', domain=comp.mesh)
-    #             comp.ds = None
-    #         else:
-    #             raise Exception("main_mesh is not a maximum dimension compartment")
-    #         comp.dx = d.Measure('dx', domain=comp.mesh)
 
+        return mf
 
 
 
