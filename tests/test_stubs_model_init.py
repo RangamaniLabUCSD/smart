@@ -56,6 +56,18 @@ def test_stubs_model_init(stubs_model):
     model = stubs_model
     assert type(model)==stubs.model.Model
 
-    model._initialize_step_1()
-    model._initialize_step_2()
-    model._initialize_step_3()
+    model._init_1()
+    model._init_2()
+    model._init_3()
+
+    # compare child mesh facet -> parent mesh cell mapping
+    for idx in [1, 15, 100]:
+        cm = model.child_meshes['pm']
+        a  = cm.mapping_child_cell_to_parent_vertex[idx,:]
+
+        m   = model.parent_mesh
+        pidx = cm.mapping_child_cell_to_parent_entity[idx]
+        b    = m.facets[pidx]
+        assert all(a==b)
+        assert all(cm.cell_coordinates[idx] == m.facet_coordinates[pidx])
+

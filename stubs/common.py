@@ -200,6 +200,8 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
         buffer_color='white'; text_color = 'magenta'; filler_char = '.'
     elif format_type == 'log_urgent':
         buffer_color='white'; text_color = 'red'; filler_char = '.'
+    elif format_type == 'warning':
+        buffer_color='orange'; text_color = 'red'; filler_char = '!'; num_banners=2; newlines=[1,1]
     elif format_type == 'timestep':
         text_color = 'magenta'; num_banners = 2; filler_char = '.'; newlines=[1,1]
     elif format_type == 'solverstep':

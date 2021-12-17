@@ -3,6 +3,7 @@ Model class. Consists of parameters, species, etc. and is used for simulation
 """
 from collections import defaultdict as ddict
 from dataclasses import dataclass
+import itertools
 
 import dolfin as d
 import petsc4py.PETSc as PETSc
@@ -169,41 +170,49 @@ class Model:
 
 
     def initialize_refactor(self):
-        self._initialize_step_1()
-        self._initialize_step_2()
-        self._initialize_step_3()
-        self._initialize_step_4()
+        self._init_1()
+        self._init_2()
+        self._init_3()
+        self._init_4()
 
-    def _initialize_step_1(self):
+    def _init_1(self):
         "Checking validity of model"
         fancy_print(f"Checking validity of model (step 1 of ZZ)", format_type='title')
-        self._initialize_step_1_1_check_validity()
+        self._init_1_1_check_mesh_dimensionality()
+        self._init_1_2_check_namespace_conflicts()
         fancy_print(f"Step 1 of initialization completed successfully!", text_color='magenta')
-    def _initialize_step_2(self):
+    def _init_2(self):
         "Cross-container dependent initializations (requires information from multiple containers)"
         fancy_print(f"Cross-Container Dependent Initializations (step 2 of ZZ)", format_type='title')
-        self._initialize_step_2_1_reactions_to_symbolic_strings()
-        self._initialize_step_2_2_link_container_properties()
-        self._initialize_step_2_3_count_species_per_compartment()
+        self._init_2_1_reactions_to_symbolic_strings()
+        self._init_2_2_check_reaction_validity()
+        self._init_2_3_link_reaction_properties()
+        self._init_2_4_check_for_unused_parameters_species_compartments()
+        self._init_2_5_link_compartments_to_species()
+        self._init_2_6_link_species_to_compartments()
         fancy_print(f"Step 2 of initialization completed successfully!", text_color='magenta')
-    def _initialize_step_3(self):
+    def _init_3(self):
         "Mesh-related initializations"
         fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type='title')
-        self._initialize_step_3_1_define_child_meshes()
-        self._initialize_step_3_2_get_mesh_functions()
-        self._initialize_step_3_3_extract_submeshes()
+        self._init_3_1_define_child_meshes()
+        self._init_3_2_get_mesh_functions()
+        self._init_3_3_extract_submeshes()
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
 
-    # Step 1 - Cross-container Independent Initialization
-    def _initialize_step_1_1_check_validity(self):
-        fancy_print(f"Check that container components are valid", format_type='log')
-
-        # Mesh dimensionality
+    # Step 1 - Checking model validity
+    def _init_1_1_check_mesh_dimensionality(self):
+        fancy_print(f"Check that mesh/compartment dimensionalities match", format_type='log')
         if (self.max_dim - self.min_dim) not in [0,1]:
             raise ValueError("(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.")
         if self.max_dim > self.parent_mesh.dimensionality:
             raise ValueError("Maximum dimension of a compartment is higher than the topological dimension of parent mesh.")
-        # Ensure there are no naming conflicts
+        # This is possible to simulate but could be unintended. (e.g. if you have a 3d mesh you could choose to only simulate on the surface)
+        if self.max_dim != self.parent_mesh.dimensionality:
+            fancy_print(f"Parent mesh has geometric dimension: {self.parent_mesh.dimensionality} which"
+                            +f" is not the same as the maximum compartment dimension: {self.max_dim}.", format_type='warning')
+
+    def _init_1_2_check_namespace_conflicts(self):
+        fancy_print(f"Checking for namespace conflicts", format_type='log')
         all_keys = set()
         containers = [self.pc, self.sc, self.cc, self.rc]
         for keys in [c.keys for c in containers]:
@@ -212,87 +221,131 @@ class Model:
             raise ValueError("Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name.")
 
     # Step 2 - Cross-container Dependent Initialization
-    def _initialize_step_2_1_reactions_to_symbolic_strings(self):
-        fancy_print(f"Initializing flux equations for known reactions", format_type='log')
+    def _init_2_1_reactions_to_symbolic_strings(self):
+        fancy_print(f"Turning all reactions into unsigned symbolic flux strings using reaction database", format_type='log')
+        """
+        Turn all reactions into unsigned symbolic flux strings
+        """
+        for rxn in self.rc.values:
+            rxn_type = rxn.reaction_type
+            # Mass action has a forward and reverse flux
+            if rxn_type == 'mass_action':
+                rxn_sym_str = rxn.param_map['on']
+                for sp_name in rxn.lhs:
+                    rxn_sym_str += '*' + sp_name
+                rxn.eqn_f = parse_expr(rxn_sym_str)
 
-        self.reactions_to_symbolic_flux_strings()
-        # Make sure custom reactions have all parameters/species defined
+                rxn_sym_str = rxn.param_map['off']
+                for sp_name in rxn.rhs:
+                    rxn_sym_str += '*' + sp_name
+                rxn.eqn_r = parse_expr(rxn_sym_str)
+
+            elif rxn_type == 'mass_action_forward':
+                rxn_sym_str = rxn.param_map['on']
+                for sp_name in rxn.lhs:
+                    rxn_sym_str += '*' + sp_name
+                rxn.eqn_f = parse_expr(rxn_sym_str)
+
+            # Custom reaction
+            elif rxn_type in self.config.reaction_database.keys():
+                rxn_sym_str = self.config.reaction_database[rxn_type]
+                #rxn._custom_reaction(self.config.reaction_database[rxn_type])
+                rxn_expr = parse_expr(rxn_sym_str)
+                rxn_expr = rxn_expr.subs(rxn.param_map)
+                rxn_expr = rxn_expr.subs(rxn.species_map)
+                rxn.eqn_f = rxn_expr
+
+            else:
+                raise ValueError("Reaction %s does not seem to have an associated equation" % rxn.name)
+
+    def _init_2_2_check_reaction_validity(self):
+        fancy_print(f"Make sure all reactions have parameters/species defined", format_type='log')
+
         for reaction in self.rc.values:
             for eqn in ['eqn_r', 'eqn_f']:
+                if not hasattr(reaction, eqn):
+                    continue
                 var_set     = {str(x) for x in getattr(reaction,eqn).free_symbols}
                 param_set   = var_set.intersection(self.pc.keys)
                 species_set = var_set.intersection(self.sc.keys)
                 if len(param_set) + len(species_set) != len(var_set):
                     raise NameError(f"Reaction {reaction.name} refers to a parameter or species that is not in the model.")
 
-    def _initialize_step_2_2_link_container_properties(self):
-        fancy_print(f"Linking container properties", format_type='log')
+    def _init_2_3_link_reaction_properties(self):
+        fancy_print(f"Linking parameters, species, and compartments to reactions", format_type='log')
 
-        # Link parameters, species, and compartments to reactions
         for reaction in self.rc.values:
             reaction.parameters   = {param_name: self.pc[param_name] for param_name in reaction.param_map.values()}
             reaction.species      = {species_name: self.sc[species_name] for species_name in reaction.species_map.values()}
-            compartment_names     = [species.compartment_name for species in reaction.species]
+            compartment_names     = [species.compartment_name for species in reaction.species.values()]
             if reaction.explicit_restriction_to_domain:
                 compartment_names.append(reaction.explicit_restriction_to_domain)
             reaction.compartments = {compartment_name: self.cc[compartment_name] for compartment_name in compartment_names}
+            # number of parameters, species, and compartments
+            reaction.num_parmeters    = len(reaction.parameters)
+            reaction.num_species      = len(reaction.species)
+            reaction.num_compartments = len(reaction.compartments)
 
             if len(reaction.compartments) not in [1,2,3]:
                 raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
         
-        # Throw a warning if there is an unused parameter, species, or compartment
-        if len(set([]))
+    def _init_2_4_check_for_unused_parameters_species_compartments(self):
+        fancy_print(f"Checking for parameters, species, or compartments unused in any reactions", format_type='log')
 
-        # Link compartments and compartment dimensionality to species
+        all_parameters   = set(itertools.chain.from_iterable([r.parameters for r in self.rc.values]))
+        all_species      = set(itertools.chain.from_iterable([r.species for r in self.rc.values]))
+        all_compartments = set(itertools.chain.from_iterable([r.compartments for r in self.rc.values]))
+        if all_parameters != set(self.pc.keys):
+            raise ValueError(f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions.") 
+        if all_species != set(self.sc.keys):
+            raise ValueError(f"Species, {set(self.sc.keys).difference(all_species)}, are unused in any reactions.") 
+        if all_compartments != set(self.cc.keys):
+            raise ValueError(f"Compartment(s), {set(self.cc.keys).difference(all_compartments)}, are unused in any reactions.") 
+
+    def _init_2_5_link_compartments_to_species(self):
+        fancy_print(f"Linking compartments and compartment dimensionality to species", format_type='log')
         for species in self.sc.values:
             species.compartment = self.cc[species.compartment_name]
             species.dimensionality = self.cc[species.compartment_name].dimensionality
 
-    def _initialize_step_2_3_count_species_per_compartment(self):
-        #TODO
-        fancy_print(f"Counting the number of active species per compartment", format_type='log')
-        self.rc_get_involved_compartments()
-    
-        #self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-        #self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
+    def _init_2_6_link_species_to_compartments(self):
+        fancy_print(f"Linking species to compartments", format_type='log')
+        # An species is considered to be "in a compartment" if it is involved in a reaction there
+        self.cc.add_property_to_all('species', {})
+        for species in self.sc.values:
+            species.compartment.species.update({species.name: species})
+        for compartment in self.cc.values:
+            compartment.num_species = len(compartment.species)
 
     # Step 3 - Mesh Initializations
-    def _initialize_step_3_1_define_child_meshes(self):
-        fancy_print(f"Defining ChildMeshes", format_type='log')
-        # Aliases
-        mesh = self.parent_mesh.dolfin_mesh
-        volume_dim = self.max_dim
-        surface_dim = self.min_dim
-        # Check that there is a parent_mesh loaded
+    def _init_3_1_define_child_meshes(self):
+        fancy_print(f"Defining child meshes", format_type='log')
+        # Check that there is a parent mesh loaded
         if not isinstance(self.parent_mesh, stubs.mesh.ParentMesh):
             raise ValueError("There is no parent mesh.")
-        # Check that dimensionality of compartments and mesh is acceptable
-        if volume_dim != self.parent_mesh.dimensionality:
-            raise ValueError(f"Parent mesh has geometric dimension: {self.parent_mesh.dimensionality} which"
-                            +f" is not the same as the maximum compartment dimension: {volume_dim}.")
 
         # Define child meshes
         for comp in self.cc.values:
             comp.mesh = ChildMesh(self.parent_mesh, comp)
 
-        # Check validity (one ChildMesh for each compartment)
+        # Check validity (one child mesh for each compartment)
         assert len(self.child_meshes) == self.cc.size
 
-    def _initialize_step_3_2_get_mesh_functions(self):
-        fancy_print(f"Defining MeshFunctions", format_type='log')
+    def _init_3_2_get_mesh_functions(self):
+        fancy_print(f"Defining mesh functions", format_type='log')
         self.parent_mesh.get_mesh_functions()
         self.mf = self.parent_mesh.mf
 
-    def _initialize_step_3_3_extract_submeshes(self):
+    def _init_3_3_extract_submeshes(self):
         """ Use dolfin.MeshView.create() to extract submeshes """
         fancy_print(f"Extracting submeshes", format_type='log')
         # Aliases
         mesh = self.parent_mesh.dolfin_mesh
         # Loop through child meshes and extract submeshes
-        for cm in self.child_meshes:
+        for cm in self.child_meshes.values():
             cm.extract_submesh()
 
-#    def _initialize_step_3_4_get_integration_measures(self):
+#    def _init_3_4_get_integration_measures(self):
 #        # Loop through child meshes and get integration measures
 #        for cm in self.child_meshes:
 #
@@ -311,7 +364,7 @@ class Model:
 #        pass
 
 
-    # def _initialize_step_3_3_get_submesh_stats(self):
+    # def _init_3_3_get_submesh_stats(self):
     #     fancy_print(f"Getting stats on submeshes", format_type='log')
     #     self.cc.do_to_all('compute_nvolume')
     #     self.cc.compute_scaling_factors()
@@ -352,35 +405,6 @@ class Model:
 
             else:
                 raise ValueError("Reaction %s does not seem to have an associated equation" % rxn.name)
-
-    def cc_get_involved_species(self):
-        """
-        Returns a Counter object with the number of times a species appears in each compartment
-        """
-        self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
-        all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.values] for sp in species_set])
-        for sp_name, sp in sc.items:
-            if sp in all_involved_species:
-                sp.is_in_a_reaction = True
- 
-        compartment_counts = [sp.compartment_name for sp in all_involved_species]
- 
-        return Counter(compartment_counts)
-
-        # used to get number of active species in each compartment
-        self.involved_species = set(self.lhs + self.rhs)
-        for eqn in ['eqn_r', 'eqn_f']:
-            if hasattr(self, eqn):
-                var_set = {str(x) for x in self.eqn_f.free_symbols}
-                species_set = var_set.intersection(sc.keys)
-                self.involved_species = self.involved_species.union(species_set)
-
-        self.involved_compartments = dict(set([(sc[sp_name].compartment_name, sc[sp_name].compartment) for sp_name in self.involved_species]))
-        if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
-
-        if len(self.involved_compartments) not in (1,2):
-            raise Exception("Number of compartments involved in a flux must be either one or two!")
 
     def assemble_reactive_fluxes(self):
         """
