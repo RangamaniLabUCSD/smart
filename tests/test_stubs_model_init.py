@@ -1,6 +1,7 @@
 import stubs
 import pytest
 import pint
+import math
 
 from stubs.common import create_sbmodel
 
@@ -60,12 +61,13 @@ def test_stubs_model_init(stubs_model):
     model._init_2()
     model._init_3()
 
+    # aliases
+    cm = model.child_meshes['pm']
+    m  = model.parent_mesh
+
     for idx in [1, 7, 14]:
         # test child cell -> parent entity mapping
-        cm = model.child_meshes['pm']
         a  = cm.map_cell_to_parent_vertex[idx,:]
-
-        m   = model.parent_mesh
         pidx = cm.map_cell_to_parent_entity[idx]
         b    = m.facets[pidx]
         assert all(a==b)
@@ -74,3 +76,8 @@ def test_stubs_model_init(stubs_model):
         # test child facet -> parent entity mapping
         pidx=cm.map_facet_to_parent_entity[idx]
         assert all(cm.map_facet_to_parent_vertex[idx,:] == pm.facets[pidx,:])
+    
+    # check volumes and surfaces
+    assert math.isclose(cm.get_nvolume('dx', 12), 8.0)
+    assert math.isclose(cm.get_nvolume('ds', 2), 20.0)
+    assert math.isclose(cm.get_nvolume('ds', 4), 4.0)

@@ -84,29 +84,29 @@ class _Mesh:
     def nvolume(self):
         return d.assemble(1*self.dx)
 
+    def get_nvolume(self, measure_type, marker=None):
+        if measure_type=='dx':
+            measure = self.dx
+        elif measure_type == 'ds':
+            measure = self.ds
+        return(d.assemble(1*measure(marker)))
+
     def get_mesh_coordinate_bounds(self):
         return {'min': self.vertices.min(axis=0), 'max': self.vertices.max(axis=0)}
 
-    # FIXME
     # Integration measures
-    # def get_integration_measures(self):
-    #     # Aliases
-    #     mesh = self.dolfin_mesh
-    #     #mf = self.parent_mesh.mf # FIXME
+    def get_integration_measures(self):
+        # Aliases
+        mesh = self.dolfin_mesh
+        mf = self.mf
 
-    #     # Markers on the boundary mesh of this child mesh
-    #     if self.is_volume_mesh:
-    #         self.ds            = d.Measure('ds', domain=mesh, subdomain_data=mf['surf'])
-    #         if 'surf_uncombined' in mf:
-    #             self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=mf['surf_uncombined'])
-    #         self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['vol'])
-    #         if 'vol_uncombined' in mf:
-    #             self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['vol_uncombined'])
-    #         #comp.dP = None
-    #     else:
-    #         self.ds = None
-    #         self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['surf'])
-    #         #comp.dP = d.Measure('dP', domain=comp.mesh)
+        self.ds = d.Measure('ds', domain=mesh, subdomain_data=mf['facets'])
+        self.dx = d.Measure('dx', domain=mesh, subdomain_data=mf['cells'])
+        # Markers on the boundary mesh of this child mesh
+        if 'facets_uncombined' in mf:
+            self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=mf['facets_uncombined'])
+        if 'cells_uncombined' in mf:
+            self.dx_uncombined = d.Measure('dx', domain=mesh, subdomain_data=mf['cells_uncombined'])
 
     def get_mesh_functions(self):
         self.mf = self._get_mesh_functions()
@@ -150,14 +150,14 @@ class ParentMesh(_Mesh):
 
         # Init mesh functions
         mf = dict()
-        mf['vol'] = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
+        mf['cells'] = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
         if has_surface:
-            mf['surf'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+            mf['facets'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
         # If any cell markers are given as a list we also create mesh functions to store the uncombined markers
         if any([cm.marker_list is not None for cm in self.child_meshes.values()]):
-            mf['vol_uncombined']  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
+            mf['cells_uncombined']  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
             if has_surface:
-                mf['surf_uncombined'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+                mf['facets_uncombined'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
 
         # Combine markers in a list 
         for cm in self.child_meshes.values(): 
@@ -165,9 +165,9 @@ class ParentMesh(_Mesh):
                 continue
             for marker in cm.marker_list:
                 if cm.dimensionality == self.max_dim:
-                    mf['vol'].array()[mf['vol_uncombined'].array() == marker] = cm.primary_marker
+                    mf['cells'].array()[mf['cells_uncombined'].array() == marker] = cm.primary_marker
                 if cm.dimensionality < self.max_dim:
-                    mf['surf'].array()[mf['surf_uncombined'].array() == marker] = cm.primary_marker
+                    mf['facets'].array()[mf['facets_uncombined'].array() == marker] = cm.primary_marker
         
         return mf
 
@@ -247,7 +247,7 @@ class ChildMesh(_Mesh):
             self.parent_mesh.child_meshes.update({self.name: self})
 
     def extract_submesh(self):
-        mf_type = 'vol' if self.is_volume_mesh else 'surf'
+        mf_type = 'cells' if self.is_volume_mesh else 'facets'
         self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
             
         self.dolfin_mesh.init()
@@ -260,16 +260,24 @@ class ChildMesh(_Mesh):
         pmf = self.parent_mesh.mf
 
         # initialize
-        self.mf         = dict()
-        self.mf['vol']  = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
-        self.mf['surf'] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality-1, value=0)
+        mf         = dict()
+        mf['cells']  = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+        mf['facets'] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality-1, value=0)
 
-#        # Easiest case, just directly transfer from parent_mesh mesh function
-#        if self.is_volume_mesh:
-#            # local cell index = local cell index -> parent cell index -> parent mesh function value
-#            self.mf['vol'].array()  = pmf['vol'].array()[self.map_cell_to_parent_entity]
-#            #self.mf['surf'].array() = pmf['surf'].array()[]
-
+        # Easiest case, just directly transfer from parent_mesh mesh function
+        # local cell index = local cell index -> parent cell index -> parent mesh function value
+        if self.is_volume_mesh:
+            mf['cells'].array()[:]  = pmf['cells'].array()[self.map_cell_to_parent_entity]
+            # Use the mapping from local facet to parent entity
+            mf['facets'].array()[:] = pmf['facets'].array()[self.map_facet_to_parent_entity]
+            if 'cells_uncombined' in pmf:
+                mf['cells_uncombined'].array()[:]  = pmf['cells_uncombined'].array()[self.map_cell_to_parent_entity]
+            if 'facets_uncombined' in pmf:
+                mf['facets_uncombined'].array()[:]  = pmf['facets_uncombined'].array()[self.map_facet_to_parent_entity]
+        else:
+            mf['cells'].array()[:]  = pmf['facets'].array()[self.map_cell_to_parent_entity]
+            if 'facets_uncombined' in pmf:
+                mf['cells_uncombined'].array()[:]  = pmf['facets_uncombined'].array()[self.map_facet_to_parent_entity]
 
         return mf
 
