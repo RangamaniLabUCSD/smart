@@ -204,6 +204,11 @@ class Model:
         self._init_3_4_get_child_mesh_functions()
         self._init_3_5_get_integration_measures()
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
+    def _init_4(self):
+        "Dolfin function initializations"
+        fancy_print(f"Dolfin Initializations (step 4 of ZZ)", format_type='title')
+        self._init_4_1_get_dolfin_functions()
+        
 
     # Step 1 - Checking model validity
     def _init_1_1_check_mesh_dimensionality(self):
@@ -228,7 +233,7 @@ class Model:
 
     # Step 2 - Cross-container Dependent Initialization
     def _init_2_1_reactions_to_symbolic_strings(self):
-        fancy_print(f"Turning all reactions into unsigned symbolic flux strings using reaction database", format_type='log')
+        fancy_print(f"Turning reactions into unsigned symbolic flux strings", format_type='log')
         """
         Turn all reactions into unsigned symbolic flux strings
         """
@@ -296,7 +301,7 @@ class Model:
                 raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
         
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
-        fancy_print(f"Checking for parameters, species, or compartments unused in any reactions", format_type='log')
+        fancy_print(f"Checking for unused parameters, species, or compartments", format_type='log')
 
         all_parameters   = set(itertools.chain.from_iterable([r.parameters for r in self.rc.values]))
         all_species      = set(itertools.chain.from_iterable([r.species for r in self.rc.values]))
@@ -367,6 +372,29 @@ class Model:
         fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')
         for mesh in self.parent_mesh.all_meshes.values():
             mesh.get_integration_measures()
+
+    # Step 4 - Dolfin Functions 
+    def _init_4_1_get_dolfin_functions(self):
+        fancy_print(f"Setup dolfin functions for compartments", format_type='log')
+        # todo: 
+        # make u [u,t,k,n], V, v, 
+        # set initial conditions
+
+        # Aliases
+        max_compartment_name = max([len(compartment_name) for compartment_name in self.cc.keys])
+        for compartment_name, compartment in self.cc.items:
+            # Aliases
+            dim         = compartment.dimensionality
+            num_species = compartment.num_species
+            buffer      = max_compartment_name - len(compartment_name) 
+            fancy_print(f"Setting up functions for {compartment_name}{' '*buffer} "
+                        f"(dim: {compartment.dimensionality}, num_species: {num_species})", format_type='log')
+            compartment.initialize_dolfin_functions()
+
+            #FIXME
+            #refactor this to use mixed function spaces
+            
+        
 
     def reactions_to_symbolic_flux_strings(self):
         """
@@ -1047,8 +1075,6 @@ class Model:
         self.data.plot_solutions(self.config, self.sc)
         self.data.plot_fluxes(self.config)
         self.data.plot_solver_status(self.config)
-
-
 
 
     #===============================================================================

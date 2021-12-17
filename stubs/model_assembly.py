@@ -503,7 +503,12 @@ class Compartment(ObjectInstance):
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
         self.check_validity()
+
+        # Initialize
         self.species = odict()
+        self.u       = dict()
+        self.V       = dict()
+        self.v       = dict()
     
     def check_validity(self):
         if self.dimensionality not in [1,2,3]:
@@ -512,12 +517,34 @@ class Compartment(ObjectInstance):
         if not self.compartment_units.check('[length]'):
             raise ValueError(f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length].")
 
-    def compute_nvolume(self):
-        self.nvolume = d.assemble(d.Constant(1.0)*self.dx) * self.compartment_units ** self.dimensionality
+    @property
+    def nvolume(self):
+        "nvolume with proper units"
+        self.nvolume =  self.mesh.nvolume * self.compartment_units ** self.dimensionality
 
     @property
     def dolfin_mesh(self):
         return self.mesh.dolfin_mesh
+
+    def initialize_dolfin_functions(self):
+        "Requires a dolfin mesh associated to the compartment"
+        # Aliases
+        name = self.name
+
+        # Make the function spaces
+        if self.num_species == 1:
+            self.V = d.FunctionSpace(self.dolfin_mesh, 'P', 1)
+            # functions and test functions
+            # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
+            self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunction(self.V),
+                            'k': d.Function(self.V), 'n': d.Function(self.V)}
+            self.v = d.TestFunction(self.V)
+        else: # vector space
+            self.V = d.VectorFunctionSpace(self.dolfin_mesh, 'P', 1, dim=self.num_species)
+            self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunctions(self.V),
+                            'k': d.Function(self.V), 'n': d.Function(self.V)}
+            self.v = d.TestFunctions(self.V)
+
 
 
 
