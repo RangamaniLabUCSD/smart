@@ -53,6 +53,10 @@ class Model:
 
         self.params = ddict(list)
 
+        # FunctionSpaces, Functions, etc
+        self.V = {}
+        self.u = {}
+
         # Solver related parameters
         self.idx = 0
         self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
@@ -207,7 +211,7 @@ class Model:
     def _init_4(self):
         "Dolfin function initializations"
         fancy_print(f"Dolfin Initializations (step 4 of ZZ)", format_type='title')
-        self._init_4_1_get_dolfin_functions()
+        self._init_4_1_get_dolfin_function_spaces()
         
 
     # Step 1 - Checking model validity
@@ -374,26 +378,47 @@ class Model:
             mesh.get_integration_measures()
 
     # Step 4 - Dolfin Functions 
-    def _init_4_1_get_dolfin_functions(self):
-        fancy_print(f"Setup dolfin functions for compartments", format_type='log')
+    def _init_4_1_get_dolfin_function_spaces(self):
+        fancy_print(f"Setup dolfin function spaces for compartments", format_type='log')
         # todo: 
         # make u [u,t,k,n], V, v, 
         # set initial conditions
 
         # Aliases
         max_compartment_name = max([len(compartment_name) for compartment_name in self.cc.keys])
+        
         for compartment_name, compartment in self.cc.items:
             # Aliases
-            dim         = compartment.dimensionality
-            num_species = compartment.num_species
-            buffer      = max_compartment_name - len(compartment_name) 
-            fancy_print(f"Setting up functions for {compartment_name}{' '*buffer} "
-                        f"(dim: {compartment.dimensionality}, num_species: {num_species})", format_type='log')
-            compartment.initialize_dolfin_functions()
+            fancy_print(f"Setting up functions for {compartment_name}{' '*(max_compartment_name-len(compartment_name))} "
+                        f"(dim: {compartment.dimensionality}, num_species: {compartment.num_species}, num_dofs: {compartment.num_dofs})", format_type='log')
 
-            #FIXME
-            #refactor this to use mixed function spaces
-            
+            # Make the individual function spaces
+            if compartment.num_species == 1:
+                compartment.V = d.FunctionSpace(compartment.dolfin_mesh, 'P', 1)
+            else: # vector space
+                compartment.V = d.VectorFunctionSpace(compartment.dolfin_mesh, 'P', 1, dim=compartment.num_species)
+
+        # We want to have the highest number of dofs first
+        sorted_compartments = self.cc.sort_by('num_dofs')[0]
+        self.V = [compartment.V for compartment in sorted_compartments]
+        # Make the MixedFunctionSpace
+        self.W = d.MixedFunctionSpace(*self.V)
+        
+
+    def _init_4_2_get_dolfin_functions(self):
+# dolfin functions
+        # if self.num_species == 1:
+        #     self.V = d.FunctionSpace(self.dolfin_mesh, 'P', 1)
+        #     # functions and test functions
+        #     # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
+        #     self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunction(self.V),
+        #                     'k': d.Function(self.V), 'n': d.Function(self.V)}
+        #     self.v = d.TestFunction(self.V)
+        # else: # vector space
+        #     self.V = d.VectorFunctionSpace(self.dolfin_mesh, 'P', 1, dim=self.num_species)
+        #     self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunctions(self.V),
+        #                     'k': d.Function(self.V), 'n': d.Function(self.V)}
+        #     self.v = d.TestFunctions(self.V)
         
 
     def reactions_to_symbolic_flux_strings(self):

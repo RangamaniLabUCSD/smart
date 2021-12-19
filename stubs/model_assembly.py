@@ -133,6 +133,16 @@ class ObjectContainer:
                 getattr(instance, method_name)()
             else:
                 getattr(instance, method_name)(**kwargs)
+    
+    def sort_by(self, attribute: str, order='decreasing'):
+        "Return a list of container's objects sorted by an attribute, and a list of the attribute values"
+        attribute_values = [getattr(obj, attribute) for obj in self.values]
+        ordering = np.argsort(attribute_values)
+        if order=='decreasing':
+            ordering = np.flip(ordering)
+
+        return [self.get_index(idx) for idx in ordering], attribute_values
+
 
     # ==============================================================================
     # ObjectContainer - Internal methods
@@ -518,34 +528,28 @@ class Compartment(ObjectInstance):
             raise ValueError(f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length].")
 
     @property
-    def nvolume(self):
-        "nvolume with proper units"
-        self.nvolume =  self.mesh.nvolume * self.compartment_units ** self.dimensionality
-
-    @property
     def dolfin_mesh(self):
         return self.mesh.dolfin_mesh
 
-    def initialize_dolfin_functions(self):
-        "Requires a dolfin mesh associated to the compartment"
-        # Aliases
-        name = self.name
+    @property
+    def nvolume(self):
+        "nvolume with proper units"
+        return self.mesh.nvolume * self.compartment_units ** self.dimensionality
+    
+    @property
+    def num_cells(self):
+        return self.mesh.num_cells
+    @property
+    def num_facets(self):
+        return self.mesh.num_facets
+    @property
+    def num_vertices(self):
+        return self.mesh.num_vertices
 
-        # Make the function spaces
-        if self.num_species == 1:
-            self.V = d.FunctionSpace(self.dolfin_mesh, 'P', 1)
-            # functions and test functions
-            # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
-            self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunction(self.V),
-                            'k': d.Function(self.V), 'n': d.Function(self.V)}
-            self.v = d.TestFunction(self.V)
-        else: # vector space
-            self.V = d.VectorFunctionSpace(self.dolfin_mesh, 'P', 1, dim=self.num_species)
-            self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunctions(self.V),
-                            'k': d.Function(self.V), 'n': d.Function(self.V)}
-            self.v = d.TestFunctions(self.V)
-
-
+    @property
+    def num_dofs(self):
+        "Number of degrees of freedom for this compartment"
+        return self.num_species * self.num_vertices
 
 
 class ReactionContainer(ObjectContainer):
