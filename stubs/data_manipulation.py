@@ -56,7 +56,7 @@ class Data:
 
             self.solutions[sp_name]['num_species'] = sp.compartment.num_species
             self.solutions[sp_name]['comp_name'] = sp.compartment_name
-            self.solutions[sp_name]['comp_idx'] = int(sp.compartment_index)
+            self.solutions[sp_name]['comp_idx'] = int(sp.dof_index)
             self.solutions[sp_name]['concentration_units'] = sp.concentration_units
 
             if output_type=='vtk':
@@ -119,7 +119,7 @@ class Data:
         if self.model.V[sp.compartment_name].num_sub_spaces() == 0:
             usub = u
         else:
-            usub = u.sub(sp.compartment_index)
+            usub = u.sub(sp.dof_index)
 
         umean   = d.assemble(usub*dx) / d.assemble(1*dx)
         umin    = uvec.min()
@@ -212,7 +212,7 @@ class Data:
 
         for sp_name, coord_list in self.config.probe_plot.items():
             comp = sc[sp_name].compartment
-            sp_idx = sc[sp_name].compartment_index
+            sp_idx = sc[sp_name].dof_index
             if sp_name not in self.probe_solutions.keys():
                 self.probe_solutions[sp_name] = {}
             for coords in coord_list:

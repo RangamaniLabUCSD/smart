@@ -26,6 +26,7 @@ from stubs.mesh import ChildMesh
 
 color_print = common.color_print
 from stubs.common import _fancy_print as fancy_print
+from stubs.common import sub
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -211,7 +212,12 @@ class Model:
     def _init_4(self):
         "Dolfin function initializations"
         fancy_print(f"Dolfin Initializations (step 4 of ZZ)", format_type='title')
-        self._init_4_1_get_dolfin_function_spaces()
+        self._init_4_1_get_dof_ordering()
+        self._init_4_2_define_dolfin_function_spaces()
+        self._init_4_3_define_dolfin_functions()
+        self._init_4_4_get_species_u_V_dofmaps()
+        self._init_4_5_name_functions()
+        self._init_4_6_check_dolfin_function_validity()
         
 
     # Step 1 - Checking model validity
@@ -333,10 +339,10 @@ class Model:
     
     def _init_2_7_get_species_compartment_indices(self):
         fancy_print(f"Getting indices for species for each compartment", format_type='log')
-        index = 0
         for compartment in self.cc.values:
+            index=0
             for species in list(compartment.species.values()):
-                species.compartment_index = index
+                species.dof_index = index
                 index += 1
 
     # Step 3 - Mesh Initializations
@@ -377,48 +383,123 @@ class Model:
         for mesh in self.parent_mesh.all_meshes.values():
             mesh.get_integration_measures()
 
-    # Step 4 - Dolfin Functions 
-    def _init_4_1_get_dolfin_function_spaces(self):
-        fancy_print(f"Setup dolfin function spaces for compartments", format_type='log')
-        # todo: 
-        # make u [u,t,k,n], V, v, 
-        # set initial conditions
+    def _init_4_1_get_dof_ordering(self):
+        """
+        Arrange the compartments based on the number of degrees of freedom they have
+        (We want to have the highest number of dofs first)
+        """
+        self.sorted_compartments = self.cc.sort_by('num_dofs')[0]
+        for idx, compartment in enumerate(self.sorted_compartments):
+            compartment.dof_index = idx
 
+    # Step 4 - Dolfin Functions 
+    def _init_4_2_define_dolfin_function_spaces(self):
+        fancy_print(f"Defining dolfin function spaces for compartments", format_type='log')
         # Aliases
         max_compartment_name = max([len(compartment_name) for compartment_name in self.cc.keys])
         
-        for compartment_name, compartment in self.cc.items:
+        # Make the individual function spaces (per compartment)
+        for compartment in self.sorted_compartments:
             # Aliases
-            fancy_print(f"Setting up functions for {compartment_name}{' '*(max_compartment_name-len(compartment_name))} "
-                        f"(dim: {compartment.dimensionality}, num_species: {compartment.num_species}, num_dofs: {compartment.num_dofs})", format_type='log')
+            fancy_print(f"Defining function space for {compartment.name}{' '*(max_compartment_name-len(compartment.name))} "
+                        f"(dim: {compartment.dimensionality}, species: {compartment.num_species}, dofs: {compartment.num_dofs})", format_type='log')
 
-            # Make the individual function spaces
-            if compartment.num_species == 1:
-                compartment.V = d.FunctionSpace(compartment.dolfin_mesh, 'P', 1)
-            else: # vector space
+            if compartment.num_species > 1:
                 compartment.V = d.VectorFunctionSpace(compartment.dolfin_mesh, 'P', 1, dim=compartment.num_species)
+            else:
+                compartment.V = d.FunctionSpace(compartment.dolfin_mesh, 'P', 1)
 
-        # We want to have the highest number of dofs first
-        sorted_compartments = self.cc.sort_by('num_dofs')[0]
-        self.V = [compartment.V for compartment in sorted_compartments]
+        self.V = [compartment.V for compartment in self.sorted_compartments]
         # Make the MixedFunctionSpace
         self.W = d.MixedFunctionSpace(*self.V)
-        
 
-    def _init_4_2_get_dolfin_functions(self):
-# dolfin functions
-        # if self.num_species == 1:
-        #     self.V = d.FunctionSpace(self.dolfin_mesh, 'P', 1)
-        #     # functions and test functions
-        #     # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
-        #     self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunction(self.V),
-        #                     'k': d.Function(self.V), 'n': d.Function(self.V)}
-        #     self.v = d.TestFunction(self.V)
-        # else: # vector space
-        #     self.V = d.VectorFunctionSpace(self.dolfin_mesh, 'P', 1, dim=self.num_species)
-        #     self.u = {'u': d.Function(self.V, name=f"u{name}"), 't': d.TrialFunctions(self.V),
-        #                     'k': d.Function(self.V), 'n': d.Function(self.V)}
-        #     self.v = d.TestFunctions(self.V)
+    def _init_4_3_define_dolfin_functions(self):
+        fancy_print(f"Defining dolfin functions", format_type='log')
+        # dolfin functions created from MixedFunctionSpace
+        self.u['u'] = d.Function(self.W)
+        self.u['k'] = d.Function(self.W)
+        self.u['n'] = d.Function(self.W)
+
+        # Trial and test functions
+        self.ut     = d.TrialFunctions(self.W)
+        self.v      = d.TestFunctions(self.W)
+
+        # Create references in compartments to the subfunctions
+        for compartment in self.sorted_compartments:
+            # alias
+            cidx = compartment.dof_index
+
+            # functions
+            for key, func in self.u.items():
+                compartment.u[key] = sub(func,cidx) #func.sub(cidx)
+
+            # trial and test functions
+            compartment.ut = self.ut[cidx]
+            compartment.v  = self.v[cidx]
+            
+    def _init_4_4_get_species_u_V_dofmaps(self):
+        fancy_print(f"Extracting subfunctions/function spaces/dofmap for each species", format_type='log')
+        for compartment in self.sorted_compartments:
+            # loop through species and add the name/index
+            for species in compartment.species.values():
+                species.V = sub(compartment.V, species.dof_index)
+                species.dof_map = self.dolfin_get_dof_indices(species) # species.V.dofmap().dofs()
+
+                for key in compartment.u.keys():
+                    species.u[key] = sub(compartment.u[key], species.dof_index) #compartment.u[key].sub(species.dof_index)
+                    
+    def _init_4_5_name_functions(self):
+        fancy_print(f"Naming functions and subfunctions", format_type='log')
+        for compartment in self.sorted_compartments:
+            # name of the compartment function
+            for key in self.u.keys():
+                compartment.u[key].rename(f"{compartment.name}_{key}", "")
+                # loop through species and add the name/index
+                for species in compartment.species.values():
+                    sidx = species.dof_index
+                    if compartment.num_species > 1:
+                        species.u[key].rename(f"{compartment.name}_{sidx}_{species.name}_{key}", "")
+
+    def _init_4_6_check_dolfin_function_validity(self):
+        "Sanity check... If an error occurs here it is likely an internal bug..."
+        fancy_print(f"Checking that dolfin functions were created correctly", format_type='log')
+        # sanity check
+        for compartment in self.cc.values:
+            idx = compartment.dof_index
+            # function size == dofs
+            assert compartment.u['u'].vector().size() == compartment.num_dofs
+
+            # number of sub spaces == number of species
+            if compartment.num_species == 1:
+                for ukey in compartment.u.keys():
+                    assert compartment.u[ukey].num_sub_spaces() == 0 
+            else:
+                for ukey in compartment.u.keys():
+                    assert compartment.u[ukey].num_sub_spaces() == compartment.num_species
+
+            # function space matches W.sub(idx)
+            for func in list(compartment.u.values()) + [compartment.v]:
+                assert func.function_space().id() == self.W.sub_space(idx).id()
+               
+    def _init_4_7_set_initial_conditions(self):
+        "Sets the function values to initial conditions"
+        for species in self.sc.values:
+            for ukey in species.u.keys():
+                self.dolfin_set_function_values(species, ukey, species.initial_condition)
+
+        # # project to boundary/volume functions
+        # self.update_solution_volume_to_boundary()
+        # self.update_solution_boundary_to_volume()
+
+
+
+
+        # todo: 
+        # set initial conditions
+        # structure:
+        # compartments - V
+        # model - W=[V0,V1,..], u={}, v={}
+        # compartments - link to 
         
 
     def reactions_to_symbolic_flux_strings(self):
@@ -1106,20 +1187,23 @@ class Model:
     # Model - Data manipulation
     #===============================================================================
     # get the values of function u from subspace idx of some mixed function space, V
-    def dolfin_get_dof_indices(self, sp):#V, species_idx):
+    def dolfin_get_dof_indices(self, species):#V, species_idx):
         """
         Returned indices are *local* to the CPU (not global)
         function values can be returned e.g.
         indices = dolfin_get_dof_indices(V,species_idx)
         u.vector().get_local()[indices]
         """
-        V           = sp.compartment.V
-        species_idx = sp.compartment_index
+        if species.dof_map is not None:
+            return species.dof_map
+        #V           = sp.compartment.V
+        V           = species.V
+        species_idx = species.dof_index
 
-        if V.num_sub_spaces() > 1:
-            indices = np.array(V.sub(species_idx).dofmap().dofs())
-        else:
-            indices = np.array(V.dofmap().dofs())
+        # if V.num_sub_spaces() > 1:
+        #     indices = np.array(V.sub(species_idx).dofmap().dofs())
+        # else:
+        indices = np.array(V.dofmap().dofs())
         first_idx, last_idx = V.dofmap().ownership_range() # indices that this CPU owns
 
         return indices-first_idx # subtract index offset to go from global -> local indices
@@ -1150,7 +1234,7 @@ class Model:
         """
         # Get the VectorFunction
         V           = sp.compartment.V
-        species_idx = sp.compartment_index
+        species_idx = sp.dof_index
         u           = self.u[sp.compartment_name][ukey]
         indices     = self.dolfin_get_dof_indices(sp)
         uvec        = u.vector().get_local()[indices]
@@ -1168,15 +1252,15 @@ class Model:
         if sp.compartment.V.num_sub_spaces() == 0:
             return u(coord)
         else:
-            species_idx = sp.compartment_index
+            species_idx = sp.dof_index
             return u(coord)[species_idx]
 
     def dolfin_set_function_values(self, sp, ukey, unew):
         """
         unew can either be a scalar or a vector with the same length as u
         """
-
-        u = self.u[sp.compartment_name][ukey]
+        #u = self.u[ukey][sp.compartment_name][ukey]
+        u = self.cc[sp.compartment_name].u[ukey]
 
         indices = self.dolfin_get_dof_indices(sp)
         uvec    = u.vector()
@@ -1185,6 +1269,15 @@ class Model:
 
         uvec.set_local(values)
         uvec.apply('insert')
+        # u = self.u[sp.compartment_name][ukey]
+
+        # indices = self.dolfin_get_dof_indices(sp)
+        # uvec    = u.vector()
+        # values  = uvec.get_local()
+        # values[indices] = unew
+
+        # uvec.set_local(values)
+        # uvec.apply('insert')
 
     def assign_initial_conditions(self):
         ukeys = ['k', 'n', 'u']
@@ -1223,4 +1316,39 @@ class Model:
     #     else:
     #         return closestPoint, minDist
 
+# # # Monkey patching
+#     @staticmethod
+#     def sub_patch(func, idx):
+#         "This is just a hack patch to allow us to refer to a function/functionspace with no subspaces using .sub(0)"
+#         if func.num_sub_spaces() <= 1 and idx == 0:
+#             return func
+#         else:
+#             sub_func = func.sub(idx)
+#             Model.apply_patch(sub_func, )
+#             sub_func._sub = sub_func.sub
+#             sub_func.sub = Model.sub_patch.__get__(sub_func, d.Function)
+#             return func.sub(idx)
+#     @staticmethod
+#     def apply_patch(func, base_class):
+#         func._sub = func.sub
+#         func.sub = Model.sub_patch.__get__(func, base_class)
+            
+#     @staticmethod    
+#     def Function(function_space):
+#         func = d.Function(function_space)
 
+#         func._sub = func.sub
+#         func.sub = Model.sub_patch.__get__(func, d.Function)
+#         return func
+
+#     @staticmethod
+#     def VectorFunctionSpace(mesh, family, degree, dim):
+#         if dim > 1:
+#             func_space = d.VectorFunctionSpace(mesh, family, degree, dim=dim)
+#             return func_space
+#         elif dim == 1:
+#             func_space = d.FunctionSpace(mesh, family, degree)
+        
+#             func_space._sub = func_space.sub
+#             func_space.sub = Model.sub_patch.__get__(func_space, d.FunctionSpace)
+#             return func_space

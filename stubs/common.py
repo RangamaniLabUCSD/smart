@@ -17,6 +17,14 @@ rank = comm.rank
 size = comm.size
 root = 0
 
+def sub(func, idx):
+    "This is just a hack patch to allow us to refer to a function/functionspace with no subspaces using .sub(0)"
+    if func.num_sub_spaces() <= 1 and idx == 0:
+        return func
+    else:
+        return func.sub(idx)
+
+
 # pandas
 class ref:
     """

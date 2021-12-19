@@ -127,12 +127,6 @@ class ObjectContainer:
         Get an element of the object container ordered dict by referencing its index
         """
         return list(self.values)[idx]
-    def do_to_all(self, method_name, kwargs=None):
-        for name, instance in self.items:
-            if kwargs is None:
-                getattr(instance, method_name)()
-            else:
-                getattr(instance, method_name)(**kwargs)
     
     def sort_by(self, attribute: str, order='decreasing'):
         "Return a list of container's objects sorted by an attribute, and a list of the attribute values"
@@ -141,7 +135,7 @@ class ObjectContainer:
         if order=='decreasing':
             ordering = np.flip(ordering)
 
-        return [self.get_index(idx) for idx in ordering], attribute_values
+        return [self.get_index(idx) for idx in ordering], [attribute_values[idx] for idx in ordering]
 
 
     # ==============================================================================
@@ -349,22 +343,22 @@ class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
 
-        self.properties_to_print = ['name', 'compartment_name', 'compartment_index', 'concentration_units', 'D', 'initial_condition', 'group']
+        self.properties_to_print = ['name', 'compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
-    def assemble_compartment_indices(self, rc, cc):
-        """
-        Adds a column to the species dataframe which indicates the index of a species relative to its compartment
-        """
-        num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
-        for compartment, num_species in num_species_per_compartment.items():
-            idx = 0
-            comp_species = [sp for sp in self.values if sp.compartment_name==compartment]
-            for sp in comp_species:
-                if sp.is_in_a_reaction:
-                    sp.compartment_index = idx
-                    idx += 1
-                else:
-                    print('Warning: species %s is not used in any reactions!' % sp.name)
+    # def assemble_compartment_indices(self, rc, cc):
+    #     """
+    #     Adds a column to the species dataframe which indicates the index of a species relative to its compartment
+    #     """
+    #     num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
+    #     for compartment, num_species in num_species_per_compartment.items():
+    #         idx = 0
+    #         comp_species = [sp for sp in self.values if sp.compartment_name==compartment]
+    #         for sp in comp_species:
+    #             if sp.is_in_a_reaction:
+    #                 sp.dof_index = idx
+    #                 idx += 1
+    #             else:
+    #                 print('Warning: species %s is not used in any reactions!' % sp.name)
 
     def assemble_dolfin_functions(self, rc, cc):
         """
@@ -446,8 +440,8 @@ class SpeciesContainer(ObjectContainer):
                         sp.u.update({key: u[sp.compartment_name][key]})
                         sp.v = v[sp.compartment_name]
                     else:
-                        sp.u.update({key: u[sp.compartment_name][key][sp.compartment_index]})
-                        sp.v = v[sp.compartment_name][sp.compartment_index]
+                        sp.u.update({key: u[sp.compartment_name][key][sp.dof_index]})
+                        sp.v = v[sp.compartment_name][sp.dof_index]
 
         # # associate function spaces with dataframe
         for key, comp in cc.items:
@@ -472,7 +466,11 @@ class Species(ObjectInstance):
         self.sub_species = {} # additional compartments this species may live in in addition to its primary one
         self.is_in_a_reaction = False
         self.is_an_added_species = False
-        self.dof_map = {}
+        self.dof_map = None
+        self.u       = dict()
+        self.ut      = None
+        self.v       = None
+        self.v       = None
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -559,28 +557,28 @@ class ReactionContainer(ObjectContainer):
         #self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_map', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f']#, 'eqn_r']
 
-    def get_species_compartment_counts(self, sc, cc):
-        """
-        Returns a Counter object with the number of times a species appears in each compartment
-        """
-        self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
-        all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.values] for sp in species_set])
-        for sp_name, sp in sc.items:
-            if sp in all_involved_species:
-                sp.is_in_a_reaction = True
+    # def get_species_compartment_counts(self, sc, cc):
+    #     """
+    #     Returns a Counter object with the number of times a species appears in each compartment
+    #     """
+    #     self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
+    #     all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.values] for sp in species_set])
+    #     for sp_name, sp in sc.items:
+    #         if sp in all_involved_species:
+    #             sp.is_in_a_reaction = True
 
-        compartment_counts = [sp.compartment_name for sp in all_involved_species]
+    #     compartment_counts = [sp.compartment_name for sp in all_involved_species]
 
-        return Counter(compartment_counts)
+    #     return Counter(compartment_counts)
 
 
-    def reaction_to_fluxes(self):
-        self.do_to_all('reaction_to_fluxes')
-        flux_list = []
-        for rxn in self.values:
-            for f in rxn.flux_list:
-                flux_list.append(f)
-        self.flux_list = flux_list
+    # def reaction_to_fluxes(self):
+    #     self.do_to_all('reaction_to_fluxes')
+    #     flux_list = []
+    #     for rxn in self.values:
+    #         for f in rxn.flux_list:
+    #             flux_list.append(f)
+    #     self.flux_list = flux_list
     def get_flux_container(self):
         return FluxContainer(Dict=odict([(f.flux_name, f) for f in self.flux_list]))
 

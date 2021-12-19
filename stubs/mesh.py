@@ -2,9 +2,9 @@
 Wrapper around dolfin mesh class (originally for submesh implementation - possibly unneeded now)
 """
 import dolfin as d
-from stubs.common import _fancy_print as fancy_print
 import numpy as np
 from cached_property import cached_property
+from stubs.common import _fancy_print as fancy_print
 
 class _Mesh:
     """
@@ -15,6 +15,13 @@ class _Mesh:
         self.dimensionality     = dimensionality
         self.dolfin_mesh        = None
 
+        self.mf                 = dict()
+        self.parent_mesh        = None
+        self.ds                 = None
+        self.dx                 = None
+        self.ds_uncombined      = None
+        self.dx_uncombined      = None
+
     @cached_property
     def mesh_view(self):
         return self.dolfin_mesh.topology().mapping()
@@ -24,7 +31,7 @@ class _Mesh:
     @property
     def is_volume_mesh(self):
         return self.dimensionality == self.parent_mesh.dimensionality
-    
+
     # Number of entities
     def get_num_entities(self, dimension):
         "Get the number of entities in this mesh with a certain topological dimension"
@@ -42,13 +49,15 @@ class _Mesh:
     # Entity mapping
     def _get_entities(self, dimension):
         num_vertices_per_entity = dimension+1 # for a simplex
-        return np.reshape(self.dolfin_mesh.topology()(dimension, 0)(), (self.get_num_entities(dimension), dimension+1))
+        return np.reshape(self.dolfin_mesh.topology()(dimension, 0)(),
+                         (self.get_num_entities(dimension), num_vertices_per_entity))
     @cached_property
     def cells(self):
         return self.dolfin_mesh.cells()
     @cached_property
     def facets(self):
-        # By default dolfin only stores cells - we must call dolfin_mesh.init() in order to access index maps for other dimensions
+        # By default dolfin only stores cells.
+        # We must call dolfin_mesh.init() in order to access index maps for other dimensions
         return self._get_entities(self.dimensionality-1)
     @cached_property
     def subfacets(self):
@@ -107,9 +116,6 @@ class _Mesh:
             self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=mf['facets_uncombined'])
         if 'cells_uncombined' in mf:
             self.dx_uncombined = d.Measure('dx', domain=mesh, subdomain_data=mf['cells_uncombined'])
-
-    def get_mesh_functions(self):
-        self.mf = self._get_mesh_functions()
         
 class ParentMesh(_Mesh):
     """
@@ -117,7 +123,7 @@ class ParentMesh(_Mesh):
     on marker values from the .xml file.
     """
     def __init__(self, mesh_filename, name='parent_mesh'):
-        self.name = name
+        super().__init__(self, name)
         self.load_mesh_from_xml(mesh_filename)
         self.child_meshes = {}
         self.parent_mesh = self
@@ -135,7 +141,7 @@ class ParentMesh(_Mesh):
         self.mesh_filename = mesh_filename
         print(f"Mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
 
-    def _get_mesh_functions(self):
+    def get_mesh_functions(self):
         # Aliases
         mesh        = self.dolfin_mesh
         has_surface = self.min_dim < self.max_dim
@@ -169,7 +175,7 @@ class ParentMesh(_Mesh):
                 if cm.dimensionality < self.max_dim:
                     mf['facets'].array()[mf['facets_uncombined'].array() == marker] = cm.primary_marker
         
-        return mf
+        self.mf = mf
 
 class ChildMesh(_Mesh):
     """
@@ -182,17 +188,17 @@ class ChildMesh(_Mesh):
 
         # child mesh must be associated with a parent mesh
         self.parent_mesh = None
-        assert type(parent_mesh) == ParentMesh
+        assert isinstance(parent_mesh, ParentMesh)
         self.set_parent_mesh(parent_mesh)
 
         # markers can be either an int or a list of ints
-        if type(marker) == list:
-            assert all([type(m) == int for m in marker])
+        if isinstance(marker, list):
+            assert all([isinstance(m, int) for m in marker])
             self.marker_list = marker
             self.primary_marker = marker[0]
             fancy_print(f"List of markers given for compartment {self.name}, combining into single marker, {marker[0]}")
         else:
-            assert type(marker) == int
+            assert isinstance(marker, int)
             self.marker_list = None
             self.primary_marker = marker
     
@@ -253,7 +259,7 @@ class ChildMesh(_Mesh):
         self.dolfin_mesh.init()
     
 
-    def _get_mesh_functions(self):
+    def get_mesh_functions(self):
         "Child mesh functions require transfering data from parent mesh functions"
         assert hasattr(self.parent_mesh, 'mf')
         # Alias
@@ -279,7 +285,4 @@ class ChildMesh(_Mesh):
             if 'facets_uncombined' in pmf:
                 mf['cells_uncombined'].array()[:]  = pmf['facets_uncombined'].array()[self.map_facet_to_parent_entity]
 
-        return mf
-
-
-
+        self.mf = mf
