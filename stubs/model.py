@@ -17,12 +17,13 @@ import sympy
 from sympy.parsing.sympy_parser import parse_expr
 from scipy.integrate import solve_ivp
 from termcolor import colored
+import pint
 
 import stubs
 import stubs.common as common
 import stubs.model_assembly
-from stubs import unit as ureg
 from stubs.mesh import ChildMesh
+from stubs import unit
 
 color_print = common.color_print
 from stubs.common import _fancy_print as fancy_print
@@ -55,8 +56,10 @@ class Model:
         self.params = ddict(list)
 
         # FunctionSpaces, Functions, etc
-        self.V = {}
-        self.u = {}
+        self.V = dict()
+        self.u = dict()
+
+        self.fc = stubs.model_assembly.FluxContainer()
 
         # Solver related parameters
         self.idx = 0
@@ -95,12 +98,12 @@ class Model:
 
     @cached_property
     def min_dim(self):
-        dim                         = min([comp.dimensionality for comp in self.cc.values])
+        dim                         = min([comp.dimensionality for comp in self.cc])
         self.parent_mesh.min_dim    = dim
         return dim
     @cached_property
     def max_dim(self):
-        dim                         = max([comp.dimensionality for comp in self.cc.values])
+        dim                         = max([comp.dimensionality for comp in self.cc])
         self.max_dim                = dim
         self.parent_mesh.max_dim    = dim
         return dim
@@ -117,7 +120,7 @@ class Model:
     #     self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
     #     self.pc.do_to_all('assemble_time_dependent_parameters')
     #     self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-    #     self.sc.do_to_all('assemble_units', {'unit_name': 'D_units'})
+    #     self.sc.do_to_all('assemble_units', {'unit_name': 'diffusion_units'})
     #     self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
     #     self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
 
@@ -215,7 +218,7 @@ class Model:
         self._init_4_1_get_dof_ordering()
         self._init_4_2_define_dolfin_function_spaces()
         self._init_4_3_define_dolfin_functions()
-        self._init_4_4_get_species_u_V_dofmaps()
+        self._init_4_4_get_species_u_v_V_dofmaps()
         self._init_4_5_name_functions()
         self._init_4_6_check_dolfin_function_validity()
         
@@ -232,6 +235,9 @@ class Model:
             fancy_print(f"Parent mesh has geometric dimension: {self.parent_mesh.dimensionality} which"
                             +f" is not the same as the maximum compartment dimension: {self.max_dim}.", format_type='warning')
 
+        for compartment in self.cc:
+            compartment.is_volume_mesh = True if compartment.dimensionality == self.max_dim else False
+
     def _init_1_2_check_namespace_conflicts(self):
         fancy_print(f"Checking for namespace conflicts", format_type='log')
         all_keys = set()
@@ -247,55 +253,58 @@ class Model:
         """
         Turn all reactions into unsigned symbolic flux strings
         """
-        for rxn in self.rc.values:
-            rxn_type = rxn.reaction_type
+        for reaction in self.rc:
             # Mass action has a forward and reverse flux
-            if rxn_type == 'mass_action':
-                rxn_sym_str = rxn.param_map['on']
-                for sp_name in rxn.lhs:
-                    rxn_sym_str += '*' + sp_name
-                rxn.eqn_f = parse_expr(rxn_sym_str)
+            if reaction.reaction_type == 'mass_action':
+                reaction.eqn_f_str = reaction.param_map['on']
+                for sp_name in reaction.lhs:
+                    reaction.eqn_f_str += '*' + sp_name
+                #rxn.eqn_f = parse_expr(rxn_sym_str)
 
-                rxn_sym_str = rxn.param_map['off']
-                for sp_name in rxn.rhs:
-                    rxn_sym_str += '*' + sp_name
-                rxn.eqn_r = parse_expr(rxn_sym_str)
+                reaction.eqn_r_str = reaction.param_map['off']
+                for sp_name in reaction.rhs:
+                    reaction.eqn_r_str += '*' + sp_name
+                #rxn.eqn_r = parse_expr(rxn_sym_str)
 
-            elif rxn_type == 'mass_action_forward':
-                rxn_sym_str = rxn.param_map['on']
-                for sp_name in rxn.lhs:
-                    rxn_sym_str += '*' + sp_name
-                rxn.eqn_f = parse_expr(rxn_sym_str)
+            elif reaction.reaction_type == 'mass_action_forward':
+                reaction.eqn_f_str = reaction.param_map['on']
+                for sp_name in reaction.lhs:
+                    reaction.eqn_f_str += '*' + sp_name
+                #reaction.eqn_f = parse_expr(rxn_sym_str)
 
             # Custom reaction
-            elif rxn_type in self.config.reaction_database.keys():
-                rxn_sym_str = self.config.reaction_database[rxn_type]
-                #rxn._custom_reaction(self.config.reaction_database[rxn_type])
-                rxn_expr = parse_expr(rxn_sym_str)
-                rxn_expr = rxn_expr.subs(rxn.param_map)
-                rxn_expr = rxn_expr.subs(rxn.species_map)
-                rxn.eqn_f = rxn_expr
+            elif reaction.reaction_type in self.config.reaction_database.keys():
+                reaction.eqn_f_str = reaction._parse_custom_reaction(self.config.reaction_database[reaction.reaction_type])
+            
+            # pre-defined equation string
+            elif reaction.eqn_f_str or reaction.eqn_r_str:
+                if reaction.eqn_f_str:
+                    reaction.eqn_f_str = reaction._parse_custom_reaction(reaction.eqn_f_str)
+                if reaction.eqn_r_str:
+                    reaction.eqn_r_str = reaction._parse_custom_reaction(reaction.eqn_r_str)
 
             else:
-                raise ValueError("Reaction %s does not seem to have an associated equation" % rxn.name)
+                raise ValueError("Reaction %s does not seem to have an associated equation" % reaction.name)
 
     def _init_2_2_check_reaction_validity(self):
         fancy_print(f"Make sure all reactions have parameters/species defined", format_type='log')
-
-        for reaction in self.rc.values:
-            for eqn in ['eqn_r', 'eqn_f']:
-                if not hasattr(reaction, eqn):
+        # Make sure all reactions have parameters/species defined
+        for reaction in self.rc:
+            for eqn_str in [reaction.eqn_f_str, reaction.eqn_r_str]:
+                if not eqn_str:
                     continue
-                var_set     = {str(x) for x in getattr(reaction,eqn).free_symbols}
+                eqn         = parse_expr(eqn_str)
+                var_set     = {str(x) for x in eqn.free_symbols}
                 param_set   = var_set.intersection(self.pc.keys)
                 species_set = var_set.intersection(self.sc.keys)
                 if len(param_set) + len(species_set) != len(var_set):
-                    raise NameError(f"Reaction {reaction.name} refers to a parameter or species that is not in the model.")
+                    diff_set = var_set.difference(param_set.union(species_set))
+                    raise NameError(f"Reaction {reaction.name} refers to a parameter or species ({diff_set}) that is not in the model.")
 
     def _init_2_3_link_reaction_properties(self):
         fancy_print(f"Linking parameters, species, and compartments to reactions", format_type='log')
 
-        for reaction in self.rc.values:
+        for reaction in self.rc:
             reaction.parameters   = {param_name: self.pc[param_name] for param_name in reaction.param_map.values()}
             reaction.species      = {species_name: self.sc[species_name] for species_name in reaction.species_map.values()}
             compartment_names     = [species.compartment_name for species in reaction.species.values()]
@@ -307,15 +316,38 @@ class Model:
             reaction.num_species      = len(reaction.species)
             reaction.num_compartments = len(reaction.compartments)
 
-            if len(reaction.compartments) not in [1,2,3]:
+            is_volume_mesh = [c.is_volume_mesh for c in reaction.compartments.values()]
+            if len(is_volume_mesh) == 1:
+                if is_volume_mesh[0]:
+                    reaction.topology = 'volume'
+                else:
+                    reaction.topology = 'surface'
+            elif len(is_volume_mesh) == 2:
+                if all(is_volume_mesh):
+                    reaction.topology = 'volume_volume'
+                elif not any(is_volume_mesh):
+                    raise Exception(f"Reaction {reaction.name} involves two surfaces. This is not supported.")
+                else:
+                    reaction.topology = 'volume_surface'
+            elif len(is_volume_mesh) == 3:
+                if sum(is_volume_mesh) == 3:
+                    raise Exception(f"Reaction {reaction.name} involves three volumes. This is not supported.")
+                elif sum(is_volume_mesh) < 2:
+                    raise Exception(f"Reaction {reaction.name} involves two or more surfaces. This is not supported.")
+                else:
+                    reaction.topology = 'volume_surface_volume'
+            else:
                 raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
+
+                    
+                
         
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
         fancy_print(f"Checking for unused parameters, species, or compartments", format_type='log')
 
-        all_parameters   = set(itertools.chain.from_iterable([r.parameters for r in self.rc.values]))
-        all_species      = set(itertools.chain.from_iterable([r.species for r in self.rc.values]))
-        all_compartments = set(itertools.chain.from_iterable([r.compartments for r in self.rc.values]))
+        all_parameters   = set(itertools.chain.from_iterable([r.parameters for r in self.rc]))
+        all_species      = set(itertools.chain.from_iterable([r.species for r in self.rc]))
+        all_compartments = set(itertools.chain.from_iterable([r.compartments for r in self.rc]))
         if all_parameters != set(self.pc.keys):
             raise ValueError(f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions.") 
         if all_species != set(self.sc.keys):
@@ -325,21 +357,21 @@ class Model:
 
     def _init_2_5_link_compartments_to_species(self):
         fancy_print(f"Linking compartments and compartment dimensionality to species", format_type='log')
-        for species in self.sc.values:
+        for species in self.sc:
             species.compartment = self.cc[species.compartment_name]
             species.dimensionality = self.cc[species.compartment_name].dimensionality
 
     def _init_2_6_link_species_to_compartments(self):
         fancy_print(f"Linking species to compartments", format_type='log')
         # An species is considered to be "in a compartment" if it is involved in a reaction there
-        for species in self.sc.values:
+        for species in self.sc:
             species.compartment.species.update({species.name: species})
-        for compartment in self.cc.values:
+        for compartment in self.cc:
             compartment.num_species = len(compartment.species)
     
     def _init_2_7_get_species_compartment_indices(self):
         fancy_print(f"Getting indices for species for each compartment", format_type='log')
-        for compartment in self.cc.values:
+        for compartment in self.cc:
             index=0
             for species in list(compartment.species.values()):
                 species.dof_index = index
@@ -353,7 +385,7 @@ class Model:
             raise ValueError("There is no parent mesh.")
 
         # Define child meshes
-        for comp in self.cc.values:
+        for comp in self.cc:
             comp.mesh = ChildMesh(self.parent_mesh, comp)
 
         # Check validity (one child mesh for each compartment)
@@ -437,12 +469,13 @@ class Model:
             compartment.ut = self.ut[cidx]
             compartment.v  = self.v[cidx]
             
-    def _init_4_4_get_species_u_V_dofmaps(self):
+    def _init_4_4_get_species_u_v_V_dofmaps(self):
         fancy_print(f"Extracting subfunctions/function spaces/dofmap for each species", format_type='log')
         for compartment in self.sorted_compartments:
             # loop through species and add the name/index
             for species in compartment.species.values():
                 species.V = sub(compartment.V, species.dof_index)
+                species.v = sub(compartment.v, species.dof_index)
                 species.dof_map = self.dolfin_get_dof_indices(species) # species.V.dofmap().dofs()
 
                 for key in compartment.u.keys():
@@ -464,7 +497,7 @@ class Model:
         "Sanity check... If an error occurs here it is likely an internal bug..."
         fancy_print(f"Checking that dolfin functions were created correctly", format_type='log')
         # sanity check
-        for compartment in self.cc.values:
+        for compartment in self.cc:
             idx = compartment.dof_index
             # function size == dofs
             assert compartment.u['u'].vector().size() == compartment.num_dofs
@@ -483,7 +516,8 @@ class Model:
                
     def _init_4_7_set_initial_conditions(self):
         "Sets the function values to initial conditions"
-        for species in self.sc.values:
+        fancy_print(f"Set function values to initial conditions", format_type='log')
+        for species in self.sc:
             for ukey in species.u.keys():
                 self.dolfin_set_function_values(species, ukey, species.initial_condition)
 
@@ -491,65 +525,81 @@ class Model:
         # self.update_solution_volume_to_boundary()
         # self.update_solution_boundary_to_volume()
 
+    # TODO
+    #     self.rc.reaction_to_fluxes()
+    #     #self.rc.do_to_all('reaction_to_fluxes')
+    #     self.fc = self.rc.get_flux_container()
+    #     self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
+    #     self.fc.do_to_all('flux_to_dolfin')
+ 
+    #     self.set_allow_extrapolation()
+    #     # Turn fluxes into fenics/dolfin expressions
+    #     self.assemble_reactive_fluxes()
+    #     self.assemble_diffusive_fluxes()
+    #     self.sort_forms()
 
+    #     self.init_solutions_and_plots()
+    def _init_5_1_reactions_to_fluxes(self):
+        fancy_print(f"Convert reactions to flux objects", format_type='log')
+        for reaction in self.rc:
+            reaction.reaction_to_fluxes()
+            self.fc.add(reaction.fluxes)
+            
+    def _init_5_2_set_flux_units(self):
+        for flux in self.fc:
+            concentration_units = flux.destination_species.concentration_units
+            compartment_units   = flux.destination_compartment.compartment_units
+            diffusion_units     = flux.destination_species.diffusion_units
 
-
-        # todo: 
-        # set initial conditions
-        # structure:
-        # compartments - V
-        # model - W=[V0,V1,..], u={}, v={}
-        # compartments - link to 
-        
-
-    def reactions_to_symbolic_flux_strings(self):
-        """
-        Turn all reactions into unsigned symbolic flux strings
-        """
-        for rxn in self.rc.values:
-            rxn_type = rxn.reaction_type
-            # Mass action has a forward and reverse flux
-            if rxn_type == 'mass_action':
-                rxn_sym_str = rxn.param_map['on']
-                for sp_name in rxn.lhs:
-                    rxn_sym_str += '*' + sp_name
-                rxn.eqn_f = parse_expr(rxn_sym_str)
-
-                rxn_sym_str = rxn.param_map['off']
-                for sp_name in rxn.rhs:
-                    rxn_sym_str += '*' + sp_name
-                rxn.eqn_r = parse_expr(rxn_sym_str)
-
-            elif rxn_type == 'mass_action_forward':
-                rxn_sym_str = rxn.param_map['on']
-                for sp_name in rxn.lhs:
-                    rxn_sym_str += '*' + sp_name
-                rxn.eqn_f = parse_expr(rxn_sym_str)
-
-            # Custom reaction
-            elif rxn_type in self.config.reaction_database.keys():
-                rxn_sym_str = self.config.reaction_database[rxn_type]
-                #rxn._custom_reaction(self.config.reaction_database[rxn_type])
-                rxn_expr = parse_expr(rxn_sym_str)
-                rxn_expr = rxn_expr.subs(rxn.param_map)
-                rxn_expr = rxn_expr.subs(rxn.species_map)
-                rxn.eqn_f = rxn_expr
-
+            if flux.is_boundary_condition:
+                flux.flux_units = concentration_units / compartment_units * diffusion_units
             else:
-                raise ValueError("Reaction %s does not seem to have an associated equation" % rxn.name)
+                flux.flux_units = concentration_units / unit.s
 
+            # correct units
+            if flux.flux_units.dimensionality != flux.equation_units.dimensionality:
+                raise ValueError(f"Flux {flux.name} has wrong units "
+                                 f"(expected {flux.flux_units}, got {flux.equation_units}.")
+            else:
+                flux.unit_scale_factor = flux.equation_units.to(flux.flux_units)/flux.equation_units
+                assert flux.unit_scale_factor.dimensionless
+                assert flux.equation_units*flux.unit_scale_factor == flux.equation_units.to(flux.flux_units)
+
+                if flux.unit_scale_factor.magnitude == 1.0:
+                    continue
+
+                fancy_print(f"Flux {flux.name} scaled by {flux.unit_scale_factor}", format_type='log')
+                fancy_print(f"Old flux units: {flux.equation_units}", format_type='log')
+                fancy_print(f"New flux units: {flux.flux_units}", format_type='log')
+                print("")
+
+                flux.equation_eval *= flux.unit_scale_factor
+                flux.evaluate_equation()
+                assert flux.equation_units == flux.flux_units
+
+    
+    def _init_5_3_reaction_fluxes_to_forms(self):
+        for flux in self.fc:
+            # check flux dimensionalityk
+            # scale units
+            # apply length scaling factor (we will not use this anymore)
+            if flux.flux_units.dimensionality != flux.equation_units.dimensionality:
+                raise ValueError(f"Flux {flux.name} has wrong units "
+                                 f"(expected {flux.flux_units}, got {flux.equation_units}.")
+
+        
     def assemble_reactive_fluxes(self):
         """
         Creates the actual dolfin objects for each flux. Checks units for consistency
         """
-        for j in self.fc.values:
+        for j in self.fc:
             total_scaling = 1.0 # all adjustments needed to get congruent units
             sp = j.species_map[j.species_name]
             prod = j.prod
             unit_prod = j.unit_prod
             # first, check unit consistency
             if (unit_prod/j.flux_units).dimensionless:
-                setattr(j, 'scale_factor', 1*ureg.dimensionless)
+                setattr(j, 'scale_factor', 1*unit.dimensionless)
                 pass
             else:
                 if hasattr(j, 'length_scale_factor'):

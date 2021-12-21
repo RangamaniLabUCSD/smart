@@ -110,16 +110,16 @@
 #         self.df = pandas.DataFrame({'initial_condition': pandas.Series([], dtype=float),
 #                                 'concentration_units': pandas.Series([], dtype=object),
 #                                 'D': pandas.Series([], dtype=float),
-#                                 'D_units': pandas.Series([], dtype=object),
+#                                 'diffusion_units': pandas.Series([], dtype=object),
 #                                 'compartment_name': pandas.Series([], dtype=str),
 #                                 'group': pandas.Series([], dtype=str)})
 
-#     def append(self, name, group, units, IC, D, D_units, compartment_name):
+#     def append(self, name, group, units, IC, D, diffusion_units, compartment_name):
 #         self.df = self.df.append(pandas.Series({"group": group,
 #                                             "concentration_units": str(units),
 #                                             "initial_condition": IC, 
 #                                             "D": D,
-#                                             "D_units": str(D_units),
+#                                             "diffusion_units": str(diffusion_units),
 #                                             "compartment_name": compartment_name}, name=name))
 
 #     def write_json(self, name='species.json'):

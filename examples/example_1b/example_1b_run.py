@@ -2,7 +2,7 @@
 #import dolfin as d # dolfin/fenics api
 import stubs
 #import os
-#from stubs import unit as ureg
+#from stubs import unit as unit
 
 # ====================================================
 # ====================================================

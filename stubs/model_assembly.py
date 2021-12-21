@@ -13,7 +13,9 @@ import dolfin as d
 import mpi4py.MPI as pyMPI
 import pandas
 import petsc4py.PETSc as PETSc
+from sympy.core.numbers import E
 from termcolor import colored
+from ufl.operators import variable
 
 Print = PETSc.Sys.Print
 
@@ -31,7 +33,7 @@ from tabulate import tabulate
 
 import stubs
 import stubs.common as common
-from stubs import unit as ureg
+from stubs import unit
 
 color_print = common.color_print
 
@@ -73,6 +75,8 @@ class ObjectContainer:
     @property
     def values(self):
         return self.Dict.values()
+    def __iter__(self):
+        return iter(self.Dict.values())
     @property
     def keys(self):
         return self.Dict.keys()
@@ -88,21 +92,27 @@ class ObjectContainer:
         self.Dict[key] = newvalue
 
     def add(self, *data):
-        # Adding in the ObjectInstance directly
-        if len(data) == 1 and isinstance(data, self._ObjectClass):
-            self[data.name] = data
-        # Adding in an iterable of ObjectInstances
-        elif len(data) == 1:
-            # check if input is an iterable and if so add it item by item
-            try:
-                iterator = iter(data[0])
-            except:
-                raise TypeError("Data being added to ObjectContainer must be either the ObjectClass or an iterator.")
+        if len(data) == 1:
+            data = data[0]
+            # Adding in the ObjectInstance directly
+            if isinstance(data, self._ObjectClass):
+                self[data.name] = data
+            # Adding in an iterable of ObjectInstances
             else:
-                data=data[0]
-                if all([isinstance(obj, self._ObjectClass) for obj in data]):
-                    for obj in data:
-                        self[obj.name] = obj
+                # check if input is an iterable and if so add it item by item
+                try:
+                    iterator = iter(data)
+                except:
+                    raise TypeError("Data being added to ObjectContainer must be either the ObjectClass or an iterator.")
+                else:
+                    if isinstance(data, dict):
+                        for obj_name, obj in data.items():
+                            self[obj_name] = obj
+                    elif all([isinstance(obj, self._ObjectClass) for obj in data]):
+                        for obj in data:
+                            self[obj.name] = obj
+                    else:
+                        raise Exception("Could not add data to ObjectContainer")
         # Adding via ObjectInstance arguments 
         else:
             obj = self._ObjectClass(*data)
@@ -458,7 +468,7 @@ class Species(ObjectInstance):
     initial_condition: float
     concentration_units: pint.Unit
     D: float
-    D_units: pint.Unit
+    diffusion_units: pint.Unit
     compartment_name: str
     group: str=''
 
@@ -484,7 +494,7 @@ class Species(ObjectInstance):
         if self.D < 0.0:
             raise ValueError(f"Diffusion coefficient for species {self.name} must be greater or equal to 0.")
         # checking units
-        if not self.D_units.check('[length]^2/[time]'):
+        if not self.diffusion_units.check('[length]^2/[time]'):
             raise ValueError(f"Units of diffusion coefficient for species {self.name} must be dimensionally equivalent to [length]^2/[time].")
         if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
             raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
@@ -579,8 +589,8 @@ class ReactionContainer(ObjectContainer):
     #         for f in rxn.flux_list:
     #             flux_list.append(f)
     #     self.flux_list = flux_list
-    def get_flux_container(self):
-        return FluxContainer(Dict=odict([(f.flux_name, f) for f in self.flux_list]))
+    # def get_flux_container(self):
+    #     return FluxContainer(Dict=odict([(f.flux_name, f) for f in self.flux_list]))
 
 @dataclass
 class Reaction(ObjectInstance):
@@ -588,20 +598,22 @@ class Reaction(ObjectInstance):
     lhs: list
     rhs: list
     param_map: dict
-    reaction_type: str='mass_action'
     species_map: dict = dataclasses.field(default_factory=dict)
+    reaction_type: str='mass_action'
     explicit_restriction_to_domain: str=''
     track_value: bool=False
+    eqn_f_str: str=''
+    eqn_r_str: str=''
 
     def __post_init__(self):
         self._check_input_type_validity()
         self.check_validity()
+        self.fluxes = dict()
 
         # Finish initializing the species map
         for species_name in set(self.lhs + self.rhs):
             if species_name not in self.species_map:
                 self.species_map[species_name] = species_name
-
 
     def check_validity(self):
         # Type checking
@@ -614,74 +626,162 @@ class Reaction(ObjectInstance):
         if self.species_map:
             if not all([k==str and v==str for (k,v) in self.species_map.items()]):
                 raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for species_map.")
-
-    def _custom_reaction(self, sym_str):
-        rxn_expr = parse_expr(sym_str)
-        rxn_expr = rxn_expr.subs(self.param_map)
-        rxn_expr = rxn_expr.subs(self.species_map)
-        self.eqn_f = rxn_expr
+            
+    def _parse_custom_reaction(self, reaction_eqn_str):
+        reaction_expr = parse_expr(reaction_eqn_str)
+        reaction_expr = reaction_expr.subs(self.param_map)
+        reaction_expr = reaction_expr.subs(self.species_map)
+        return str(reaction_expr)
 
     def reaction_to_fluxes(self):
-        self.flux_list = []
-        all_species = self.lhs + self.rhs
-        unique_species = set(all_species)
-        for species_name in unique_species:
-            stoich = max([self.lhs.count(species_name), self.rhs.count(species_name)])
-            #all_species.count(species_name)
+        # set of 2-tuples. (species_name, signed stoichiometry)
+        species_stoich      = {(species_name, -1*self.lhs.count(species_name)) for species_name in self.lhs}
+        species_stoich.update({(species_name,  1*self.rhs.count(species_name)) for species_name in self.rhs})
 
-            track = True if species_name == self.track_value else False
-
-            if hasattr(self, 'eqn_f'):
-                flux_name = self.name + '_f_' + species_name
-                sign = -1 if species_name in self.lhs else 1
-                signed_stoich = sign*stoich
-                self.flux_list.append(Flux(flux_name, species_name, self.eqn_f, signed_stoich, self.involved_species_link,
-                                          self.parameters, self.group, self, self.explicit_restriction_to_domain, track))
-            if hasattr(self, 'eqn_r'):
-                flux_name = self.name + '_r_' + species_name
-                sign = 1 if species_name in self.lhs else -1
-                signed_stoich = sign*stoich
-                self.flux_list.append(Flux(flux_name, species_name, self.eqn_r, signed_stoich, self.involved_species_link,
-                                          self.parameters, self.group, self, self.explicit_restriction_to_domain, track))
-
+        for species_name, stoich in species_stoich:
+            species = self.species[species_name]
+            if self.eqn_f_str:
+                flux_name     = self.name + '_f_' + species_name
+                eqn           = stoich * parse_expr(self.eqn_f_str)
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
+            if self.eqn_r_str:
+                flux_name     = self.name + '_r_' + species_name
+                eqn           = -stoich * parse_expr(self.eqn_r_str)
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
 
 
 class FluxContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Flux)
 
-        # self.properties_to_print = ['species_name', 'sym_eqn', 'sign', 'involved_species',
+        # self.properties_to_print = ['species_name', 'equation', 'sign', 'involved_species',
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['species_name', 'sym_eqn', 'signed_stoich', 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.properties_to_print = ['species_name', 'equation']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
 @dataclass
 class Flux(ObjectInstance):
-    flux_name: str
-    species_name: str
-    sym_eqn: sympy.Symbol
-    signed_stoich: int
-    species_map: dict
-    param_map: dict
-    group: str
-    parent_reaction: Reaction
-    explicit_restriction_to_domain: str=''
-    track_value: bool=False
-
-    def __post_init__(self):
-        self.tracked_values = []
-        self.sym_list = [str(x) for x in self.sym_eqn.free_symbols]
-        self.lambda_eqn = sympy.lambdify(self.sym_list, self.sym_eqn, modules=['sympy','numpy'])
-        self.involved_species = list(self.species_map.keys())
-        self.involved_parameters = list(self.param_map.keys())
-
-        self._check_input_type_validity()
-        self.check_validity()
+    name: str
+    destination_species: Species
+    equation: sympy.Expr
+    reaction: Reaction
+    #signed_stoich: int
+    # species_map: dict
+    # param_map: dict
+    # #group: str
+    # parent_reaction: Reaction
+    # explicit_restriction_to_domain: str=''
+    # track_value: bool=False        
     
     def check_validity(self):
         pass
 
+    def __post_init__(self):
+        # self.tracked_values = []
+        # self.sym_list = [str(x) for x in self.equation.free_symbols]
+        # self.lambda_eqn = sympy.lambdify(self.sym_list, self.equation, modules=['sympy','numpy'])
+        # self.involved_species = list(self.species_map.keys())
+        # self.involved_parameters = list(self.param_map.keys())
+        self._check_input_type_validity()
+        self.check_validity()
+
+        # Getting additional flux properties
+        self._post_init_get_involved_species_parameters_compartments()
+        self._post_init_get_lambda_equation()
+        self._post_init_get_flux_topology()
+
+        # Get dolfin flux
+        self._post_init_flux_to_dolfin()
+
+    def _post_init_get_involved_species_parameters_compartments(self):
+        self.destination_compartment = self.destination_species.compartment
+        
+        # Get the subset of species/parameters/compartments that are relevant
+        params_and_species = {str(x) for x in self.equation.free_symbols}
+        all_params  = self.reaction.parameters
+        all_species = self.reaction.species
+        self.parameters    = {x: all_params[x] for x in params_and_species.intersection(all_params.keys())}
+        self.species       = {x: all_species[x] for x in params_and_species.intersection(all_species.keys())}
+        self.compartments  = self.reaction.compartments
+        # print(self.compartments)
+        # assert self.compartments == {x.compartment_name: x for x in self.species.values()}
+    
+    def _post_init_get_lambda_equation(self):
+        self.lambda_equation = sympy.lambdify(list(self.species.keys()) + list(self.parameters.keys()), 
+                                              self.equation, modules=['sympy','numpy'])
+    
+    def _post_init_get_flux_topology(self):
+        """
+        Previous flux topology types:
+        [1d] volume:                    PDE of u
+        [1d] surface:                   PDE of v
+        [2d] volume_to_surface:         PDE of v
+        [2d] surface_to_volume:         BC of u
+        
+        Flux topology types:
+        [1d] volume:                    PDE of u
+        [1d] surface:                   PDE of v
+        [2d] volume_to_volume:          BC of u ()
+        [2d] volume_to_surface:         PDE of v
+        [2d] surface_to_volume:         BC of u
+        [3d] volume-surface_to_volume:  BC of u ()
+        [3d] volume-volume_to_surface:  PDE of v ()
+        """
+        # 1 compartment flux
+        if self.reaction.topology in ['volume', 'surface']:
+            self.topology = self.reaction.topology
+            source_compartments = {self.destination_compartment.name}
+        # 2 or 3 compartment flux
+        elif self.reaction.topology in ['volume_volume', 'volume_surface', 'volume_surface_volume']:
+            source_compartments = set(self.compartments.keys()).difference({self.destination_compartment.name})
+            
+            if self.reaction.topology == 'volume_volume':
+                self.topology = 'volume_to_volume'
+
+            elif self.reaction.topology == 'volume_surface':
+                if self.destination_compartment.is_volume_mesh:
+                    self.topology = 'surface_to_volume'
+                else:
+                    self.topology = 'volume_to_surface'
+
+            elif self.reaction.topology == 'volume_surface_volume':
+                if self.destination_compartment.is_volume_mesh:
+                    self.topology = 'volume-surface_to_volume'
+                else:
+                    self.topology = 'volume-volume_to_surface'
+            
+        self.source_compartments = {name: self.reaction.compartments[name] for name in source_compartments}
+
+        # Based on topology we know if it is a boundary condition or RHS term
+        if self.topology in ['volume', 'surface', 'volume_to_surface', 'volume-volume_to_surface']:
+            self.is_boundary_condition = False
+        else:
+            self.is_boundary_condition = True
+
+    def _post_init_get_boundary_marker(self):
+        pass
+        
+    def _post_init_flux_to_dolfin(self):
+        variables = {}
+
+        for parameter in self.parameters.values():
+            if parameter.is_time_dependent:
+                variables[parameter.name] = parameter.dolfinConstant * parameter.unit
+            else:
+                variables[parameter.name] = parameter.value_unit
+        
+        for species in self.species.values():
+            variables[species.name] = species.u['u'] * species.concentration_units
+        
+        self.equation_eval  = self.lambda_equation(**variables)
+        self.evaluate_equation()
+        
+    def evaluate_equation(self):
+        "Updates equation_value and equation_units"
+        self.equation_value = self.equation_eval.magnitude
+        self.equation_units = common.pint_unit_to_quantity(self.equation_eval.units)
+    
     def get_additional_flux_properties(self, cc, solver_system):
         # get additional properties of the flux
         self.get_involved_species_parameters_compartment(cc)
@@ -741,9 +841,9 @@ class Flux(ObjectInstance):
         compartment_units = sp.compartment.compartment_units
         # a boundary flux
         if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]):
-            self.flux_units = sp.concentration_units / compartment_units * sp.D_units
+            self.flux_units = sp.concentration_units / compartment_units * sp.diffusion_units
         else:
-            self.flux_units = sp.concentration_units / ureg.s
+            self.flux_units = sp.concentration_units / unit.s
 
     def get_is_linear(self):
         """
@@ -753,7 +853,7 @@ class Flux(ObjectInstance):
         for sym_var in self.sym_list:
             var_name = str(sym_var)
             if var_name in self.involved_species:
-                if sympy.diff(self.sym_eqn, var_name , 2).is_zero:
+                if sympy.diff(self.equation, var_name , 2).is_zero:
                     is_linear_wrt[var_name] = True
                 else:
                     is_linear_wrt[var_name] = False
@@ -772,7 +872,7 @@ class Flux(ObjectInstance):
                 comp_name = self.species_map[var_name].compartment_name
                 umap.update({var_name: 'u'+comp_name})
 
-        new_eqn = self.sym_eqn.subs(umap)
+        new_eqn = self.equation.subs(umap)
 
         for comp_name in self.involved_compartments:
             if sympy.diff(new_eqn, 'u'+comp_name, 2).is_zero:
@@ -853,31 +953,31 @@ class Flux(ObjectInstance):
 
         raise Exception("Missing logic in get_ukey(); contact a developer...")
 
-    def flux_to_dolfin(self):
-        value_dict = {}
+    # def flux_to_dolfin(self):
+    #     value_dict = {}
 
-        for var_name in [str(x) for x in self.sym_list]:
-            if var_name in self.param_map.keys():
-                var = self.param_map[var_name]
-                if var.is_time_dependent:
-                    value_dict[var_name] = var.dolfinConstant * var.unit
-                else:
-                    value_dict[var_name] = var.value_unit
-            elif var_name in self.species_map.keys():
-                var = self.species_map[var_name]
-                ukey = self.ukeys[var_name]
-                value_dict[var_name] = var.u[ukey]
+    #     for var_name in [str(x) for x in self.sym_list]:
+    #         if var_name in self.param_map.keys():
+    #             var = self.param_map[var_name]
+    #             if var.is_time_dependent:
+    #                 value_dict[var_name] = var.dolfinConstant * var.unit
+    #             else:
+    #                 value_dict[var_name] = var.value_unit
+    #         elif var_name in self.species_map.keys():
+    #             var = self.species_map[var_name]
+    #             ukey = self.ukeys[var_name]
+    #             value_dict[var_name] = var.u[ukey]
 
-                value_dict[var_name] *= var.concentration_units * 1
+    #             value_dict[var_name] *= var.concentration_units * 1
 
-        eqn_eval = self.lambda_eqn(**value_dict)
-        prod = eqn_eval.magnitude
-        unit_prod = 1 * (1*eqn_eval.units).units
-        #unit_prod = self.lambda_eqn(**unit_dict)
-        #unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
+    #     eqn_eval = self.lambda_eqn(**value_dict)
+    #     prod = eqn_eval.magnitude
+    #     unit_prod = 1 * (1*eqn_eval.units).units
+    #     #unit_prod = self.lambda_eqn(**unit_dict)
+    #     #unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
 
-        self.prod = prod
-        self.unit_prod = unit_prod
+    #     self.prod = prod
+    #     self.unit_prod = unit_prod
 
 class FormContainer:
     def __init__(self):

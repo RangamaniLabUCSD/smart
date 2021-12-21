@@ -3,7 +3,7 @@
 {"value":{"kdeg":5.0},"unit":{"kdeg":"1 \/ second"},"group":{"kdeg":"degradation rate"},"notes":{"kdeg":""},"is_time_dependent":{"kdeg":false},"sampling_file":{"kdeg":""},"sampling_data":{"kdeg":null},"preint_sampling_data":{"kdeg":null},"dolfinConstant":{"kdeg":null},"sym_expr":{"kdeg":null},"preintegrated_sym_expr":{"kdeg":null}}
 </parameters>
 <species>
-{"initial_condition":{"B":10.0},"concentration_units":{"B":"micromolar"},"D":{"B":1.0},"D_units":{"B":"micrometer ** 2 \/ second"},"compartment_name":{"B":"cyto"},"group":{"B":"cytosolic"}}
+{"initial_condition":{"B":10.0},"concentration_units":{"B":"micromolar"},"D":{"B":1.0},"diffusion_units":{"B":"micrometer ** 2 \/ second"},"compartment_name":{"B":"cyto"},"group":{"B":"cytosolic"}}
 </species>
 <compartments>
 {"dimensionality":{"cyto":3},"compartment_units":{"cyto":"micrometer"},"cell_marker":{"cyto":1}}
