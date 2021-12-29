@@ -92,3 +92,5 @@ Dockerfile_jgl
 
 # debugging code
 debug_stubs.py
+debug_*
+jitfailure*

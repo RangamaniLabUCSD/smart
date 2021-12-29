@@ -299,6 +299,49 @@ class ParameterContainer(ObjectContainer):
 
         self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'sym_expr', 'notes', 'group']
 
+#from attr import attrs, attrib
+from attrs import define
+
+@define
+class Parameter_(ObjectInstance):
+    name: str
+    #value: float
+    unit: pint.Unit
+    notes: str=''
+    is_time_dependent: bool=False
+    group: str=''
+    sampling_file: str=''
+    sym_expr: str=''
+    preintegrated_sym_expr: str=''
+
+# @attrs(auto_attribs=True)
+# class Parameter_(ObjectInstance):
+#     name = attrib()
+#     name: str
+#     value: float
+#     unit: pint.Unit
+#     notes: str=''
+#     is_time_dependent: bool=False
+#     group: str=''
+#     sampling_file: str=''
+#     sym_expr: str=''
+#     preintegrated_sym_expr: str=''
+
+# @dataclass
+# class TimeSeriesDataParameter(Parameter):
+#     name: str
+#     sampling_file: str
+#     unit: pint.Unit
+#     notes: str=''
+#     group: str=''
+
+#     def __post_init__(self):
+#         self.is_time_dependent = True
+        
+
+#class ExpressionParameter(Parameter)
+
+
 @dataclass
 class Parameter(ObjectInstance):
     name: str

@@ -246,6 +246,13 @@ class Model:
             all_keys = all_keys.union(keys)
         if sum([c.size for c in containers]) != len(all_keys):
             raise ValueError("Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name.")
+        
+        # Protect the variable names "x" and "t" because they are used for spatial dimensions and time
+        if "x" in all_keys:
+            raise ValueError("An object is using the protected variable name 'x'. Please change the name.")
+        if "t" in all_keys:
+            raise ValueError("An object is using the protected variable name 't'. Please change the name.")
+        
 
     # Step 2 - Cross-container Dependent Initialization
     def _init_2_1_reactions_to_symbolic_strings(self):
