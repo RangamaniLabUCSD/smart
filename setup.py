@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     platforms=['Linux', 'Mac OS-X'],
-    version='0.1.8',
+    version='0.1.9',
     license='LGPLv3',
 
     # Which Python importable modules should be included when your package is installed
@@ -39,6 +39,7 @@ setup(
         'sympy',
         'dataclasses',
         'cached-property',
+        'attrs=21.4.0',
         'pydantic',
         'tabulate',
         'termcolor',

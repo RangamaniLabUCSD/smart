@@ -300,12 +300,54 @@ class ParameterContainer(ObjectContainer):
         self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'sym_expr', 'notes', 'group']
 
 #from attr import attrs, attrib
-from attrs import define
+from attrs import define, field, validators
 
-@define
-class Parameter_(ObjectInstance):
-    name: str
+def _attempt_type_conversion(instance, attribute, value):
+    if not isinstance(value, attribute.type):
+        try:
+            attribute.type(value)
+        except:
+            raise TypeError(f"{type(instance).__name__} (instance name: \"{instance.name}\") type error. Attribute \"{attribute.name}\" "
+                            f"was expected to be a \"{attribute.type.__name__}\", got \"{type(value).__name__}\" instead. "
+                            f"Conversion to the expected type was attempted but unsuccessful.")
+
+#def _validate_instance_of_self(isntance, attribute, value):
+
+def _validate_type(cls, fields):
+    for field in fields:
+        if field.type not in 
+    return 
+
+#@define
+#@define(auto_attribs=True, init=True, repr=True, eq=True, match_args=True)
+@define(auto_attribs=True, slots=False)
+class Parameter_:
+    """Parameter to be used in a model
+
+    Parameters
+    ----------
+    name : str
+        Name of the parameter 
+    value : float_like
+    """     
+    name: float = field(validator=validator.instance_of(str))
+    unit: pint.Unit = field(validator=validators.instance_of(pint.Unit))
+
+
+    # value: float = field(converter=float,
+    #                      validator=validators.instance_of(float))
+    #value: float = field(converter=float, validator=validators.instance_of(float))
     #value: float
+    #value2: float = field(converter=float, default=5.0)
+    # notes: str=''
+    # is_time_dependent: bool=False
+    # group: str=''
+    # sampling_file: str=''
+    # sym_expr: str=''
+    # preintegrated_sym_expr: str=''
+
+    name: str
+    value: float
     unit: pint.Unit
     notes: str=''
     is_time_dependent: bool=False
@@ -313,6 +355,7 @@ class Parameter_(ObjectInstance):
     sampling_file: str=''
     sym_expr: str=''
     preintegrated_sym_expr: str=''
+    
 
 # @attrs(auto_attribs=True)
 # class Parameter_(ObjectInstance):
