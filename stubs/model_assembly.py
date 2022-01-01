@@ -7,13 +7,12 @@ import re
 from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
-from typing import Type
+from typing import Type, Any
 
 import dolfin as d
 import mpi4py.MPI as pyMPI
 import pandas
 import petsc4py.PETSc as PETSc
-from sympy.core.numbers import E
 from termcolor import colored
 from ufl.operators import variable
 
@@ -24,15 +23,17 @@ from pprint import pprint
 
 import numpy as np
 import pint
-import sympy
 from scipy.integrate import cumtrapz, solve_ivp
-from sympy import Heaviside, lambdify
+import sympy as sym
+from sympy import Heaviside, lambdify, Symbol, integrate
 from sympy.parsing.sympy_parser import parse_expr
+from sympy.core.numbers import E
 from sympy.utilities.iterables import flatten
 from tabulate import tabulate
 
 import stubs
 import stubs.common as common
+from stubs.common import _fancy_print as fancy_print
 from stubs import unit
 
 color_print = common.color_print
@@ -255,7 +256,9 @@ class ObjectInstance:
         "Check that the inputs have the same type (or are convertible) to the type hint."
         for field in dataclasses.fields(self):
             value = getattr(self, field.name)
-            if not isinstance(value, field.type):
+            if field.type == Any:
+                continue
+            elif not isinstance(value, field.type):
                 try:
                     setattr(self, field.name, field.type(value))
                 except:
@@ -299,140 +302,104 @@ class ParameterContainer(ObjectContainer):
 
         self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'sym_expr', 'notes', 'group']
 
-#from attr import attrs, attrib
-from attrs import define, field, validators
-
-def _attempt_type_conversion(instance, attribute, value):
-    if not isinstance(value, attribute.type):
-        try:
-            attribute.type(value)
-        except:
-            raise TypeError(f"{type(instance).__name__} (instance name: \"{instance.name}\") type error. Attribute \"{attribute.name}\" "
-                            f"was expected to be a \"{attribute.type.__name__}\", got \"{type(value).__name__}\" instead. "
-                            f"Conversion to the expected type was attempted but unsuccessful.")
-
-#def _validate_instance_of_self(isntance, attribute, value):
-
-def _validate_type(cls, fields):
-    for field in fields:
-        if field.type not in 
-    return 
-
-#@define
-#@define(auto_attribs=True, init=True, repr=True, eq=True, match_args=True)
-@define(auto_attribs=True, slots=False)
-class Parameter_:
-    """Parameter to be used in a model
-
-    Parameters
-    ----------
-    name : str
-        Name of the parameter 
-    value : float_like
-    """     
-    name: float = field(validator=validator.instance_of(str))
-    unit: pint.Unit = field(validator=validators.instance_of(pint.Unit))
-
-
-    # value: float = field(converter=float,
-    #                      validator=validators.instance_of(float))
-    #value: float = field(converter=float, validator=validators.instance_of(float))
-    #value: float
-    #value2: float = field(converter=float, default=5.0)
-    # notes: str=''
-    # is_time_dependent: bool=False
-    # group: str=''
-    # sampling_file: str=''
-    # sym_expr: str=''
-    # preintegrated_sym_expr: str=''
-
-    name: str
-    value: float
-    unit: pint.Unit
-    notes: str=''
-    is_time_dependent: bool=False
-    group: str=''
-    sampling_file: str=''
-    sym_expr: str=''
-    preintegrated_sym_expr: str=''
-    
-
-# @attrs(auto_attribs=True)
-# class Parameter_(ObjectInstance):
-#     name = attrib()
-#     name: str
-#     value: float
-#     unit: pint.Unit
-#     notes: str=''
-#     is_time_dependent: bool=False
-#     group: str=''
-#     sampling_file: str=''
-#     sym_expr: str=''
-#     preintegrated_sym_expr: str=''
-
-# @dataclass
-# class TimeSeriesDataParameter(Parameter):
-#     name: str
-#     sampling_file: str
-#     unit: pint.Unit
-#     notes: str=''
-#     group: str=''
-
-#     def __post_init__(self):
-#         self.is_time_dependent = True
-        
-
-#class ExpressionParameter(Parameter)
-
-
 @dataclass
 class Parameter(ObjectInstance):
     name: str
     value: float
     unit: pint.Unit
-    notes: str=''
-    is_time_dependent: bool=False
     group: str=''
-    sampling_file: str=''
-    sym_expr: str=''
-    preintegrated_sym_expr: str=''
+    notes: str=''
+
+    # is_time_dependent: bool=False
+    # sampling_file: str=''
+    # sym_expr: str=''
+    # preint_sym_expr: str=''
+
+    @classmethod
+    def from_file(cls, name, sampling_file, unit, group='', notes=''):
+        "Load in a purely time-dependent scalar function from data"
+        # load in sampling data file
+        sampling_data = np.genfromtxt(sampling_file, dtype='float', delimiter=',')
+        fancy_print(f"Loading in data for parameter {name}", format_type='log')
+        if sampling_data[0,0] != 0.0 or sampling_data.shape[1] != 2:
+            raise NotImplementedError
+        value = sampling_data[0,1] # initial value
+
+        # Print("Creating dolfin object for time-dependent parameter %s" % self.name)
+
+        # preintegrate sampling data
+        int_data = cumtrapz(sampling_data[:,1], x=sampling_data[:,0], initial=0)
+        # concatenate time vector
+        preint_sampling_data = common.np_smart_hstack(sampling_data[:,0], int_data)
+
+        # initialize instance
+        parameter = cls(name, value, unit, group=group, notes=notes)
+        parameter.sampling_data         = sampling_data
+        parameter.preint_sampling_data  = preint_sampling_data
+        parameter.is_time_dependent     = True
+        parameter.is_space_dependent    = False # not supported yet
+        fancy_print(f"Creating dolfin object for time-dependent parameter {name}", format_type='log')
+        parameter.dolfin_constant = d.Constant(value)
+
+        return parameter
+    
+    @classmethod
+    def from_expression(cls, name, sym_expr, unit, preint_sym_expr=None, group='', notes=''):
+        # Parse the given string to create a sympy expression
+        sym_expr = parse_expr(sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
+        
+        # Check if expression is time/space dependent
+        free_symbols = [str(x) for x in sym_expr.free_symbols]
+        is_time_dependent  = 't' in free_symbols
+        is_space_dependent = not {'x[0]','x[1]','x[2]'}.isdisjoint(set(free_symbols))
+        if is_space_dependent:
+            raise NotImplementedError
+        if not {'x[0]', 'x[1]', 'x[2]', 't'}.issuperset(free_symbols):
+            raise NotImplementedError
+        
+        # fix this when implementing space dependent parameters
+        if is_time_dependent:
+            value = sym_expr.subs({'t': 0.0}).evalf()
+
+        if preint_sym_expr:
+            preint_sym_expr = parse_expr(preint_sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
+        elif is_time_dependent:
+            # try to integrate
+            t = Symbol('t')
+            preint_sym_expr = integrate(sym_expr, t)
+
+        parameter = cls(name, value, unit, group=group, notes=notes)
+        parameter.free_symbols          = free_symbols
+        parameter.sym_expr              = sym_expr
+        parameter.preint_sym_expr       = preint_sym_expr
+        parameter.is_time_dependent     = is_time_dependent
+        parameter.is_space_dependent    = is_space_dependent
+
+        fancy_print(f"Creating dolfin object for time-dependent parameter {name}", format_type='log')
+        parameter.dolfin_constant = d.Constant(value)
+        parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+
+        return parameter
 
     def __post_init__(self):
+        if not hasattr(self, 'is_time_dependent'):
+            self.is_time_dependent     = False
+        if not hasattr(self, 'is_space_dependent'):
+            self.is_space_dependent    = False
+
+        self.t = 0.0
+
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
         self.check_validity()
 
         self.value_unit = self.value*self.unit
-        self._assemble_time_dependent_parameters()
 
     def check_validity(self):
         if self.is_time_dependent:
-            if all([x=='' for x in [self.sampling_file, self.sym_expr, self.preintegrated_sym_expr]]):
+            if all([x=='' for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]):
                 raise ValueError(f"Parameter {self.name} is marked as time dependent but is not defined in terms of time.")
-
-    def _assemble_time_dependent_parameters(self):
-        if not self.is_time_dependent:
-            return
-        # Parse the given string to create a sympy expression
-        if self.sym_expr:
-            self.sym_expr = parse_expr(self.sym_expr)
-            Print("Creating dolfin object for time-dependent parameter %s" % self.name)
-            self.dolfinConstant = d.Constant(self.value)
-        if self.preintegrated_sym_expr:
-            self.preintegrated_sym_expr = parse_expr(self.preintegrated_sym_expr)
-        # load in sampling data file
-        if self.sampling_file:
-            self.sampling_data = np.genfromtxt(self.sampling_file, dtype='float',
-                                               delimiter=',')
-            Print("Creating dolfin object for time-dependent parameter %s" % self.name)
-            self.dolfinConstant = d.Constant(self.value)
-
-            # preintegrate sampling data
-            int_data = cumtrapz(self.sampling_data[:,1], x=self.sampling_data[:,0], initial=0)
-            # concatenate time vector
-            self.preint_sampling_data = common.np_smart_hstack(self.sampling_data[:,0], int_data)
-
 
 
 class SpeciesContainer(ObjectContainer):
@@ -551,7 +518,8 @@ class SpeciesContainer(ObjectContainer):
 @dataclass
 class Species(ObjectInstance):
     name: str
-    initial_condition: float
+    initial_condition: Any
+    #initial_condition: float
     concentration_units: pint.Unit
     D: float
     diffusion_units: pint.Unit
@@ -567,7 +535,21 @@ class Species(ObjectInstance):
         self.ut      = None
         self.v       = None
         self.v       = None
+        self.t       = 0.0
 
+        if isinstance(self.initial_condition, int):
+            self.initial_condition = float(self.initial_condition)
+        elif isinstance(self.initial_condition, str):
+            # Parse the given string to create a sympy expression
+            sym_expr = parse_expr(self.initial_condition).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
+            
+            # Check if expression is space dependent
+            free_symbols = [str(x) for x in sym_expr.free_symbols]
+            if not {'x[0]', 'x[1]', 'x[2]'}.issuperset(free_symbols):
+                raise NotImplementedError
+            fancy_print(f"Creating dolfin object for space-dependent initial condition {self.name}", format_type='log')
+            self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+        
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
@@ -575,7 +557,7 @@ class Species(ObjectInstance):
 
     def check_validity(self):
         # checking values
-        if self.initial_condition < 0.0:
+        if isinstance(self.initial_condition, float) and self.initial_condition < 0.0:
             raise ValueError(f"Initial condition for species {self.name} must be greater or equal to 0.")
         if self.D < 0.0:
             raise ValueError(f"Diffusion coefficient for species {self.name} must be greater or equal to 0.")
@@ -750,7 +732,7 @@ class FluxContainer(ObjectContainer):
 class Flux(ObjectInstance):
     name: str
     destination_species: Species
-    equation: sympy.Expr
+    equation: sym.Expr
     reaction: Reaction
     #signed_stoich: int
     # species_map: dict
@@ -766,7 +748,7 @@ class Flux(ObjectInstance):
     def __post_init__(self):
         # self.tracked_values = []
         # self.sym_list = [str(x) for x in self.equation.free_symbols]
-        # self.lambda_eqn = sympy.lambdify(self.sym_list, self.equation, modules=['sympy','numpy'])
+        # self.lambda_eqn = sym.lambdify(self.sym_list, self.equation, modules=['sympy','numpy'])
         # self.involved_species = list(self.species_map.keys())
         # self.involved_parameters = list(self.param_map.keys())
         self._check_input_type_validity()
@@ -794,7 +776,7 @@ class Flux(ObjectInstance):
         # assert self.compartments == {x.compartment_name: x for x in self.species.values()}
     
     def _post_init_get_lambda_equation(self):
-        self.lambda_equation = sympy.lambdify(list(self.species.keys()) + list(self.parameters.keys()), 
+        self.lambda_equation = sym.lambdify(list(self.species.keys()) + list(self.parameters.keys()), 
                                               self.equation, modules=['sympy','numpy'])
     
     def _post_init_get_flux_topology(self):
@@ -853,7 +835,7 @@ class Flux(ObjectInstance):
 
         for parameter in self.parameters.values():
             if parameter.is_time_dependent:
-                variables[parameter.name] = parameter.dolfinConstant * parameter.unit
+                variables[parameter.name] = parameter.dolfin_constant * parameter.unit
             else:
                 variables[parameter.name] = parameter.value_unit
         
@@ -939,7 +921,7 @@ class Flux(ObjectInstance):
         for sym_var in self.sym_list:
             var_name = str(sym_var)
             if var_name in self.involved_species:
-                if sympy.diff(self.equation, var_name , 2).is_zero:
+                if sym.diff(self.equation, var_name , 2).is_zero:
                     is_linear_wrt[var_name] = True
                 else:
                     is_linear_wrt[var_name] = False
@@ -961,7 +943,7 @@ class Flux(ObjectInstance):
         new_eqn = self.equation.subs(umap)
 
         for comp_name in self.involved_compartments:
-            if sympy.diff(new_eqn, 'u'+comp_name, 2).is_zero:
+            if sym.diff(new_eqn, 'u'+comp_name, 2).is_zero:
                 is_linear_wrt_comp[comp_name] = True
             else:
                 is_linear_wrt_comp[comp_name] = False
@@ -1046,7 +1028,7 @@ class Flux(ObjectInstance):
     #         if var_name in self.param_map.keys():
     #             var = self.param_map[var_name]
     #             if var.is_time_dependent:
-    #                 value_dict[var_name] = var.dolfinConstant * var.unit
+    #                 value_dict[var_name] = var.dolfin_constant * var.unit
     #             else:
     #                 value_dict[var_name] = var.value_unit
     #         elif var_name in self.species_map.keys():

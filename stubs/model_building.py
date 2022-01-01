@@ -40,7 +40,7 @@
 #     """
 #     A standard (non time-dependent) parameter has an associated value, unit,
 #     group [i.e. what physics does the parameter belong to?], notes, and a 
-#     dolfinConstant [a dolfin Constant class with value being adjusted for unit
+#     dolfin_constant [a dolfin Constant class with value being adjusted for unit
 #     consistency and/or time-dependency].
 #     A time-dependent parameter can either be expressed as a symbolic expression
 #     wrt t or it can be sampled from some dataset (a .csv file with time as the
@@ -63,13 +63,13 @@
 #                                 'sampling_file': pandas.Series([], dtype=str), 
 #                                 'sampling_data': pandas.Series([], dtype=object), 
 #                                 'preint_sampling_data': pandas.Series([], dtype=object), 
-#                                 'dolfinConstant': pandas.Series([], dtype=object),
+#                                 'dolfin_constant': pandas.Series([], dtype=object),
 #                                 'sym_expr': pandas.Series([], dtype=object),
-#                                 'preintegrated_sym_expr': pandas.Series([], dtype=object)})
+#                                 'preint_sym_expr': pandas.Series([], dtype=object)})
 
 #     def append(self, name, value, unit, group, notes='', is_time_dependent=False,
-#                sampling_file='', sampling_data=None, dolfinConstant=None,
-#                sym_expr=None, preint_sampling_data=None, preintegrated_sym_expr=None):
+#                sampling_file='', sampling_data=None, dolfin_constant=None,
+#                sym_expr=None, preint_sampling_data=None, preint_sym_expr=None):
 #         """
 #         Adds data to the parameter
 #         """
@@ -91,9 +91,9 @@
 #                                             'sampling_file': sampling_file,
 #                                             'sampling_data': sampling_data,
 #                                             'preint_sampling_data': preint_sampling_data,
-#                                             "dolfinConstant": dolfinConstant,
+#                                             "dolfin_constant": dolfin_constant,
 #                                             "sym_expr": sym_expr,
-#                                             "preintegrated_sym_expr": preintegrated_sym_expr},
+#                                             "preint_sym_expr": preint_sym_expr},
 #                                             name=name))
 
 #     def write_json(self, name='parameters.json'):

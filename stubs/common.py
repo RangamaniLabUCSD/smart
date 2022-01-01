@@ -19,11 +19,17 @@ root = 0
 
 def sub(func, idx):
     "This is just a hack patch to allow us to refer to a function/functionspace with no subspaces using .sub(0)"
-    if isinstance(func, (d.Function, d.MixedFunctionSpace, d.FunctionSpace)):
+    if isinstance(func, d.Function):
         if func.num_sub_spaces() <= 1 and idx == 0:
             return func
         else:
             return func.sub(idx)
+
+    if isinstance(func, (d.MixedFunctionSpace, d.FunctionSpace)):
+        if func.num_sub_spaces() <= 1 and idx == 0:
+            return func
+        else:
+            return func.sub(idx).collapse()
     
     if isinstance(func, d.function.argument.Argument):
         if func.function_space().num_sub_spaces() <= 1 and idx == 0:

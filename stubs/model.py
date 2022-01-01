@@ -191,6 +191,7 @@ class Model:
         fancy_print(f"Checking validity of model (step 1 of ZZ)", format_type='title')
         self._init_1_1_check_mesh_dimensionality()
         self._init_1_2_check_namespace_conflicts()
+        self._init_1_3_check_parameter_dimensionality()
         fancy_print(f"Step 1 of initialization completed successfully!", text_color='magenta')
     def _init_2(self):
         "Cross-container dependent initializations (requires information from multiple containers)"
@@ -221,6 +222,7 @@ class Model:
         self._init_4_4_get_species_u_v_V_dofmaps()
         self._init_4_5_name_functions()
         self._init_4_6_check_dolfin_function_validity()
+        self._init_4_7_set_initial_conditions()
         
 
     # Step 1 - Checking model validity
@@ -236,22 +238,26 @@ class Model:
                             +f" is not the same as the maximum compartment dimension: {self.max_dim}.", format_type='warning')
 
         for compartment in self.cc:
-            compartment.is_volume_mesh = True if compartment.dimensionality == self.max_dim else False
+            compartment.is_volume_mesh = compartment.dimensionality == self.max_dim
 
     def _init_1_2_check_namespace_conflicts(self):
         fancy_print(f"Checking for namespace conflicts", format_type='log')
-        all_keys = set()
+        self._all_keys = set()
         containers = [self.pc, self.sc, self.cc, self.rc]
         for keys in [c.keys for c in containers]:
-            all_keys = all_keys.union(keys)
-        if sum([c.size for c in containers]) != len(all_keys):
+            self._all_keys = self._all_keys.union(keys)
+        if sum([c.size for c in containers]) != len(self._all_keys):
             raise ValueError("Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name.")
         
-        # Protect the variable names "x" and "t" because they are used for spatial dimensions and time
-        if "x" in all_keys:
-            raise ValueError("An object is using the protected variable name 'x'. Please change the name.")
-        if "t" in all_keys:
-            raise ValueError("An object is using the protected variable name 't'. Please change the name.")
+        # Protect the variable names 'x[0]', 'x[1]', 'x[2]' and 't' because they are used for spatial dimensions and time
+        if not {'x[0]', 'x[1]', 'x[2]', 't'}.isdisjoint(self._all_keys):
+            raise ValueError("An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', or 't'). Please change the name.")
+
+    def _init_1_3_check_parameter_dimensionality(self):
+        if 'x[2]' in self._all_keys and self.max_dim<3:
+            raise ValueError("An object has the variable name 'x[2]' but there are less than 3 spatial dimensions.")
+        if 'x[1]' in self._all_keys and self.max_dim<2:
+            raise ValueError("An object has the variable name 'x[1]' but there are less than 2 spatial dimensions.")
         
 
     # Step 2 - Cross-container Dependent Initialization
@@ -526,7 +532,10 @@ class Model:
         fancy_print(f"Set function values to initial conditions", format_type='log')
         for species in self.sc:
             for ukey in species.u.keys():
-                self.dolfin_set_function_values(species, ukey, species.initial_condition)
+                if isinstance(species.initial_condition, float):
+                    self.dolfin_set_function_values(species, ukey, species.initial_condition)
+                else:
+                    self.dolfin_set_function_values(species, ukey, species.initial_condition_expression)
 
         # # project to boundary/volume functions
         # self.update_solution_volume_to_boundary()
@@ -587,12 +596,13 @@ class Model:
     
     def _init_5_3_reaction_fluxes_to_forms(self):
         for flux in self.fc:
-            # check flux dimensionalityk
+            # check flux dimensionality
             # scale units
             # apply length scaling factor (we will not use this anymore)
             if flux.flux_units.dimensionality != flux.equation_units.dimensionality:
                 raise ValueError(f"Flux {flux.name} has wrong units "
                                  f"(expected {flux.flux_units}, got {flux.equation_units}.")
+            CONTINUE
 
         
     def assemble_reactive_fluxes(self):
@@ -777,7 +787,7 @@ class Model:
             self.plot_solution()
 
         # if we've reached final time
-        end_simulation = True if self.t >= self.final_t else False
+        end_simulation = self.t >= self.final_t
 
         return end_simulation
 
@@ -909,19 +919,19 @@ class Model:
             if not param.is_time_dependent:
                 continue
             # use value by evaluating symbolic expression
-            if param.sym_expr and not param.preintegrated_sym_expr:
+            if param.sym_expr and not param.preint_sym_expr:
                 newValue = float(param.sym_expr.subs({'t': t}).evalf())
                 value_assigned += 1
                 print(f"Parameter {param_name} assigned by symbolic expression")
 
             # calculate a preintegrated expression by subtracting previous value
             # and dividing by time-step
-            if param.sym_expr and param.preintegrated_sym_expr:
+            if param.sym_expr and param.preint_sym_expr:
                 if t0 is None:
                     raise Exception("Must provide a time interval for"\
                                     "pre-integrated variables.")
-                a = param.preintegrated_sym_expr.subs({'t': t0}).evalf()
-                b = param.preintegrated_sym_expr.subs({'t': t}).evalf()
+                a = param.preint_sym_expr.subs({'t': t0}).evalf()
+                b = param.preint_sym_expr.subs({'t': t}).evalf()
                 newValue = float((b-a)/dt)
                 value_assigned += 1
                 print(f"Parameter {param_name} assigned by preintegrated symbolic expression")
@@ -961,7 +971,7 @@ class Model:
                 raise ValueError(f"Warning! Parameter {param_name} is a NaN.")
 
             param.value = newValue
-            param.dolfinConstant.assign(newValue)
+            param.dolfin_constant.assign(newValue)
             self.params[param_name].append((t,newValue))
 
 
@@ -1244,7 +1254,8 @@ class Model:
     # Model - Data manipulation
     #===============================================================================
     # get the values of function u from subspace idx of some mixed function space, V
-    def dolfin_get_dof_indices(self, species):#V, species_idx):
+    @staticmethod
+    def dolfin_get_dof_indices(species):#V, species_idx):
         """
         Returned indices are *local* to the CPU (not global)
         function values can be returned e.g.
@@ -1265,7 +1276,7 @@ class Model:
 
         return indices-first_idx # subtract index offset to go from global -> local indices
 
-
+    @staticmethod
     def reduce_vector(u):
         """
         comm.allreduce() only works when the incoming vectors all have the same length. We use comm.Gatherv() to gather vectors
@@ -1290,11 +1301,11 @@ class Model:
         u.sub(species_idx).compute_vertex_values() will double-count...)
         """
         # Get the VectorFunction
-        V           = sp.compartment.V
-        species_idx = sp.dof_index
-        u           = self.u[sp.compartment_name][ukey]
+        #V           = sp.compartment.V
+        #species_idx = sp.dof_index
         indices     = self.dolfin_get_dof_indices(sp)
-        uvec        = u.vector().get_local()[indices]
+        uvec        = sp.u[ukey].vector().get_local()[indices]
+    
         return uvec
 
     def dolfin_get_function_values_at_point(self, sp, coord):
@@ -1305,48 +1316,51 @@ class Model:
         :param int species_idx: index of species
         :return: list of values at point. If species_idx is not specified it will return all values
         """
-        u = self.u[sp.compartment_name]['u']
-        if sp.compartment.V.num_sub_spaces() == 0:
-            return u(coord)
-        else:
-            species_idx = sp.dof_index
-            return u(coord)[species_idx]
+        return sp.u['u'](coord)
+        # u = self.u[sp.compartment_name]['u']
+        # if sp.compartment.V.num_sub_spaces() == 0:
+        #     return u(coord)
+        # else:
+        #     species_idx = sp.dof_index
+        #     return u(coord)[species_idx]
 
     def dolfin_set_function_values(self, sp, ukey, unew):
         """
-        unew can either be a scalar or a vector with the same length as u
+        d.assign(uold, unew) works when uold is a subfunction
+        uold.assign(unew) does not (it will replace the entire function)
         """
-        #u = self.u[ukey][sp.compartment_name][ukey]
-        u = self.cc[sp.compartment_name].u[ukey]
+        if isinstance(unew, d.Expression):
+            uinterp = d.interpolate(unew, sp.V)
+            d.assign(sp.u[ukey], uinterp)
+        elif isinstance(unew, (float,int)):
+            uinterp = d.interpolate(d.Constant(unew), sp.V)
+            d.assign(sp.u[ukey], uinterp)
+        else:
+            # unew is a vector with the same length as u
+            raise NotImplementedError
+            # #u = self.u[ukey][sp.compartment_name][ukey]
+            # u = self.cc[sp.compartment_name].u[ukey]
 
-        indices = self.dolfin_get_dof_indices(sp)
-        uvec    = u.vector()
-        values  = uvec.get_local()
-        values[indices] = unew
+            # #indices = self.dolfin_get_dof_indices(sp)
+            # indices = sp.dof_map
+            # uvec    = u.vector()
+            # values  = uvec.get_local()
+            # values[indices] = unew
 
-        uvec.set_local(values)
-        uvec.apply('insert')
-        # u = self.u[sp.compartment_name][ukey]
+            # uvec.set_local(values)
+            # uvec.apply('insert')
 
-        # indices = self.dolfin_get_dof_indices(sp)
-        # uvec    = u.vector()
-        # values  = uvec.get_local()
-        # values[indices] = unew
+    # def assign_initial_conditions(self):
+    #     ukeys = ['k', 'n', 'u']
+    #     for sp_name, sp in self.sc.items:
+    #         comp_name = sp.compartment_name
+    #         for ukey in ukeys:
+    #             self.dolfin_set_function_values(sp, ukey, sp.initial_condition)
+    #         if rank==root: print("Assigned initial condition for species %s" % sp.name)
 
-        # uvec.set_local(values)
-        # uvec.apply('insert')
-
-    def assign_initial_conditions(self):
-        ukeys = ['k', 'n', 'u']
-        for sp_name, sp in self.sc.items:
-            comp_name = sp.compartment_name
-            for ukey in ukeys:
-                self.dolfin_set_function_values(sp, ukey, sp.initial_condition)
-            if rank==root: print("Assigned initial condition for species %s" % sp.name)
-
-        # project to boundary/volume functions
-        self.update_solution_volume_to_boundary()
-        self.update_solution_boundary_to_volume()
+    #     # project to boundary/volume functions
+    #     self.update_solution_volume_to_boundary()
+    #     self.update_solution_boundary_to_volume()
 
     # def dolfinFindClosestPoint(mesh, coords):
     #     """
