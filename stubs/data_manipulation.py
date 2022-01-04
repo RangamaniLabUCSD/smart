@@ -170,7 +170,7 @@ class Data:
             flux_name = flux_names[i]
             flux = fc[flux_name]
             area_units = cc[flux.source_compartment].compartment_units**2
-            scale_to_molecule_per_s = (1*flux.flux_units*area_units).to(unit.molecule/unit.s).magnitude
+            scale_to_molecule_per_s = (1*flux_units*area_units).to(unit.molecule/unit.s).magnitude
             #value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
             value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
             self.fluxes[flux_name].append(value)

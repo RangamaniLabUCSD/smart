@@ -255,6 +255,20 @@ class Model:
         # Protect the variable names 'x[0]', 'x[1]', 'x[2]' and 't' because they are used for spatial dimensions and time
         if not {'x[0]', 'x[1]', 'x[2]', 't'}.isdisjoint(self._all_keys):
             raise ValueError("An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', or 't'). Please change the name.")
+        
+        # Make sure there are no overlapping markers
+        self._all_markers = set()
+        for compartment in self.cc.values:
+            if isinstance(compartment.cell_marker, list):
+                marker_list = compartment.cell_marker
+            else:
+                marker_list = [compartment.cell_marker]
+
+            for marker in marker_list:
+                if marker in self._all_markers:
+                    raise ValueError(f"Two compartments have the same marker: {marker}")
+                else:
+                    self._all_markers.add(marker)
 
     def _init_1_3_check_parameter_dimensionality(self):
         if 'x[2]' in self._all_keys and self.max_dim<3:
@@ -565,46 +579,42 @@ class Model:
             self.fc.add(reaction.fluxes)
             
     def _init_5_2_set_flux_units(self):
+        fancy_print(f"Checking flux units for dimensional consistency.", format_type='log')
         for flux in self.fc:
             concentration_units = flux.destination_species.concentration_units
             compartment_units   = flux.destination_compartment.compartment_units
             diffusion_units     = flux.destination_species.diffusion_units
 
             if flux.is_boundary_condition:
-                flux.flux_units = concentration_units / compartment_units * diffusion_units
+                flux_units = concentration_units / compartment_units * diffusion_units
             else:
-                flux.flux_units = concentration_units / unit.s
+                flux_units = concentration_units / unit.s
 
             # correct units
-            if flux.flux_units.dimensionality != flux.equation_units.dimensionality:
+            if flux_units.dimensionality != flux.equation_units.dimensionality:
                 raise ValueError(f"Flux {flux.name} has wrong units "
-                                 f"(expected {flux.flux_units}, got {flux.equation_units}.")
+                                 f"(expected {flux_units}, got {flux.equation_units}.")
             else:
-                flux.unit_scale_factor = flux.equation_units.to(flux.flux_units)/flux.equation_units
+                flux.unit_scale_factor = flux.equation_units.to(flux_units)/flux.equation_units
                 assert flux.unit_scale_factor.dimensionless
-                assert flux.equation_units*flux.unit_scale_factor == flux.equation_units.to(flux.flux_units)
+                assert flux.equation_units*flux.unit_scale_factor == flux.equation_units.to(flux_units)
 
                 if flux.unit_scale_factor.magnitude == 1.0:
                     continue
 
-                fancy_print(f"Flux {flux.name} scaled by {flux.unit_scale_factor}", format_type='log')
+                fancy_print(f"\nFlux {flux.name} scaled by {flux.unit_scale_factor}", format_type='log')
                 fancy_print(f"Old flux units: {flux.equation_units}", format_type='log')
-                fancy_print(f"New flux units: {flux.flux_units}", format_type='log')
+                fancy_print(f"New flux units: {flux_units}", format_type='log')
                 print("")
 
+                # update flux.equation_value and flux.equation_units
                 flux.equation_eval *= flux.unit_scale_factor
                 flux.evaluate_equation()
-                assert flux.equation_units == flux.flux_units
+                assert flux.equation_units == flux_units
 
     
-    def _init_5_3_reaction_fluxes_to_forms(self):
-        for flux in self.fc:
-            # check flux dimensionality
-            # scale units
-            # apply length scaling factor (we will not use this anymore)
-            if flux.flux_units.dimensionality != flux.equation_units.dimensionality:
-                raise ValueError(f"Flux {flux.name} has wrong units "
-                                 f"(expected {flux.flux_units}, got {flux.equation_units}.")
+    # def _init_5_3_reaction_fluxes_to_forms(self):
+    #     for flux in self.fc:
             #CONTINUE
 
         

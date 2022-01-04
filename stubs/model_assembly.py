@@ -310,11 +310,6 @@ class Parameter(ObjectInstance):
     group: str=''
     notes: str=''
 
-    # is_time_dependent: bool=False
-    # sampling_file: str=''
-    # sym_expr: str=''
-    # preint_sym_expr: str=''
-
     @classmethod
     def from_file(cls, name, sampling_file, unit, group='', notes=''):
         "Load in a purely time-dependent scalar function from data"
@@ -549,6 +544,8 @@ class Species(ObjectInstance):
                 raise NotImplementedError
             fancy_print(f"Creating dolfin object for space-dependent initial condition {self.name}", format_type='log')
             self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+        else:
+            raise TypeError(f"initial_condition must be a float or string.")
         
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -582,9 +579,14 @@ class Compartment(ObjectInstance):
     name: str
     dimensionality: int
     compartment_units: pint.Unit
-    cell_marker: int
+    cell_marker: Any
     
     def __post_init__(self):
+
+        if isinstance(self.cell_marker, list) and not all([isinstance(m, int) for m in self.cell_marker]) \
+            or not isinstance(self.cell_marker, (int,list)):
+                raise TypeError(f"cell_marker must be an int or list of ints.")
+
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
@@ -758,9 +760,18 @@ class Flux(ObjectInstance):
         self._post_init_get_involved_species_parameters_compartments()
         self._post_init_get_lambda_equation()
         self._post_init_get_flux_topology()
+        self._post_init_get_boundary_marker()
 
         # Get dolfin flux
         self._post_init_flux_to_dolfin()
+
+        
+        # self.get_boundary_marker()
+        # self.get_flux_units()
+        # self.get_is_linear()
+        # self.get_is_linear_comp()
+        # self.get_ukeys(solver_system)
+        # self.get_integration_measure(cc, solver_system)
 
     def _post_init_get_involved_species_parameters_compartments(self):
         self.destination_compartment = self.destination_species.compartment
@@ -824,10 +835,20 @@ class Flux(ObjectInstance):
         # Based on topology we know if it is a boundary condition or RHS term
         if self.topology in ['volume', 'surface', 'volume_to_surface', 'volume-volume_to_surface']:
             self.is_boundary_condition = False
-        else:
+        elif self.topology in ['surface_to_volume', 'volume_to_volume', 'volume-surface_to_volume']:
             self.is_boundary_condition = True
 
     def _post_init_get_boundary_marker(self):
+        # if self.is_boundary_condition:
+        #     self.boundary_marker = self.sourcek
+            
+            
+        # dim = self.flux_dimensionality
+        # if dim[1] <= dim[0]:
+        #     self.boundary_marker = None
+        # elif dim[1] > dim[0]: # boundary flux
+        #     self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
+        print("FIXME")
         pass
         
     def _post_init_flux_to_dolfin(self):

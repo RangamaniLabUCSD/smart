@@ -22,7 +22,7 @@ class _Mesh:
         self.ds_uncombined      = None
         self.dx_uncombined      = None
 
-    @cached_property
+    @property
     def mesh_view(self):
         return self.dolfin_mesh.topology().mapping()
     @property
@@ -159,12 +159,12 @@ class ParentMesh(_Mesh):
         mf['cells'] = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
         if has_surface:
             mf['facets'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+            
         # If any cell markers are given as a list we also create mesh functions to store the uncombined markers
         if any([cm.marker_list is not None for cm in self.child_meshes.values()]):
             mf['cells_uncombined']  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
             if has_surface:
                 mf['facets_uncombined'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
-
         # Combine markers in a list 
         for cm in self.child_meshes.values(): 
             if cm.marker_list is None:
@@ -241,6 +241,11 @@ class ChildMesh(_Mesh):
     def map_vertex_to_parent_vertex(self):
         return np.array(self.mesh_view[self.parent_mesh.id].vertex_map())
 
+    def map_cell_to_sibling_entity(self, child_mesh):
+        our_map   = self.map_cell_to_parent_entity
+        their_map = child_mesh.map_
+
+
 
     def set_parent_mesh(self, parent_mesh):
         # remove existing parent mesh if not None
@@ -266,7 +271,7 @@ class ChildMesh(_Mesh):
         pmf = self.parent_mesh.mf
 
         # initialize
-        mf         = dict()
+        mf           = dict()
         mf['cells']  = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
         mf['facets'] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality-1, value=0)
 
