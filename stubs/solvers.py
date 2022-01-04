@@ -22,73 +22,6 @@ rank = comm.rank
 size = comm.size
 root = 0
 
-
-class SolverSystem:
-    def __init__(self, final_t, initial_dt=None, multiphysics_solver=None, 
-                 nonlinear_solver=None, linear_solver=None, 
-                 ignore_surface_diffusion=False, auto_preintegrate=True,
-                 adjust_dt=None):
-
-        self.final_t                    = final_t
-        self.initial_dt                 = initial_dt
-        self.multiphysics_solver        = multiphysics_solver
-        self.nonlinear_solver           = nonlinear_solver
-        self.linear_solver              = linear_solver
-
-        # Sort adjust_dt if it was provided
-        if adjust_dt is not None:
-            self.check_adjust_dt_validity(adjust_dt)
-            adjust_dt.sort(key = lambda tuple_: tuple_[0]) # sort by the first index (time to reset)
-        self.adjust_dt                  = adjust_dt
-
-        # General settings 
-        self.ignore_surface_diffusion   = ignore_surface_diffusion # setting to True will treat surface variables as ODEs 
-        self.auto_preintegrate          = auto_preintegrate
-
-    def check_solver_system_validity(self):
-        if self.final_t <= 0:
-            raise ValueError("final_t msut be > 0")
-        if self.initial_dt is None:
-            raise ValueError("Please set a value for initial_dt")
-        if self.initial_dt <= 0:
-            raise ValueError("initial_dt must be > 0")
-
-        self.check_adjust_dt_validity(self.adjust_dt)
-        if self.adjust_dt is not None and self.adjust_dt != sorted(self.adjust_dt, key = lambda tuple_: tuple_[0]):
-            raise ValueError("adjust_dt not sorted...")
-
-        for solver in [self.multiphysics_solver, self.nonlinear_solver, self.linear_solver]:
-            if solver is not None:
-                solver.check_validity()
-            else:
-                Print(f"Warning: SolverSystem does not include a {type(solver).__name__}.")
-
-    def check_adjust_dt_validity(self, adjust_dt):
-        # make sure adjust_dt is a list of 2-tuples with proper values
-        # (time to reset, new dt)
-        if adjust_dt is not None:
-            if type(adjust_dt) is not list:
-                raise ValueError("adjust_dt must be a list of 2-tuples")
-            if len(adjust_dt) >= 1:
-                for tuple_ in adjust_dt:
-                    if type(tuple_) != tuple or len(tuple_) != 2:
-                        raise ValueError("adjust_dt must be a list of 2-tuples")
-                    if tuple_[0] < 0:
-                        raise ValueError("First index of 2-tuples in adjust_dt (time to reset) must be >= 0")
-
-    def make_dolfin_parameter_dict(self):
-        """
-        Helper function to package all necessary parameters into dictionaries which can be input as dolfin solver parameters
-        """
-        nonlinear_solver_keys = ['maximum_iterations', 'error_on_nonconvergence', 'absolute_tolerance', 'relative_tolerance']
-        self.nonlinear_dolfin_solver_settings = {**{k:v for k,v in self.nonlinear_solver.__dict__.items() if k in nonlinear_solver_keys}, 
-                                  **{'linear_solver': self.linear_solver.method,
-                                     'preconditioner': self.linear_solver.preconditioner}}
-        linear_solver_keys = ['maximum_iterations', 'error_on_nonconvergence', 'nonzero_initial_guess', 'absolute_tolerance', 'relative_tolerance']
-        self.linear_dolfin_solver_settings = {**{k:v for k,v in self.linear_solver.__dict__.items() if k in linear_solver_keys}}
-
-
-
 # Base Solver class
 class Solver:
     def __init__(self, framework='dolfin'):
@@ -217,3 +150,68 @@ class DolfinKrylovSolver(LinearSolver):
         if self.preconditioner not in d.krylov_solver_preconditioners().keys():
             raise ValueError(f"Preconditioner {self.preconditioner} is not a supported dolfin krylov preconditioner.")
 
+
+class SolverSystem:
+    def __init__(self, final_t, initial_dt, multiphysics_solver=MultiphysicsSolver(), 
+                 nonlinear_solver=NonlinearNewtonSolver(), linear_solver=DolfinKrylovSolver(), 
+                 ignore_surface_diffusion=False, auto_preintegrate=True,
+                 adjust_dt=None):
+
+        self.final_t                    = final_t
+        self.initial_dt                 = initial_dt
+        self.multiphysics_solver        = multiphysics_solver
+        self.nonlinear_solver           = nonlinear_solver
+        self.linear_solver              = linear_solver
+
+        # Sort adjust_dt if it was provided
+        if adjust_dt is not None:
+            self.check_adjust_dt_validity(adjust_dt)
+            adjust_dt.sort(key = lambda tuple_: tuple_[0]) # sort by the first index (time to reset)
+        self.adjust_dt                  = adjust_dt
+
+        # General settings 
+        self.ignore_surface_diffusion   = ignore_surface_diffusion # setting to True will treat surface variables as ODEs 
+        self.auto_preintegrate          = auto_preintegrate
+
+    def check_solver_system_validity(self):
+        if self.final_t <= 0:
+            raise ValueError("final_t must be > 0")
+        if self.initial_dt <= 0:
+            raise ValueError("initial_dt must be > 0")
+        if self.initial_dt > self.final_t:
+            raise ValueError("initial_dt must be < final_t")
+            
+
+        self.check_adjust_dt_validity(self.adjust_dt)
+        if self.adjust_dt is not None and self.adjust_dt != sorted(self.adjust_dt, key = lambda tuple_: tuple_[0]):
+            raise ValueError("adjust_dt not sorted...")
+
+        for solver in [self.multiphysics_solver, self.nonlinear_solver, self.linear_solver]:
+            if solver is not None:
+                solver.check_validity()
+            else:
+                Print(f"Warning: SolverSystem does not include a {type(solver).__name__}.")
+
+    def check_adjust_dt_validity(self, adjust_dt):
+        # make sure adjust_dt is a list of 2-tuples with proper values
+        # (time to reset, new dt)
+        if adjust_dt is not None:
+            if type(adjust_dt) is not list:
+                raise ValueError("adjust_dt must be a list of 2-tuples")
+            if len(adjust_dt) >= 1:
+                for tuple_ in adjust_dt:
+                    if type(tuple_) != tuple or len(tuple_) != 2:
+                        raise ValueError("adjust_dt must be a list of 2-tuples")
+                    if tuple_[0] < 0:
+                        raise ValueError("First index of 2-tuples in adjust_dt (time to reset) must be >= 0")
+
+    def make_dolfin_parameter_dict(self):
+        """
+        Helper function to package all necessary parameters into dictionaries which can be input as dolfin solver parameters
+        """
+        nonlinear_solver_keys = ['maximum_iterations', 'error_on_nonconvergence', 'absolute_tolerance', 'relative_tolerance']
+        self.nonlinear_dolfin_solver_settings = {**{k:v for k,v in self.nonlinear_solver.__dict__.items() if k in nonlinear_solver_keys}, 
+                                  **{'linear_solver': self.linear_solver.method,
+                                     'preconditioner': self.linear_solver.preconditioner}}
+        linear_solver_keys = ['maximum_iterations', 'error_on_nonconvergence', 'nonzero_initial_guess', 'absolute_tolerance', 'relative_tolerance']
+        self.linear_dolfin_solver_settings = {**{k:v for k,v in self.linear_solver.__dict__.items() if k in linear_solver_keys}}

@@ -91,6 +91,9 @@ class Model:
 
         # Post processed data
         self.data = stubs.data_manipulation.Data(self, self.config)
+        
+        # Set loggers to logging levels defined in config
+        self.config.set_logger_levels()
  
     @property
     def child_meshes(self):
@@ -602,7 +605,7 @@ class Model:
             if flux.flux_units.dimensionality != flux.equation_units.dimensionality:
                 raise ValueError(f"Flux {flux.name} has wrong units "
                                  f"(expected {flux.flux_units}, got {flux.equation_units}.")
-            CONTINUE
+            #CONTINUE
 
         
     def assemble_reactive_fluxes(self):

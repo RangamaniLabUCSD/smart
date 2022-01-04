@@ -1,26 +1,8 @@
 """
 Configuration settings for simulation: plotting, reaction types, solution output, etc.
 """
-import pdb
-import re
-import os
-from pandas import read_json
 import dolfin as d
-from stubs.common import nan_to_none
-from stubs.common import round_to_n
-from stubs import model_assembly
-import random
-import numpy as np
-from scipy.spatial.transform import Rotation as Rot
-
-import petsc4py.PETSc as PETSc
-Print = PETSc.Sys.Print
-
-import mpi4py.MPI as pyMPI
-comm = d.MPI.comm_world
-rank = comm.rank
-size = comm.size
-root = 0
+import logging
 
 class Config:
     """
@@ -28,6 +10,7 @@ class Config:
          - directories
          - plot settings
          - reactions 
+         - logging
     """
     def __init__(self):
 
@@ -52,9 +35,29 @@ class Config:
         self.reaction_database  = {'prescribed': 'k',
                                    'prescribed_linear': 'k*u',
                                    'prescribed_leak': 'k*(1-u/umax)'}
+        
+        self.loglevel           = {'FFC': 'DEBUG',
+                                   'UFL': 'DEBUG',
+                                   'dolfin': 'INFO'}
+        
+        self._loglevel_to_int   = {'CRITICAL': 50,
+                                   'ERROR': 40,
+                                   'WARNING': 30,
+                                   'INFO': 20,
+                                   'DEBUG': 10,
+                                   'NOTSET': 0,}
+
 
     def check_config_validity(self):
         valid_filetypes = ['xdmf', 'vtk', None]
         if self.output_type not in valid_filetypes:
             raise ValueError(f"Only filetypes: '{valid_filetypes}' are supported.")
 
+    def set_logger_levels(self):
+        # set for dolfin
+        d.set_log_level(self._loglevel_to_int[self.loglevel['dolfin']])
+        # set for others
+        other_loggers = list(self.loglevel.keys())
+        other_loggers.remove('dolfin')
+        for logger_name in other_loggers:
+            logging.getLogger(logger_name).setLevel(self.loglevel[logger_name])
