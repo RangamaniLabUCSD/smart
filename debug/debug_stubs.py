@@ -31,8 +31,8 @@ pc.add([
 
 # species
 sc.add([
-    Species('A'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
-    #Species('A'   , '5*(x+1)+2' , uM            , 100, um**2/sec, 'cytosol'),
+    #Species('A'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
+    Species('A'   , 'z' , uM            , 100, um**2/sec, 'cytosol'),
     Species('B'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
     Species('A_er', 3  , uM            , 100, um**2/sec, 'er_vol'),
     Species('X_pm', 100, molecule/um**2, 10 , um**2/sec, 'pm'),
@@ -57,6 +57,7 @@ rc.add([
 
 # config
 stubs_config = stubs.config.Config()
+# stubs_config.loglevel['dolfin'] = 'CRITICAL'
 # Define solvers
 mps           = stubs.solvers.MultiphysicsSolver()
 nls           = stubs.solvers.NonlinearNewtonSolver()
@@ -71,7 +72,8 @@ while True:
         path = path.joinpath(subdir)
         break
     path = path.parent
-stubs_mesh = stubs.mesh.ParentMesh(mesh_filename=str(path / 'adjacent_cubes.xml'))
+stubs_mesh = stubs.mesh.ParentMesh(mesh_filename=str(path / 'adjacent_cubes_refined.xml'))
+#stubs_mesh.dolfin_mesh = d.refine(stubs_mesh.dolfin_mesh)
 
 model = stubs.model.Model(pc, sc, cc, rc, stubs_config, solver_system, stubs_mesh)
 
@@ -83,10 +85,12 @@ c = model.cc.get_index(0)
 r = model.rc.get_index(0)
 r2 = model.rc.get_index(2)
 
+import cProfile
+
 model._init_1()
 model._init_2()
-model._init_3()
-model._init_4()
+cProfile.run("model._init_3()")                 
+model._init_4()                 
 model._init_5_1_reactions_to_fluxes()
 model._init_5_2_set_flux_units()
 #model._init_5_3_reaction_fluxes_to_forms()
@@ -112,37 +116,37 @@ mpm   = model.cc['pm'].mesh
 mall = [mtot, mcyto, merv, merm, mpm]
 
 
-#import faulthandler
-#faulthandler.enable()
-#a = d.assemble(A.u['u'] * A.compartment.mesh.ds(4))
-#b = d.assemble(f.equation_value*f.destination_compartment.mesh.ds)
-# c = d.assemble(A.u['u']*A_er.compartment.mesh.ds)
+mf_pm = mpm.mf_map[mcyto.id]
 
+mv=mpm.mesh_view[mcyto.id]
+b=np.array(mv.cell_map())
+b[b!=0] = 1
 
-#d.assemble((A.u['u'] - A_er.u['u']) * A.compartment.mesh.ds)
+mf_pm.array() == b
+
 # build mappings (dim 2 -> 3)
-merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
-merm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
-mpm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
-mpm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
+# merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
+# merm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
 
-# constructing our own map?
-merm.map_cell_to_parent_entity
-mcyto.map_facet_to_parent_entity
+
+#mpm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
 
 # vol to vol
 # d.assemble((A.u['u'] - A_er.u['u']) * merm.dx)
 
 # surf to vol
-d.assemble((A.u['u'] * X_pm.u['u']) * mpm.dx) # doesnt work (counts both sides, not just where cyto/pm overlap)
-d.assemble((A.u['u'] * X_pm.u['u']) * mcyto.ds(2))
+#print(d.assemble((A.u['u'] * X_pm.u['u']) * mpm.dx_map[mcyto.id](1))) 
+print(d.assemble((A.u['u']) * mpm.dx_map[mcyto.id](1))) 
+print(f"expected value: 24")
 
-merm.mesh_view
+#d.assemble((A.u['u'] * X_pm.u['u']) * mcyto.ds(2)) # not implemented yet
+
+#merm.mesh_view
 
 
-for m in mall:
-    #print(m.mesh_view)
-    print(m.id)
+# for m in mall:
+#     #print(m.mesh_view)
+#     print(m.id)
 
 # build mappings (dim 2 -> 3)
 # merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
@@ -160,80 +164,80 @@ for m in mall:
 
 
 
-#==============================
-#==============================
-# MWE volume-volume
-#==============================
-#==============================
-m = d.Mesh('data/adjacent_cubes.xml')
-mf3 = d.MeshFunction('size_t', m, 3, value=m.domains())
-mf2 = d.MeshFunction('size_t', m, 2, value=m.domains())
+# #==============================
+# #==============================
+# # MWE volume-volume
+# #==============================
+# #==============================
+# m = d.Mesh('data/adjacent_cubes.xml')
+# mf3 = d.MeshFunction('size_t', m, 3, value=m.domains())
+# mf2 = d.MeshFunction('size_t', m, 2, value=m.domains())
 
-# try unmarking some of mf2(4)
-d.CompiledSubDomain('x[0] < 0.0').mark(mf2,6)
+# # try unmarking some of mf2(4)
+# d.CompiledSubDomain('x[0] < 0.0').mark(mf2,6)
 
-m1 = d.MeshView.create(mf3, 11)
-m2 = d.MeshView.create(mf3, 12)
-m_ = d.MeshView.create(mf2, 4)
+# m1 = d.MeshView.create(mf3, 11)
+# m2 = d.MeshView.create(mf3, 12)
+# m_ = d.MeshView.create(mf2, 4)
 
-V0 = d.FunctionSpace(m,"P",1); V1 = d.FunctionSpace(m1,"P",1); V2 = d.FunctionSpace(m2,"P",1); V_ = d.FunctionSpace(m_,"P",1);
-V  = d.MixedFunctionSpace(V0,V1,V2,V_)
+# V0 = d.FunctionSpace(m,"P",1); V1 = d.FunctionSpace(m1,"P",1); V2 = d.FunctionSpace(m2,"P",1); V_ = d.FunctionSpace(m_,"P",1);
+# V  = d.MixedFunctionSpace(V0,V1,V2,V_)
 
-u = d.Function(V)
-u0 = u.sub(0); u1 = u.sub(1); u2 = u.sub(2); u_ = u.sub(3)
-u0.vector()[:] = 1; u1.vector()[:] = 5; u2.vector()[:] = 3; u_.vector()[:] = 7
+# u = d.Function(V)
+# u0 = u.sub(0); u1 = u.sub(1); u2 = u.sub(2); u_ = u.sub(3)
+# u0.vector()[:] = 1; u1.vector()[:] = 5; u2.vector()[:] = 3; u_.vector()[:] = 7
 
-(ut0, ut1, ut2, ut_) = d.TrialFunctions(V)
-
-
-v = d.TestFunctions(V)
-v0,v1,v2,v_ = v
-
-u = d.Function(V)
-
-dx0 = d.Measure('dx', domain=m);  dx1 = d.Measure('dx', domain=m1);
-dx2 = d.Measure('dx', domain=m2); dx_ = d.Measure('dx', domain=m_);
-
-mf1 = d.MeshFunction('size_t', m1, 2, 0)
-d.CompiledSubDomain('near(x[2],0)').mark(mf1,4)
-ds1 = d.Measure('ds', domain=V1.mesh(), subdomain_data=mf1)
-
-m_.build_mapping(m1)
-m_.build_mapping(m2)
-
-# volume PDE: volume+surface -> volume
-def volPDE_volsurf2vol():
-    return d.assemble(u1*u_*u2*v1*dx_)
-
-# volume PDE: volume -> volume
-def volPDE_vol2vol():
-    # m1.build_mapping(m2) does not work
-    # needs mapping
-    return d.assemble((u1-u2)*v1*dx_)
-
-# surface PDE: volume -> surface
-# only works after m_.build_mapping(m1)
-def surfPDE_vol2surf_trial():
-    return d.assemble(ut1*v_*dx_) #Works
-
-def surfPDE_vol2surf():
-    return d.assemble(u1*v_*dx_) #Segfault if mapping is not built
-
-# volume PDE: surface -> volume
-def volPDE_surf2vol_trial():
-    return d.assemble(ut_*v1*dx_) #Works
-
-def volPDE_surf2vol():
-    return d.assemble(u_*v1*dx_) #Works
-
-# volume PDE: volume -> surface
-def volPDE_vol2surf_trial():
-    return d.assemble(ut1*v1*dx_) #Works
-
-def volPDE_vol2surf():
-    return d.assemble(u1*v1*dx_) #Segfault if mapping is not built
+# (ut0, ut1, ut2, ut_) = d.TrialFunctions(V)
 
 
-# d.assemble(u_*v1*ds1) does not work (Exception: codim != 0 or 1 - Not (yet) implemented)
+# v = d.TestFunctions(V)
+# v0,v1,v2,v_ = v
 
-# volume -> volume
+# u = d.Function(V)
+
+# dx0 = d.Measure('dx', domain=m);  dx1 = d.Measure('dx', domain=m1);
+# dx2 = d.Measure('dx', domain=m2); dx_ = d.Measure('dx', domain=m_);
+
+# mf1 = d.MeshFunction('size_t', m1, 2, 0)
+# d.CompiledSubDomain('near(x[2],0)').mark(mf1,4)
+# ds1 = d.Measure('ds', domain=V1.mesh(), subdomain_data=mf1)
+
+# m_.build_mapping(m1)
+# m_.build_mapping(m2)
+
+# # volume PDE: volume+surface -> volume
+# def volPDE_volsurf2vol():
+#     return d.assemble(u1*u_*u2*v1*dx_)
+
+# # volume PDE: volume -> volume
+# def volPDE_vol2vol():
+#     # m1.build_mapping(m2) does not work
+#     # needs mapping
+#     return d.assemble((u1-u2)*v1*dx_)
+
+# # surface PDE: volume -> surface
+# # only works after m_.build_mapping(m1)
+# def surfPDE_vol2surf_trial():
+#     return d.assemble(ut1*v_*dx_) #Works
+
+# def surfPDE_vol2surf():
+#     return d.assemble(u1*v_*dx_) #Segfault if mapping is not built
+
+# # volume PDE: surface -> volume
+# def volPDE_surf2vol_trial():
+#     return d.assemble(ut_*v1*dx_) #Works
+
+# def volPDE_surf2vol():
+#     return d.assemble(u_*v1*dx_) #Works
+
+# # volume PDE: volume -> surface
+# def volPDE_vol2surf_trial():
+#     return d.assemble(ut1*v1*dx_) #Works
+
+# def volPDE_vol2surf():
+#     return d.assemble(u1*v1*dx_) #Segfault if mapping is not built
+
+
+# # d.assemble(u_*v1*ds1) does not work (Exception: codim != 0 or 1 - Not (yet) implemented)
+
+# # volume -> volume

@@ -971,26 +971,26 @@ class Flux(ObjectInstance):
 
         self.is_linear_wrt_comp = is_linear_wrt_comp
 
-    def get_integration_measure(self, cc, solver_system):
-        sp = self.species_map[self.species_name]
-        flux_dim = self.flux_dimensionality
-        min_dim = min(cc.get_property('dimensionality').values())
-        max_dim = max(cc.get_property('dimensionality').values())
+    # def get_integration_measure(self, cc, solver_system):
+    #     sp = self.species_map[self.species_name]
+    #     flux_dim = self.flux_dimensionality
+    #     min_dim = min(cc.get_property('dimensionality').values())
+    #     max_dim = max(cc.get_property('dimensionality').values())
 
-        # boundary flux
-        if flux_dim[0] < flux_dim[1]:
-            self.int_measure = sp.compartment.ds(self.boundary_marker)
-        # volumetric flux (max dimension)
-        elif flux_dim[0] == flux_dim[1] == max_dim:
-            self.int_measure = sp.compartment.dx
-        # volumetric flux (min dimension)
-        elif flux_dim[1] == min_dim < max_dim:
-            if solver_system.ignore_surface_diffusion:
-                self.int_measure = sp.compartment.dP
-            else:
-                self.int_measure = sp.compartment.dx
-        else:
-            raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
+    #     # boundary flux
+    #     if flux_dim[0] < flux_dim[1]:
+    #         self.int_measure = sp.compartment.ds(self.boundary_marker)
+    #     # volumetric flux (max dimension)
+    #     elif flux_dim[0] == flux_dim[1] == max_dim:
+    #         self.int_measure = sp.compartment.dx
+    #     # volumetric flux (min dimension)
+    #     elif flux_dim[1] == min_dim < max_dim:
+    #         if solver_system.ignore_surface_diffusion:
+    #             self.int_measure = sp.compartment.dP
+    #         else:
+    #             self.int_measure = sp.compartment.dx
+    #     else:
+    #         raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
 
     def get_ukeys(self, solver_system):
         """
