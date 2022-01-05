@@ -256,7 +256,7 @@ class Model:
         if not {'x[0]', 'x[1]', 'x[2]', 't'}.isdisjoint(self._all_keys):
             raise ValueError("An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', or 't'). Please change the name.")
         
-        # Make sure there are no overlapping markers
+        # Make sure there are no overlapping markers or markers with value 0
         self._all_markers = set()
         for compartment in self.cc.values:
             if isinstance(compartment.cell_marker, list):
@@ -267,8 +267,11 @@ class Model:
             for marker in marker_list:
                 if marker in self._all_markers:
                     raise ValueError(f"Two compartments have the same marker: {marker}")
+                elif marker == 0:
+                    raise ValueError(f"Marker cannot have the value 0")
                 else:
                     self._all_markers.add(marker)
+        
 
     def _init_1_3_check_parameter_dimensionality(self):
         if 'x[2]' in self._all_keys and self.max_dim<3:
@@ -428,8 +431,6 @@ class Model:
     def _init_3_3_extract_submeshes(self):
         """ Use dolfin.MeshView.create() to extract submeshes """
         fancy_print(f"Extracting submeshes", format_type='log')
-        # Aliases
-        mesh = self.parent_mesh.dolfin_mesh
         # Loop through child meshes and extract submeshes
         for cm in self.child_meshes.values():
             cm.extract_submesh()
@@ -437,8 +438,20 @@ class Model:
     def _init_3_4_get_child_mesh_functions(self):
         fancy_print(f"Defining child mesh functions", format_type='log')
         # this requires mapping information from the parent mesh functions
-        for mesh in self.parent_mesh.child_meshes.values():
+        # Aliases
+        child_meshes = self.parent_mesh.child_meshes.values()
+        for mesh in child_meshes:
             mesh.get_mesh_functions()
+            # get mappings to siblings of higher dimension
+            if not mesh.is_volume_mesh:
+                for sibling_mesh in child_meshes:
+                    if mesh.dimensionality == sibling_mesh.dimensionality-1:
+                        mesh.get_mesh_function_cell_to_sibling_facet(sibling_mesh)
+                        # need to use this or else it will segfault when trying to assemble
+                        # we also suppress the c++ output because it prints a lot of 'errors' 
+                        # even though the mapping was successfully built (when (surface intersect volume) != surface)
+                        # with common._stdout_redirected():
+                        #     mesh.dolfin_mesh.build_mapping(sibling_mesh.dolfin_mesh)
 
     def _init_3_5_get_integration_measures(self):
         fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')

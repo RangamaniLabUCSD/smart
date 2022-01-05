@@ -5,12 +5,14 @@ import pandas
 import dolfin as d
 import numpy as np
 import scipy.interpolate as interp
+import sys
 import os
 import re
 import pint
 from termcolor import colored
 import stubs
 from pandas import read_json
+from contextlib import contextmanager
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -454,3 +456,35 @@ def pint_quantity_to_unit(pint_quantity):
     if pint_quantity.magnitude != 1.0:
         raise ValueError("Trying to convert a pint quantity into a unit with magnitude != 1")
     return pint_quantity.units
+
+
+# Some stack exchange code to redirect/suppress c++ stdout
+# https://stackoverflow.com/questions/4675728/redirect-stdout-to-a-file-in-python/22434262#22434262
+def _fileno(file_or_fd):
+    fd = getattr(file_or_fd, 'fileno', lambda: file_or_fd)()
+    if not isinstance(fd, int):
+        raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
+    return fd
+
+@contextmanager
+def _stdout_redirected(to=os.devnull, stdout=None):
+    if stdout is None:
+       stdout = sys.stdout
+
+    stdout_fd = _fileno(stdout)
+    # copy stdout_fd before it is overwritten
+    #NOTE: `copied` is inheritable on Windows when duplicating a standard stream
+    with os.fdopen(os.dup(stdout_fd), 'wb') as copied: 
+        stdout.flush()  # flush library buffers that dup2 knows nothing about
+        try:
+            os.dup2(_fileno(to), stdout_fd)  # $ exec >&to
+        except ValueError:  # filename
+            with open(to, 'wb') as to_file:
+                os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
+        try:
+            yield stdout # allow code to be run with the redirected stdout
+        finally:
+            # restore stdout to its previous value
+            #NOTE: dup2 makes stdout_fd inheritable unconditionally
+            stdout.flush()
+            os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
