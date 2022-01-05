@@ -447,11 +447,6 @@ class Model:
                 for sibling_mesh in child_meshes:
                     if mesh.dimensionality == sibling_mesh.dimensionality-1:
                         mesh.get_mesh_function_cell_to_sibling_facet(sibling_mesh)
-                        # need to use this or else it will segfault when trying to assemble
-                        # we also suppress the c++ output because it prints a lot of 'errors' 
-                        # even though the mapping was successfully built (when (surface intersect volume) != surface)
-                        # with common._stdout_redirected():
-                        #     mesh.dolfin_mesh.build_mapping(sibling_mesh.dolfin_mesh)
 
     def _init_3_5_get_integration_measures(self):
         fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')

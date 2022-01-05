@@ -86,3 +86,10 @@ highlight ColorColumn ctermbg=7" >> $FENICS_HOME/.vimrc
 # source bashrc
 RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]
 
+# my gitconfig
+# dont want my email floating around on the internet 
+RUN email_name="justinglaughlin"
+RUN git config --global user.email "$email_name@gmail.com"
+RUN git config --global user.name "justinlaughlin"
+
+

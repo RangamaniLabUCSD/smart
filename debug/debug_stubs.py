@@ -115,15 +115,6 @@ mpm   = model.cc['pm'].mesh
 
 mall = [mtot, mcyto, merv, merm, mpm]
 
-
-mf_pm = mpm.mf_map[mcyto.id]
-
-mv=mpm.mesh_view[mcyto.id]
-b=np.array(mv.cell_map())
-b[b!=0] = 1
-
-mf_pm.array() == b
-
 # build mappings (dim 2 -> 3)
 # merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
 # merm.dolfin_mesh.build_mapping(merv.dolfin_mesh)

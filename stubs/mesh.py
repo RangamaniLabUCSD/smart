@@ -80,8 +80,6 @@ class _Mesh:
         else:
             raise ValueError(f"Unknown entities for given dimension {dimension}")
 
-            
-
     # Coordinates of entities
     @cached_property
     def cell_coordinates(self):
@@ -222,10 +220,7 @@ class ChildMesh(_Mesh):
         """
         return np.array(self.mesh_view[self.parent_mesh.id].cell_map())
 
-        
-        
     # too slow...
-
     # @cached_property
     # def map_facet_to_parent_entity(self):
     #     """
@@ -234,8 +229,6 @@ class ChildMesh(_Mesh):
     #     self.map_facet_to_parent_vertex:         child facet -> child vertex -> parent vertex
     #     loop self.parent_mesh to invert its map: parent vertex -> parent_entity
     #     """
-
-        
 
         # mapping = []
         # # Aliases
