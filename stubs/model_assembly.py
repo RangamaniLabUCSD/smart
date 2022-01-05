@@ -711,11 +711,11 @@ class Reaction(ObjectInstance):
         for species_name, stoich in species_stoich:
             species = self.species[species_name]
             if self.eqn_f_str:
-                flux_name     = self.name + '_f_' + species_name
+                flux_name     = self.name + f" [{species_name} (f)]"
                 eqn           = stoich * parse_expr(self.eqn_f_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
             if self.eqn_r_str:
-                flux_name     = self.name + '_r_' + species_name
+                flux_name     = self.name + f" [{species_name} (r)]"
                 eqn           = -stoich * parse_expr(self.eqn_r_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
 
@@ -760,7 +760,7 @@ class Flux(ObjectInstance):
         self._post_init_get_involved_species_parameters_compartments()
         self._post_init_get_lambda_equation()
         self._post_init_get_flux_topology()
-        self._post_init_get_boundary_marker()
+        self._post_init_get_integration_measure()
 
         # Get dolfin flux
         self._post_init_flux_to_dolfin()
@@ -838,10 +838,39 @@ class Flux(ObjectInstance):
         elif self.topology in ['surface_to_volume', 'volume_to_volume', 'volume-surface_to_volume']:
             self.is_boundary_condition = True
 
-    def _post_init_get_boundary_marker(self):
+    def _post_init_get_integration_measure(self):
         # if self.is_boundary_condition:
         #     self.boundary_marker = self.sourcek
+        if not self.is_boundary_condition:
+            self.measure = self.destination_compartment.mesh.dx
+        
             
+        # [1d] volume:                    PDE of u
+        # [1d] surface:                   PDE of v
+        # [2d] volume_to_volume:          BC of u ()
+        # [2d] volume_to_surface:         PDE of v
+        # [2d] surface_to_volume:         BC of u
+        # [3d] volume-surface_to_volume:  BC of u ()
+        # [3d] volume-volume_to_surface:  PDE of v ()
+    #     sp = self.species_map[self.species_name]
+    #     flux_dim = self.flux_dimensionality
+    #     min_dim = min(cc.get_property('dimensionality').values())
+    #     max_dim = max(cc.get_property('dimensionality').values())
+
+    #     # boundary flux
+    #     if flux_dim[0] < flux_dim[1]:
+    #         self.int_measure = sp.compartment.ds(self.boundary_marker)
+    #     # volumetric flux (max dimension)
+    #     elif flux_dim[0] == flux_dim[1] == max_dim:
+    #         self.int_measure = sp.compartment.dx
+    #     # volumetric flux (min dimension)
+    #     elif flux_dim[1] == min_dim < max_dim:
+    #         if solver_system.ignore_surface_diffusion:
+    #             self.int_measure = sp.compartment.dP
+    #         else:
+    #             self.int_measure = sp.compartment.dx
+    #     else:
+    #         raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
             
         # dim = self.flux_dimensionality
         # if dim[1] <= dim[0]:

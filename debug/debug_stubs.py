@@ -22,21 +22,32 @@ pc, sc, cc, rc = common.empty_sbmodel()
 # parameters
 pc.add([    
     #Parameter('kf'      , 5.0, meter/sec, 'forward rate'),
-    Parameter.from_expression('kf_t' , '5.0+t', meter/sec),
-    Parameter('kr'      , 1.0, um/sec, 'reverse rate'),
+    # volume-to-volume [m/s]
+    Parameter.from_expression('gating_f' , '5.0+t', um/sec),
+    Parameter('gating_r'      , 1.0, um/sec),#um/sec, 'reverse rate'),
+    # volume mass-action 2 to 1
+    Parameter('kf', 3.0, 1/(uM*sec), 'volume mass-action forward A+B -> C'),
+    Parameter('kr', 7.0, 1/(sec), 'volume mass-action reverse C -> A+B'),
+    # volume to surface / surface to volume
+    Parameter('kf_AX_X2', 3.0, 1/(uM*sec), 'A+X -> X2'),
+    Parameter('kr_AX_X2', 3.0, 1/(sec), 'X2 -> A+X'),
+
+    # volume/surface degradation [1/s]
     Parameter('kdeg_B', 2.0, 1/sec, 'degradation rate'),
-    Parameter('kdeg_Xpm', 2.0, 1/sec, 'degradation rate'),
-    Parameter('kdeg_Xerm', 2.0, 1/sec, 'degradation rate'),
+    Parameter('kdeg_X', 2.0, 1/sec, 'degradation rate'),
+    Parameter('kdeg_Y', 2.0, 1/sec, 'degradation rate'),
 ])
 
 # species
 sc.add([
     #Species('A'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
-    Species('A'   , 'z' , uM            , 100, um**2/sec, 'cytosol'),
-    Species('B'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
-    Species('A_er', 3  , uM            , 100, um**2/sec, 'er_vol'),
-    Species('X_pm', 100, molecule/um**2, 10 , um**2/sec, 'pm'),
-    Species('X_erm', 100, molecule/um**2, 10 , um**2/sec, 'er_mem'),
+    Species('A'    , 'z'  , uM            , 100, um**2/sec, 'cytosol'),
+    Species('A2'   , 'z+3', uM            , 100, um**2/sec, 'cytosol'),
+    Species('A3'   , 0    , uM            , 100, um**2/sec, 'cytosol'),
+    Species('B' , 3    , uM            , 100, um**2/sec, 'er_vol'),
+    Species('X' , 100  , molecule/um**2, 10 , um**2/sec, 'pm'),
+    Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
+    Species('Y', 60  , molecule/um**2, 10 , um**2/sec, 'er_mem'),
 ])
 
 # compartments
@@ -48,11 +59,17 @@ cc.add([
     Compartment('er_mem' , 2, um, 4),
 ])
 
+# flux topologies are commented
+
+# [3d] volume-surface_to_volume:  BC of u ()
+# [3d] volume-volume_to_surface:  PDE of v ()
 rc.add([
-    Reaction('A <-> A_er', ['A'],    ['A_er'], {'on': 'kf_t', 'off': 'kr'}),
-    Reaction('B -> 0',     ['B'], [],          {'on': 'kdeg_B'}, reaction_type='mass_action_forward'),
-    Reaction('X_pm -> 0',  ['X_pm'], [],       {'on': 'kdeg_Xpm'}, reaction_type='mass_action_forward'),
-    Reaction('X_erm -> 0', ['X_erm'], [],      {'on': 'kdeg_Xerm'}, reaction_type='mass_action_forward'),
+    Reaction('A <-> B'      , ['A']     , ['B'] , {'on': 'gating_f', 'off': 'gating_r'}                                      ), # [volume_to_volume] 
+    Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                            ), # [volume] volume mass action (2 to 1)
+    Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'), # [volume] degradation
+    Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                      ), # [volume_to_surface] [surface_to_volume]
+    Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'), # [surface] degradation
+    Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'), # [surface] degradation
 ])
 
 # config
@@ -104,9 +121,9 @@ r = f.reaction
 
 # aliases
 A = model.sc['A']
-A_er = model.sc['A_er']
-X_erm = model.sc['X_erm']
-X_pm = model.sc['X_pm']
+B = model.sc['B']
+Y = model.sc['Y']
+X = model.sc['X']
 mtot  = model.parent_mesh
 mcyto = model.cc['cytosol'].mesh
 merv  = model.cc['er_vol'].mesh
@@ -123,7 +140,7 @@ mall = [mtot, mcyto, merv, merm, mpm]
 #mpm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
 
 # vol to vol
-# d.assemble((A.u['u'] - A_er.u['u']) * merm.dx)
+# d.assemble((A.u['u'] - B.u['u']) * merm.dx)
 
 # surf to vol
 #print(d.assemble((A.u['u'] * X_pm.u['u']) * mpm.dx_map[mcyto.id](1))) 

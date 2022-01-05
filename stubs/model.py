@@ -372,9 +372,6 @@ class Model:
             else:
                 raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
 
-                    
-                
-        
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
         fancy_print(f"Checking for unused parameters, species, or compartments", format_type='log')
 
@@ -382,11 +379,23 @@ class Model:
         all_species      = set(itertools.chain.from_iterable([r.species for r in self.rc]))
         all_compartments = set(itertools.chain.from_iterable([r.compartments for r in self.rc]))
         if all_parameters != set(self.pc.keys):
-            raise ValueError(f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions.") 
+            print_str = f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions."
+            if self.config.flags['allow_unused_components']:
+                fancy_print(print_str, format_type='log_urgent')
+            else:
+                raise ValueError(print_str) 
         if all_species != set(self.sc.keys):
-            raise ValueError(f"Species, {set(self.sc.keys).difference(all_species)}, are unused in any reactions.") 
+            print_str = f"Species, {set(self.sc.keys).difference(all_species)}, are unused in any reactions."
+            if self.config.flags['allow_unused_components']:
+                fancy_print(print_str, format_type='log_urgent')
+            else:
+                raise ValueError(print_str) 
         if all_compartments != set(self.cc.keys):
-            raise ValueError(f"Compartment(s), {set(self.cc.keys).difference(all_compartments)}, are unused in any reactions.") 
+            print_str = f"Compartment(s), {set(self.cc.keys).difference(all_compartments)}, are unused in any reactions."
+            if self.config.flags['allow_unused_components']:
+                fancy_print(print_str, format_type='log_urgent')
+            else:
+                raise ValueError(print_str) 
 
     def _init_2_5_link_compartments_to_species(self):
         fancy_print(f"Linking compartments and compartment dimensionality to species", format_type='log')
