@@ -31,7 +31,10 @@ pc.add([
     # volume to surface / surface to volume
     Parameter('kf_AX_X2', 3.0, 1/(uM*sec), 'A+X -> X2'),
     Parameter('kr_AX_X2', 3.0, 1/(sec), 'X2 -> A+X'),
-
+    # volume-surface to volume 
+    Parameter('kf_AY_B', 3.0, 1/(uM*sec), 'A+Y -> B'),
+    # volume-volume to surface 
+    Parameter('kf_AB_Y', 3.0, um/(uM*sec), 'A+B -> Y'),
     # volume/surface degradation [1/s]
     Parameter('kdeg_B', 2.0, 1/sec, 'degradation rate'),
     Parameter('kdeg_X', 2.0, 1/sec, 'degradation rate'),
@@ -60,16 +63,15 @@ cc.add([
 ])
 
 # flux topologies are commented
-
-# [3d] volume-surface_to_volume:  BC of u ()
-# [3d] volume-volume_to_surface:  PDE of v ()
 rc.add([
-    Reaction('A <-> B'      , ['A']     , ['B'] , {'on': 'gating_f', 'off': 'gating_r'}                                      ), # [volume_to_volume] 
-    Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                            ), # [volume] volume mass action (2 to 1)
-    Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'), # [volume] degradation
-    Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                      ), # [volume_to_surface] [surface_to_volume]
-    Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'), # [surface] degradation
-    Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'), # [surface] degradation
+    Reaction('A <-> B'      , ['A']     , ['B'] , {'on': 'gating_f', 'off': 'gating_r'} , explicit_restriction_to_domain='er_mem'), # [volume_to_volume] 
+    Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                                ), # [volume] volume mass action (2 to 1)
+    Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'    ), # [volume] degradation
+    Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                          ), # [volume_to_surface] [surface_to_volume]
+    Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
+    Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
+    Reaction('A + Y <-> B'  , ['A','Y'] , ['B'] , {'on': 'kf_AY_B'}                     , reaction_type='mass_action_forward'    ), # [volume-surface_to_volume]
+    Reaction('A + B <-> Y'  , ['A','B'] , ['Y'] , {'on': 'kf_AB_Y'}                     , reaction_type='mass_action_forward'    ), # [volume-volume_to_surface]
 ])
 
 # config
@@ -115,7 +117,7 @@ model._init_5_2_set_flux_units()
 #aliases
 m = model.parent_mesh
 u = s.u['u']
-f = model.fc.get_index(0)
+f = model.fc.get_index(13)
 f1 = model.fc.get_index(1)
 r = f.reaction
 

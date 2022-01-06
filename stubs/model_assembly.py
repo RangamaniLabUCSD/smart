@@ -18,7 +18,7 @@ from ufl.operators import variable
 
 Print = PETSc.Sys.Print
 
-from copy import copy, deepcopy
+from copy import Error, copy, deepcopy
 from pprint import pprint
 
 import numpy as np
@@ -801,7 +801,6 @@ class Flux(ObjectInstance):
         Flux topology types:
         [1d] volume:                    PDE of u
         [1d] surface:                   PDE of v
-        [2d] volume_to_volume:          BC of u ()
         [2d] volume_to_surface:         PDE of v
         [2d] surface_to_volume:         BC of u
         [3d] volume-surface_to_volume:  BC of u ()
@@ -812,13 +811,10 @@ class Flux(ObjectInstance):
             self.topology = self.reaction.topology
             source_compartments = {self.destination_compartment.name}
         # 2 or 3 compartment flux
-        elif self.reaction.topology in ['volume_volume', 'volume_surface', 'volume_surface_volume']:
+        elif self.reaction.topology in ['volume_surface', 'volume_surface_volume']:
             source_compartments = set(self.compartments.keys()).difference({self.destination_compartment.name})
             
-            if self.reaction.topology == 'volume_volume':
-                self.topology = 'volume_to_volume'
-
-            elif self.reaction.topology == 'volume_surface':
+            if self.reaction.topology == 'volume_surface':
                 if self.destination_compartment.is_volume_mesh:
                     self.topology = 'surface_to_volume'
                 else:
@@ -829,20 +825,46 @@ class Flux(ObjectInstance):
                     self.topology = 'volume-surface_to_volume'
                 else:
                     self.topology = 'volume-volume_to_surface'
+        else:
+            raise AssertionError()
             
         self.source_compartments = {name: self.reaction.compartments[name] for name in source_compartments}
 
         # Based on topology we know if it is a boundary condition or RHS term
         if self.topology in ['volume', 'surface', 'volume_to_surface', 'volume-volume_to_surface']:
             self.is_boundary_condition = False
-        elif self.topology in ['surface_to_volume', 'volume_to_volume', 'volume-surface_to_volume']:
+        elif self.topology in ['surface_to_volume', 'volume-surface_to_volume']:
             self.is_boundary_condition = True
+        else:
+            raise AssertionError()
 
     def _post_init_get_integration_measure(self):
-        # if self.is_boundary_condition:
-        #     self.boundary_marker = self.sourcek
         if not self.is_boundary_condition:
-            self.measure = self.destination_compartment.mesh.dx
+            self.measure       = self.destination_compartment.mesh.dx
+        elif self.topology == 'surface_to_volume':
+            assert len(self.source_compartments) == 1
+            self._source_surface     = list(self.source_compartments.values())[0]
+            self.measure       = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
+        elif self.topology == 'volume-surface_to_volume':
+            assert len(self.source_compartments) == 2
+            assert sum([c.is_volume_mesh for c in self.source_compartments.values()]) == 1
+            for c in self.source_compartments.values():
+                if not c.is_volume_mesh:
+                    self._source_surface = c 
+                else:
+                    self._source_volume  = c
+            # check that there is at least one intersecting face between the two volumes
+            mf_map_1 = self._source_surface.mesh.mf_map[self.destination_compartment.mesh.id]
+            mf_map_2 = self._source_surface.mesh.mf_map[self._source_volume.mesh.id]
+            if not (1 in mf_map_1 and 1 in mf_map_2):
+                raise Error(f"Flux {self.name} has two volumes and a surface which do not connect with each other.")
+            if np.all(mf_map_1.array() != mf_map_2.array()):
+                raise NotImplementedError(f"The the surface between two volumes in a reaction must be completely specified.")
+
+            self.measure = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
+        else:
+            raise AssertionError()
+            
         
             
         # [1d] volume:                    PDE of u

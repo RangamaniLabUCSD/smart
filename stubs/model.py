@@ -357,7 +357,9 @@ class Model:
                     reaction.topology = 'surface'
             elif len(is_volume_mesh) == 2:
                 if all(is_volume_mesh):
-                    reaction.topology = 'volume_volume'
+                    raise NotImplementedError(f"Reaction {reaction.name} has two volumes - the adjoining surface must be specified "
+                                              f"using reaction.explicit_restriction_to_domain")
+                    #reaction.topology = 'volume_volume'
                 elif not any(is_volume_mesh):
                     raise Exception(f"Reaction {reaction.name} involves two surfaces. This is not supported.")
                 else:
