@@ -765,13 +765,9 @@ class Flux(ObjectInstance):
         # Get dolfin flux
         self._post_init_flux_to_dolfin()
 
-        
-        # self.get_boundary_marker()
-        # self.get_flux_units()
         # self.get_is_linear()
         # self.get_is_linear_comp()
         # self.get_ukeys(solver_system)
-        # self.get_integration_measure(cc, solver_system)
 
     def _post_init_get_involved_species_parameters_compartments(self):
         self.destination_compartment = self.destination_species.compartment
@@ -864,43 +860,6 @@ class Flux(ObjectInstance):
             self.measure = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
         else:
             raise AssertionError()
-            
-        
-            
-        # [1d] volume:                    PDE of u
-        # [1d] surface:                   PDE of v
-        # [2d] volume_to_volume:          BC of u ()
-        # [2d] volume_to_surface:         PDE of v
-        # [2d] surface_to_volume:         BC of u
-        # [3d] volume-surface_to_volume:  BC of u ()
-        # [3d] volume-volume_to_surface:  PDE of v ()
-    #     sp = self.species_map[self.species_name]
-    #     flux_dim = self.flux_dimensionality
-    #     min_dim = min(cc.get_property('dimensionality').values())
-    #     max_dim = max(cc.get_property('dimensionality').values())
-
-    #     # boundary flux
-    #     if flux_dim[0] < flux_dim[1]:
-    #         self.int_measure = sp.compartment.ds(self.boundary_marker)
-    #     # volumetric flux (max dimension)
-    #     elif flux_dim[0] == flux_dim[1] == max_dim:
-    #         self.int_measure = sp.compartment.dx
-    #     # volumetric flux (min dimension)
-    #     elif flux_dim[1] == min_dim < max_dim:
-    #         if solver_system.ignore_surface_diffusion:
-    #             self.int_measure = sp.compartment.dP
-    #         else:
-    #             self.int_measure = sp.compartment.dx
-    #     else:
-    #         raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
-            
-        # dim = self.flux_dimensionality
-        # if dim[1] <= dim[0]:
-        #     self.boundary_marker = None
-        # elif dim[1] > dim[0]: # boundary flux
-        #     self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
-        print("FIXME")
-        pass
         
     def _post_init_flux_to_dolfin(self):
         variables = {}
@@ -933,57 +892,57 @@ class Flux(ObjectInstance):
         self.get_ukeys(solver_system)
         self.get_integration_measure(cc, solver_system)
 
-    def get_involved_species_parameters_compartment(self, cc):
-        sym_str_list = {str(x) for x in self.sym_list}
-        self.involved_species = sym_str_list.intersection(self.species_map.keys())
-        self.involved_species.add(self.species_name)
-        self.involved_parameters = sym_str_list.intersection(self.param_map.keys())
+    # def get_involved_species_parameters_compartment(self, cc):
+    #     sym_str_list = {str(x) for x in self.sym_list}
+    #     self.involved_species = sym_str_list.intersection(self.species_map.keys())
+    #     self.involved_species.add(self.species_name)
+    #     self.involved_parameters = sym_str_list.intersection(self.param_map.keys())
 
-        # truncate species_map and param_map so they only contain the species and parameters we need
-        self.species_map = dict((k, self.species_map[k]) for k in self.involved_species if k in self.species_map)
-        self.param_map = dict((k, self.param_map[k]) for k in self.involved_parameters if k in self.param_map)
+    #     # truncate species_map and param_map so they only contain the species and parameters we need
+    #     self.species_map = dict((k, self.species_map[k]) for k in self.involved_species if k in self.species_map)
+    #     self.param_map = dict((k, self.param_map[k]) for k in self.involved_parameters if k in self.param_map)
 
-        self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.species_map.values()])
+    #     self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.species_map.values()])
 
-        if self.explicit_restriction_to_domain:
-            self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
-        if len(self.involved_compartments) not in (1,2):
-            raise Exception("Number of compartments involved in a flux must be either one or two!")
-    #def flux_to_dolfin(self):
+    #     if self.explicit_restriction_to_domain:
+    #         self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
+    #     if len(self.involved_compartments) not in (1,2):
+    #         raise Exception("Number of compartments involved in a flux must be either one or two!")
+    # #def flux_to_dolfin(self):
 
-    def get_flux_dimensionality(self):
-        destination_compartment = self.species_map[self.species_name].compartment
-        destination_dim = destination_compartment.dimensionality
-        comp_names = set(self.involved_compartments.keys())
-        comp_dims = set([comp.dimensionality for comp in self.involved_compartments.values()])
-        comp_names.remove(destination_compartment.name)
-        comp_dims.remove(destination_dim)
+    # def get_flux_dimensionality(self):
+    #     destination_compartment = self.species_map[self.species_name].compartment
+    #     destination_dim = destination_compartment.dimensionality
+    #     comp_names = set(self.involved_compartments.keys())
+    #     comp_dims = set([comp.dimensionality for comp in self.involved_compartments.values()])
+    #     comp_names.remove(destination_compartment.name)
+    #     comp_dims.remove(destination_dim)
 
-        if len(comp_names) == 0:
-            self.flux_dimensionality = [destination_dim]*2
-            self.source_compartment = destination_compartment.name
-        else:
-            source_dim = comp_dims.pop()
-            self.flux_dimensionality = [source_dim, destination_dim]
-            self.source_compartment = comp_names.pop()
+    #     if len(comp_names) == 0:
+    #         self.flux_dimensionality = [destination_dim]*2
+    #         self.source_compartment = destination_compartment.name
+    #     else:
+    #         source_dim = comp_dims.pop()
+    #         self.flux_dimensionality = [source_dim, destination_dim]
+    #         self.source_compartment = comp_names.pop()
 
-        self.destination_compartment = destination_compartment.name
+    #     self.destination_compartment = destination_compartment.name
 
-    def get_boundary_marker(self):
-        dim = self.flux_dimensionality
-        if dim[1] <= dim[0]:
-            self.boundary_marker = None
-        elif dim[1] > dim[0]: # boundary flux
-            self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
+    # def get_boundary_marker(self):
+    #     dim = self.flux_dimensionality
+    #     if dim[1] <= dim[0]:
+    #         self.boundary_marker = None
+    #     elif dim[1] > dim[0]: # boundary flux
+    #         self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
 
-    def get_flux_units(self):
-        sp = self.species_map[self.species_name]
-        compartment_units = sp.compartment.compartment_units
-        # a boundary flux
-        if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]):
-            self.flux_units = sp.concentration_units / compartment_units * sp.diffusion_units
-        else:
-            self.flux_units = sp.concentration_units / unit.s
+    # def get_flux_units(self):
+    #     sp = self.species_map[self.species_name]
+    #     compartment_units = sp.compartment.compartment_units
+    #     # a boundary flux
+    #     if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]):
+    #         self.flux_units = sp.concentration_units / compartment_units * sp.diffusion_units
+    #     else:
+    #         self.flux_units = sp.concentration_units / unit.s
 
     def get_is_linear(self):
         """

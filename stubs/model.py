@@ -631,6 +631,20 @@ class Model:
                 flux.evaluate_equation()
                 assert flux.equation_units == flux_units
 
+   #     self.fc = self.rc.get_flux_container()
+    #     self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
+    #     self.fc.do_to_all('flux_to_dolfin')
+ 
+    #     self.set_allow_extrapolation()
+    #     # Turn fluxes into fenics/dolfin expressions
+    #     self.assemble_reactive_fluxes()
+    #     self.assemble_diffusive_fluxes()
+    #     self.sort_forms()
+
+    #     self.init_solutions_and_plots()
+
+
+
     
     # def _init_5_3_reaction_fluxes_to_forms(self):
     #     for flux in self.fc:

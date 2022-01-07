@@ -6,7 +6,6 @@ Testing more verbose documentation.
 
 .. automodule:: stubs
 .. automodule:: stubs.model_assembly
-.. automodule:: stubs.model_building
 .. automodule:: stubs.common
 .. automodule:: stubs.data_manipulation
 .. automodule:: stubs.model

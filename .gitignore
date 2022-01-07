@@ -88,7 +88,7 @@ ENV/
 Dockerfile_jgl
 
 # vs code
-**.code-workspace
+#**.code-workspace
 
 # debugging code
 #debug_stubs.py

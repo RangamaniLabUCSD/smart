@@ -12,6 +12,5 @@ Python API Reference
    stubs.data_manipulation
    stubs.mesh
    stubs.model_assembly
-   stubs.model_building
    stubs.model
    stubs.solvers
