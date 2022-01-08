@@ -79,7 +79,7 @@ class Model:
         self.timings = ddict(list)
 
         # Functional forms
-        self.Forms = stubs.model_assembly.FormContainer()
+        self.forms = stubs.model_assembly.FormContainer()
         self.a = {}
         self.L = {}
         self.F = {}
@@ -252,9 +252,10 @@ class Model:
         if sum([c.size for c in containers]) != len(self._all_keys):
             raise ValueError("Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name.")
         
+        protected_names = {'x[0]', 'x[1]', 'x[2]', 't', 'unit_scale_factor'}
         # Protect the variable names 'x[0]', 'x[1]', 'x[2]' and 't' because they are used for spatial dimensions and time
-        if not {'x[0]', 'x[1]', 'x[2]', 't'}.isdisjoint(self._all_keys):
-            raise ValueError("An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', or 't'). Please change the name.")
+        if not protected_names.isdisjoint(self._all_keys):
+            raise ValueError("An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', 't', or 'unit_scale_factor'). Please change the name.")
         
         # Make sure there are no overlapping markers or markers with value 0
         self._all_markers = set()
@@ -383,19 +384,28 @@ class Model:
         if all_parameters != set(self.pc.keys):
             print_str = f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions."
             if self.config.flags['allow_unused_components']:
+                for parameter in set(self.pc.keys).difference(all_parameters):
+                    self.pc.remove(parameter)
                 fancy_print(print_str, format_type='log_urgent')
+                fancy_print(f"Removing unused parameter(s) from model!", format_type='log_urgent')
             else:
                 raise ValueError(print_str) 
         if all_species != set(self.sc.keys):
             print_str = f"Species, {set(self.sc.keys).difference(all_species)}, are unused in any reactions."
             if self.config.flags['allow_unused_components']:
+                for species in set(self.sc.keys).difference(all_species):
+                    self.sc.remove(species)
                 fancy_print(print_str, format_type='log_urgent')
+                fancy_print(f"Removing unused species(s) from model!", format_type='log_urgent')
             else:
                 raise ValueError(print_str) 
         if all_compartments != set(self.cc.keys):
             print_str = f"Compartment(s), {set(self.cc.keys).difference(all_compartments)}, are unused in any reactions."
             if self.config.flags['allow_unused_components']:
+                for compartment in set(self.cc.keys).difference(all_compartments):
+                    self.cc.remove(compartment)
                 fancy_print(print_str, format_type='log_urgent')
+                fancy_print(f"Removing unused compartment(s) from model!", format_type='log_urgent')
             else:
                 raise ValueError(print_str) 
 
@@ -512,7 +522,8 @@ class Model:
 
             # functions
             for key, func in self.u.items():
-                compartment.u[key] = sub(func,cidx) #func.sub(cidx)
+                #compartment.u[key] = sub(func,cidx) #func.sub(cidx)
+                compartment.u[key] = func.sub(cidx)
 
             # trial and test functions
             compartment.ut = self.ut[cidx]
@@ -529,6 +540,7 @@ class Model:
 
                 for key in compartment.u.keys():
                     species.u[key] = sub(compartment.u[key], species.dof_index) #compartment.u[key].sub(species.dof_index)
+                species.ut = sub(compartment.ut, species.dof_index)
                     
     def _init_4_5_name_functions(self):
         fancy_print(f"Naming functions and subfunctions", format_type='log')
@@ -573,249 +585,123 @@ class Model:
                 else:
                     self.dolfin_set_function_values(species, ukey, species.initial_condition_expression)
 
-        # # project to boundary/volume functions
-        # self.update_solution_volume_to_boundary()
-        # self.update_solution_boundary_to_volume()
-
-    # TODO
-    #     self.rc.reaction_to_fluxes()
-    #     #self.rc.do_to_all('reaction_to_fluxes')
-    #     self.fc = self.rc.get_flux_container()
-    #     self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-    #     self.fc.do_to_all('flux_to_dolfin')
- 
-    #     self.set_allow_extrapolation()
-    #     # Turn fluxes into fenics/dolfin expressions
-    #     self.assemble_reactive_fluxes()
-    #     self.assemble_diffusive_fluxes()
-    #     self.sort_forms()
-
-    #     self.init_solutions_and_plots()
     def _init_5_1_reactions_to_fluxes(self):
         fancy_print(f"Convert reactions to flux objects", format_type='log')
         for reaction in self.rc:
             reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
             
-    def _init_5_2_set_flux_units(self):
-        fancy_print(f"Checking flux units for dimensional consistency.", format_type='log')
+    def _init_5_2_create_variational_forms(self):
+        """Setup the variational forms in dolfin"""
+        fancy_print(f"Creating functional forms", format_type='log')
+        # reactive terms
         for flux in self.fc:
-            concentration_units = flux.destination_species.concentration_units
-            compartment_units   = flux.destination_compartment.compartment_units
-            diffusion_units     = flux.destination_species.diffusion_units
+            form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
+            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type))
+        for species in self.sc:
+            # if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
+            #     u = sp.u['t']
+            # elif self.solver_system.nonlinear_solver.method == 'newton':
+            #     u = sp.u['u']
+            # diffusive terms
+            u  = species.u['u']
+            ut = species.ut
+            un = species.u['n']
+            v  = species.v
+            D  = species.D
+            dx = species.compartment.mesh.dx
+            Dform = D * d.inner(d.grad(ut), d.grad(v)) * dx
+            self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion'))
+            # mass (time derivative) terms
+            Muform = (ut)/self.dT * v * dx
+            self.forms.add(stubs.model_assembly.Form(f"mass_{species.name}", Muform, species, 'mass_u'))
+            Munform = (-un)/self.dT * v * dx
+            self.forms.add(stubs.model_assembly.Form(f"mass_{species.name}", Munform, species, 'mass_un'))
 
-            if flux.is_boundary_condition:
-                flux_units = concentration_units / compartment_units * diffusion_units
-            else:
-                flux_units = concentration_units / unit.s
+    def _init_5_3_create_variational_problems(self):
+        fancy_print("Formulating problem as F(u;v) == 0 for newton iterations", format_type='log')
+        # self.all_forms = sum([f.form for f in self.forms])
+        # self.problem = d.NonlinearVariationalProblem(self.all_forms, self.u['u'], bcs=None)
 
-            # correct units
-            if flux_units.dimensionality != flux.equation_units.dimensionality:
-                raise ValueError(f"Flux {flux.name} has wrong units "
-                                 f"(expected {flux_units}, got {flux.equation_units}.")
-            else:
-                flux.unit_scale_factor = flux.equation_units.to(flux_units)/flux.equation_units
-                assert flux.unit_scale_factor.dimensionless
-                assert flux.equation_units*flux.unit_scale_factor == flux.equation_units.to(flux_units)
+        
+        # for compartment in self.cc:
 
-                if flux.unit_scale_factor.magnitude == 1.0:
-                    continue
+        #     compartment_forms = [f.form for f in self.forms if f.compartment==compartment]
+        #     self.F[compartment.name] = sum(compartment_forms)
+        #     J = d.derivative(self.F[compartment.name], compartment.u['u'])
 
-                fancy_print(f"\nFlux {flux.name} scaled by {flux.unit_scale_factor}", format_type='log')
-                fancy_print(f"Old flux units: {flux.equation_units}", format_type='log')
-                fancy_print(f"New flux units: {flux_units}", format_type='log')
-                print("")
 
-                # update flux.equation_value and flux.equation_units
-                flux.equation_eval *= flux.unit_scale_factor
-                flux.evaluate_equation()
-                assert flux.equation_units == flux_units
+        #     compartment.J = J
+            # problem = d.NonlinearVariationalProblem(self.F[compartment.name], compartment.u['u'], [], J)
 
-   #     self.fc = self.rc.get_flux_container()
-    #     self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-    #     self.fc.do_to_all('flux_to_dolfin')
- 
+            # self.nonlinear_solver[compartment.name] = d.NonlinearVariationalSolver(problem)
+            # p = self.nonlinear_solver[compartment.name].parameters
+            # p['nonlinear_solver'] = 'newton'
+            # p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
+            # p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
+            # p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+
     #     self.set_allow_extrapolation()
-    #     # Turn fluxes into fenics/dolfin expressions
-    #     self.assemble_reactive_fluxes()
-    #     self.assemble_diffusive_fluxes()
-    #     self.sort_forms()
 
     #     self.init_solutions_and_plots()
 
 
+    # def set_allow_extrapolation(self):
+    #     for comp_name in self.u.keys():
+    #         ucomp = self.u[comp_name]
+    #         for func_key in ucomp.keys():
+    #             if func_key != 't': # trial function by convention
+    #                 self.u[comp_name][func_key].set_allow_extrapolation(True)
 
-    
-    # def _init_5_3_reaction_fluxes_to_forms(self):
-    #     for flux in self.fc:
-            #CONTINUE
+#     def sort_forms(self):
+#         """
+#         Organizes forms based on solution method. E.g. for picard iterations we
+#         split the forms into a bilinear and linear component, for Newton we
+#         simply solve F(u;v)=0.
+#         """
+#         comp_list = [self.cc[key] for key in self.u.keys()]
+#         self.split_forms = ddict(dict)
+#         form_types = set([f.form_type for f in self.forms.form_list])
 
-        
-    def assemble_reactive_fluxes(self):
-        """
-        Creates the actual dolfin objects for each flux. Checks units for consistency
-        """
-        for j in self.fc:
-            total_scaling = 1.0 # all adjustments needed to get congruent units
-            sp = j.species_map[j.species_name]
-            prod = j.prod
-            unit_prod = j.unit_prod
-            # first, check unit consistency
-            if (unit_prod/j.flux_units).dimensionless:
-                setattr(j, 'scale_factor', 1*unit.dimensionless)
-                pass
-            else:
-                if hasattr(j, 'length_scale_factor'):
-                    Print("Adjusting flux for %s by the provided length scale factor." % (j.name, j.length_scale_factor))
-                    length_scale_factor = getattr(j, 'length_scale_factor')
-                else:
-                    if len(j.involved_compartments.keys()) < 2:
-                        Print("Units of flux: %s" % unit_prod)
-                        Print("Desired units: %s" % j.flux_units)
-                        raise Exception("Flux %s seems to be a boundary flux (or has inconsistent units) but only has one compartment, %s."
-                            % (j.name, j.destination_compartment))
-                    length_scale_factor = j.involved_compartments[j.source_compartment].scale_to[j.destination_compartment]
+#         if self.solver_system.nonlinear_solver.method == 'picard':
+#             raise Exception("Picard functionality needs to be reviewed")
+#             # Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
+#             # for comp in comp_list:
+#             #     comp_forms = [f.dolfin_form for f in self.forms.select_by('compartment_name', comp.name)]
+#             #     self.a[comp.name] = d.lhs(sum(comp_forms))
+#             #     self.L[comp.name] = d.rhs(sum(comp_forms))
+#             #     problem = d.LinearVariationalProblem(self.a[comp.name],
+#             #                                          self.L[comp.name], self.u[comp.name]['u'], [])
+#             #     self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
+#             #     p = self.linear_solver[comp.name].parameters
+#             #     p['linear_solver'] = self.solver_system.linear_solver.method
+#             #     if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
+#             #         p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
+#             #         p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
-                Print(f'\nThe flux, {j.flux_name}, from compartment {j.source_compartment} to {j.destination_compartment}, has units {colored(unit_prod.to_root_units(), "red")}... the desired units for this flux are {colored(j.flux_units, "cyan")}')
+#         elif self.solver_system.nonlinear_solver.method == 'newton':
+#             Print("Formulating problem as F(u;v) == 0 for newton iterations")
+#             for comp in comp_list:
+#                 comp_forms = [f.dolfin_form for f in self.forms.select_by('compartment_name', comp.name)]
+#                 self.F[comp.name] = sum(comp_forms)
+#                 J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
 
-                if (length_scale_factor*unit_prod/j.flux_units).dimensionless:
-                    pass
-                elif (1/length_scale_factor*unit_prod/j.flux_units).dimensionless:
-                    length_scale_factor = 1/length_scale_factor
-                else:
-                    raise Exception("Inconsitent units!")
+#                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
 
-                Print('Adjusted flux with the length scale factor ' +
-                      colored("%f [%s]"%(length_scale_factor.magnitude,str(length_scale_factor.units)), "cyan") + ' to match units.\n')
+#                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
+#                 p = self.nonlinear_solver[comp.name].parameters
+#                 p['nonlinear_solver'] = 'newton'
+#                 p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
+#                 p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
+#                 p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
 
-                prod *= length_scale_factor.magnitude
-                total_scaling *= length_scale_factor.magnitude
-                unit_prod *= length_scale_factor.units*1
-                setattr(j, 'length_scale_factor', length_scale_factor)
-
-            # if units are consistent in dimensionality but not magnitude, adjust values
-            if j.flux_units != unit_prod:
-                unit_scaling = unit_prod.to(j.flux_units).magnitude
-                total_scaling *= unit_scaling
-                prod *= unit_scaling
-                Print(('\nThe flux, %s, has units '%j.flux_name + colored(unit_prod, "red") +
-                    "...the desired units for this flux are " + colored(j.flux_units, "cyan")))
-                Print('Adjusted value of flux by ' + colored("%f"%unit_scaling, "cyan") + ' to match units.\n')
-                setattr(j, 'unit_scaling', unit_scaling)
-            else:
-                setattr(j, 'unit_scaling', 1)
-
-            setattr(j, 'total_scaling', total_scaling)
-
-            # adjust sign+stoich if necessary
-            prod *= j.signed_stoich
-
-            # multiply by appropriate integration measure and test function
-            if j.flux_dimensionality[0] < j.flux_dimensionality[1]:
-                form_key = 'B'
-            else:
-                form_key = 'R'
-            #prod = prod*sp.v*j.int_measure
-            dolfin_flux = prod*j.int_measure
-
-            setattr(j, 'dolfin_flux', dolfin_flux)
-
-            BRform = -prod*sp.v*j.int_measure # by convention, terms are all defined as if they were on the lhs of the equation e.g. F(u;v)=0
-            self.Forms.add(stubs.model_assembly.Form(BRform, sp, form_key, flux_name=j.name))
-
-
-    def assemble_diffusive_fluxes(self):
-        min_dim = min(self.cc.get_property('dimensionality').values())
-        max_dim = max(self.cc.get_property('dimensionality').values())
-        dT = self.dT
-
-        for sp_name, sp in self.sc.items:
-            if sp.is_in_a_reaction:
-                if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
-                    u = sp.u['t']
-                elif self.solver_system.nonlinear_solver.method == 'newton':
-                    u = sp.u['u']
-                un = sp.u['n']
-                v = sp.v
-                D = sp.D
-
-                if sp.dimensionality == max_dim:
-                    dx = sp.compartment.dx
-                    Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
-                    self.Forms.add(stubs.model_assembly.Form(Dform, sp, 'D'))
-                elif sp.dimensionality < max_dim:
-                    if self.solver_system.ignore_surface_diffusion:
-                        dx=sp.compartment.dP
-                    else:
-                        dx = sp.compartment.dx
-                        Dform = D*d.inner(d.grad(u), d.grad(v)) * dx
-                        self.Forms.add(stubs.model_assembly.Form(Dform, sp, 'D'))
-
-                # time derivative
-                Mform_u = u/dT * v * dx
-                Mform_un = -un/dT * v * dx
-                self.Forms.add(stubs.model_assembly.Form(Mform_u, sp, "Mu"))
-                self.Forms.add(stubs.model_assembly.Form(Mform_un, sp, "Mun"))
-
-            else:
-                Print("Species %s is not in a reaction?" %  sp_name)
-
-    def set_allow_extrapolation(self):
-        for comp_name in self.u.keys():
-            ucomp = self.u[comp_name]
-            for func_key in ucomp.keys():
-                if func_key != 't': # trial function by convention
-                    self.u[comp_name][func_key].set_allow_extrapolation(True)
-
-    def sort_forms(self):
-        """
-        Organizes forms based on solution method. E.g. for picard iterations we
-        split the forms into a bilinear and linear component, for Newton we
-        simply solve F(u;v)=0.
-        """
-        comp_list = [self.cc[key] for key in self.u.keys()]
-        self.split_forms = ddict(dict)
-        form_types = set([f.form_type for f in self.Forms.form_list])
-
-        if self.solver_system.nonlinear_solver.method == 'picard':
-            raise Exception("Picard functionality needs to be reviewed")
-            # Print("Splitting problem into bilinear and linear forms for picard iterations: a(u,v) == L(v)")
-            # for comp in comp_list:
-            #     comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-            #     self.a[comp.name] = d.lhs(sum(comp_forms))
-            #     self.L[comp.name] = d.rhs(sum(comp_forms))
-            #     problem = d.LinearVariationalProblem(self.a[comp.name],
-            #                                          self.L[comp.name], self.u[comp.name]['u'], [])
-            #     self.linear_solver[comp.name] = d.LinearVariationalSolver(problem)
-            #     p = self.linear_solver[comp.name].parameters
-            #     p['linear_solver'] = self.solver_system.linear_solver.method
-            #     if type(self.solver_system.linear_solver) == stubs.solvers.DolfinKrylovSolver:
-            #         p['krylov_solver'].update(self.solver_system.linear_solver.__dict__)
-            #         p['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
-        elif self.solver_system.nonlinear_solver.method == 'newton':
-            Print("Formulating problem as F(u;v) == 0 for newton iterations")
-            for comp in comp_list:
-                comp_forms = [f.dolfin_form for f in self.Forms.select_by('compartment_name', comp.name)]
-                self.F[comp.name] = sum(comp_forms)
-                J = d.derivative(self.F[comp.name], self.u[comp.name]['u'])
-
-                problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
-
-                self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
-                p = self.nonlinear_solver[comp.name].parameters
-                p['nonlinear_solver'] = 'newton'
-                p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
-                p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
-                p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
-        elif self.solver_system.nonlinear_solver.method == 'IMEX':
-            raise Exception("IMEX functionality needs to be reviewed")
-#            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
-#            for comp in comp_list:
-#                comp_forms = self.Forms.select_by('compartment_name', comp.name)
-#                for form_type in form_types:
-#                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
+#         elif self.solver_system.nonlinear_solver.method == 'IMEX':
+#             raise Exception("IMEX functionality needs to be reviewed")
+# #            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
+# #            for comp in comp_list:
+# #                comp_forms = self.forms.select_by('compartment_name', comp.name)
+# #                for form_type in form_types:
+# #                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
     #===============================================================================
     # Model - Solving

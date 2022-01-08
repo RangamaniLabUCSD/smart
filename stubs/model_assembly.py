@@ -10,11 +10,11 @@ from collections import defaultdict as ddict
 from typing import Type, Any
 
 import dolfin as d
+import ufl
 import mpi4py.MPI as pyMPI
 import pandas
 import petsc4py.PETSc as PETSc
 from termcolor import colored
-from ufl.operators import variable
 
 Print = PETSc.Sys.Print
 
@@ -158,7 +158,7 @@ class ObjectContainer:
     # ==============================================================================
     # ObjectContainer - Printing/data-formatting related methods
     # ==============================================================================   
-    def get_pandas_dataframe(self, properties_to_print=[], include_idx=True):
+    def get_pandas_dataframe(self, properties_to_print=None, include_idx=True):
         df = pandas.DataFrame()
         if include_idx:
             if properties_to_print and 'idx' not in properties_to_print:
@@ -175,7 +175,7 @@ class ObjectContainer:
 
         return df
 
-    def print_to_latex(self, properties_to_print=[], escape=False,
+    def print_to_latex(self, properties_to_print=None, escape=False,
                        include_idx=False):
         df = self.get_pandas_dataframe(properties_to_print=properties_to_print,
                                        include_idx=include_idx)
@@ -197,7 +197,7 @@ class ObjectContainer:
             tex_str = df.to_latex(index=False, longtable=True, escape=escape)
             print(tex_str)
 
-    def print(self, tablefmt='fancy_grid', properties_to_print=[]):
+    def print(self, tablefmt='fancy_grid', properties_to_print=None):
         if rank == root:
             if properties_to_print:
                 if type(properties_to_print) != list: properties_to_print=[properties_to_print]
@@ -218,7 +218,7 @@ class ObjectContainer:
 
         return tabulate(df, headers='keys', tablefmt='fancy_grid')
 
-    def vprint(self, keyList=None, properties_to_print=[], print_all=False):
+    def vprint(self, keyList=None, properties_to_print=None, print_all=False):
         # in order of priority: kwarg, container object property, else print all keys
         if rank == root:
             if keyList:
@@ -270,14 +270,14 @@ class ObjectInstance:
             if isinstance(attr, pint.Unit):
                 setattr(self, name, common.pint_unit_to_quantity(attr))
 
-    def get_pandas_series(self, properties_to_print=[], idx=None):
+    def get_pandas_series(self, properties_to_print=None, idx=None):
         if properties_to_print:
             dict_to_convert = odict({'idx': idx})
             dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in properties_to_print]))
         else:
             dict_to_convert = self.__dict__
         return pandas.Series(dict_to_convert, name=self.name)
-    def print(self, properties_to_print=[]):
+    def print(self, properties_to_print=None):
         if rank==root:
             print("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
@@ -300,7 +300,7 @@ class ParameterContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Parameter)
 
-        self.properties_to_print = ['name', 'value', 'unit', 'is_time_dependent', 'sym_expr', 'notes', 'group']
+        self.properties_to_print = ['value', 'unit', 'is_time_dependent', 'sym_expr', 'notes', 'group']
 
 @dataclass
 class Parameter(ObjectInstance):
@@ -333,8 +333,7 @@ class Parameter(ObjectInstance):
         parameter.preint_sampling_data  = preint_sampling_data
         parameter.is_time_dependent     = True
         parameter.is_space_dependent    = False # not supported yet
-        fancy_print(f"Creating dolfin object for time-dependent parameter {name}", format_type='log')
-        parameter.dolfin_constant = d.Constant(value)
+        fancy_print(f"Time-dependent parameter {name} loaded from file.", format_type='log')
 
         return parameter
     
@@ -370,9 +369,8 @@ class Parameter(ObjectInstance):
         parameter.is_time_dependent     = is_time_dependent
         parameter.is_space_dependent    = is_space_dependent
 
-        fancy_print(f"Creating dolfin object for time-dependent parameter {name}", format_type='log')
-        parameter.dolfin_constant = d.Constant(value)
         parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+        fancy_print(f"Time-dependent parameter {name} evaluated from expression.", format_type='log')
 
         return parameter
 
@@ -381,6 +379,11 @@ class Parameter(ObjectInstance):
             self.is_time_dependent     = False
         if not hasattr(self, 'is_space_dependent'):
             self.is_space_dependent    = False
+        
+        attributes = ['sym_expr', 'preint_sym_expr', 'sampling_data', 'preint_sampling_data', 'dolfin_expression']
+        for attribute in attributes:
+            if not hasattr(self, attribute):
+                setattr(self, attribute, None)
 
         self.t = 0.0
 
@@ -389,7 +392,16 @@ class Parameter(ObjectInstance):
         self._convert_pint_unit_to_quantity()
         self.check_validity()
 
-        self.value_unit = self.value*self.unit
+        #self.dolfin_constant = d.Constant(self.value)
+        #self.value_unit = self.value*self.unit
+    
+    @property
+    def dolfin_constant(self):
+        return d.Constant(self.value)
+
+    @property
+    def dolfin_quantity(self):
+        return self.dolfin_constant * self.unit
 
     def check_validity(self):
         if self.is_time_dependent:
@@ -401,7 +413,7 @@ class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
 
-        self.properties_to_print = ['name', 'compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
+        self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
     # def assemble_compartment_indices(self, rc, cc):
     #     """
@@ -564,14 +576,27 @@ class Species(ObjectInstance):
         if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
             raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
 
+    @property
+    def dolfin_quantity(self):
+        return self.u['u'] * self.concentration_units
+
+
 
 class CompartmentContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Compartment)
 
-        self.properties_to_print = ['name', 'dimensionality', 'num_species', 'num_vertices', 'cell_marker', 'is_in_a_reaction', 'nvolume']
+        self.properties_to_print = ['dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_cells', 'cell_marker', '_nvolume']
         self.meshes = {}
         self.vertex_mappings = {} # from submesh -> parent indices
+    
+    def print(self, tablefmt='fancy_grid', properties_to_print=None):
+        for c in self:
+            c.nvolume
+            c.num_vertices
+            c.num_dofs
+            c.num_cells
+        super().print(tablefmt, self.properties_to_print)
 
 
 @dataclass
@@ -612,22 +637,27 @@ class Compartment(ObjectInstance):
     @property
     def nvolume(self):
         "nvolume with proper units"
-        return self.mesh.nvolume * self.compartment_units ** self.dimensionality
+        self._nvolume = self.mesh.nvolume * self.compartment_units ** self.dimensionality
+        return self._nvolume
     
     @property
     def num_cells(self):
-        return self.mesh.num_cells
+        self._num_cells = self.mesh.num_cells
+        return self._num_cells
     @property
     def num_facets(self):
-        return self.mesh.num_facets
+        self._num_facets = self.mesh.num_facets
+        return self._num_facets
     @property
     def num_vertices(self):
-        return self.mesh.num_vertices
+        self._num_vertices = self.mesh.num_vertices
+        return self._num_vertices
 
     @property
     def num_dofs(self):
         "Number of degrees of freedom for this compartment"
-        return self.num_species * self.num_vertices
+        self._num_dofs = self.num_species * self.num_vertices
+        return self._num_dofs
 
 
 class ReactionContainer(ObjectContainer):
@@ -635,7 +665,7 @@ class ReactionContainer(ObjectContainer):
         super().__init__(Reaction)
 
         #self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_map', 'reaction_type', 'explicit_restriction_to_domain', 'group']
-        self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f']#, 'eqn_r']
+        self.properties_to_print = ['lhs', 'rhs', 'eqn_f_str', 'eqn_r_str']
 
     # def get_species_compartment_counts(self, sc, cc):
     #     """
@@ -728,7 +758,7 @@ class FluxContainer(ObjectContainer):
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['species_name', 'equation']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.properties_to_print = ['_species_name', 'equation', 'topology', 'equation_quantity']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
 @dataclass
 class Flux(ObjectInstance):
@@ -749,42 +779,37 @@ class Flux(ObjectInstance):
 
     def __post_init__(self):
         # self.tracked_values = []
-        # self.sym_list = [str(x) for x in self.equation.free_symbols]
-        # self.lambda_eqn = sym.lambdify(self.sym_list, self.equation, modules=['sympy','numpy'])
-        # self.involved_species = list(self.species_map.keys())
-        # self.involved_parameters = list(self.param_map.keys())
+        # for nice printing
+        self._species_name = self.destination_species.name
+
         self._check_input_type_validity()
         self.check_validity()
 
+        # Add in an uninitialized unit_scale_factor
+        self.unit_scale_factor = 1.0*unit.dimensionless
+        self.equation = self.equation * Symbol('unit_scale_factor')
+
         # Getting additional flux properties
         self._post_init_get_involved_species_parameters_compartments()
-        self._post_init_get_lambda_equation()
         self._post_init_get_flux_topology()
+        # Evaluate equation with no unit scale factor
+        self._post_init_get_lambda_equation()
+        self.evaluate_equation()
+        # Update equation with correct unit scale factor
+        self._post_init_get_flux_units()
         self._post_init_get_integration_measure()
-
-        # Get dolfin flux
-        self._post_init_flux_to_dolfin()
-
-        # self.get_is_linear()
-        # self.get_is_linear_comp()
-        # self.get_ukeys(solver_system)
 
     def _post_init_get_involved_species_parameters_compartments(self):
         self.destination_compartment = self.destination_species.compartment
         
         # Get the subset of species/parameters/compartments that are relevant
-        params_and_species = {str(x) for x in self.equation.free_symbols}
+        variables = {str(x) for x in self.equation.free_symbols}
         all_params  = self.reaction.parameters
         all_species = self.reaction.species
-        self.parameters    = {x: all_params[x] for x in params_and_species.intersection(all_params.keys())}
-        self.species       = {x: all_species[x] for x in params_and_species.intersection(all_species.keys())}
+        self.parameters    = {x: all_params[x] for x in variables.intersection(all_params.keys())}
+        self.species       = {x: all_species[x] for x in variables.intersection(all_species.keys())}
         self.compartments  = self.reaction.compartments
-        # print(self.compartments)
-        # assert self.compartments == {x.compartment_name: x for x in self.species.values()}
-    
-    def _post_init_get_lambda_equation(self):
-        self.lambda_equation = sym.lambdify(list(self.species.keys()) + list(self.parameters.keys()), 
-                                              self.equation, modules=['sympy','numpy'])
+
     
     def _post_init_get_flux_topology(self):
         """
@@ -833,6 +858,43 @@ class Flux(ObjectInstance):
             self.is_boundary_condition = True
         else:
             raise AssertionError()
+    
+    def _post_init_get_lambda_equation(self):
+        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
+
+    def _post_init_get_flux_units(self):
+        concentration_units = self.destination_species.concentration_units
+        compartment_units   = self.destination_compartment.compartment_units
+        diffusion_units     = self.destination_species.diffusion_units
+
+        # The expected units
+        if self.is_boundary_condition:
+            self._flux_units = concentration_units / compartment_units * diffusion_units # ~D*du/dn
+        else:
+            self._flux_units = concentration_units / unit.s # rhs term. ~du/dt
+
+        # If unit dimensionality is not correct a parameter likely needs to be adjusted
+        if self._flux_units.dimensionality != self.equation_units.dimensionality:
+            raise ValueError(f"Flux {self.name} has wrong units "
+                                f"(expected {self._flux_units}, got {self.equation_units}.")
+        # Fix scaling 
+        else:
+            self.unit_scale_factor = self.equation_units.to(self._flux_units)/self.equation_units
+            assert self.unit_scale_factor.dimensionless
+            assert self.equation_units*self.unit_scale_factor == self.equation_units.to(self._flux_units)
+
+            if self.unit_scale_factor.magnitude == 1.0:
+                return
+
+            fancy_print(f"\nFlux {self.name} scaled by {self.unit_scale_factor}", format_type='log')
+            fancy_print(f"Old flux units: {self.equation_units}", format_type='log')
+            fancy_print(f"New flux units: {self._flux_units}", format_type='log')
+            print("")
+
+            # update equation with new scale factor
+            self._post_init_get_lambda_equation()
+            self.evaluate_equation()
+            assert self.equation_units == self._flux_units
 
     def _post_init_get_integration_measure(self):
         if not self.is_boundary_condition:
@@ -860,197 +922,127 @@ class Flux(ObjectInstance):
             self.measure = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
         else:
             raise AssertionError()
-        
-    def _post_init_flux_to_dolfin(self):
-        variables = {}
 
-        for parameter in self.parameters.values():
-            if parameter.is_time_dependent:
-                variables[parameter.name] = parameter.dolfin_constant * parameter.unit
-            else:
-                variables[parameter.name] = parameter.value_unit
-        
-        for species in self.species.values():
-            variables[species.name] = species.u['u'] * species.concentration_units
-        
-        self.equation_eval  = self.lambda_equation(**variables)
-        self.evaluate_equation()
+    @property
+    def equation_variables(self):
+        variables = {variable.name: variable.dolfin_quantity for variable in {**self.parameters, **self.species}.values()}
+        variables.update({'unit_scale_factor': self.unit_scale_factor})
+        return variables
+    
+    @property
+    def equation_value(self):
+        return self.equation_quantity.magnitude
+    @property
+    def equation_units(self):
+        return common.pint_unit_to_quantity(self.equation_quantity.units)
         
     def evaluate_equation(self):
         "Updates equation_value and equation_units"
-        self.equation_value = self.equation_eval.magnitude
-        self.equation_units = common.pint_unit_to_quantity(self.equation_eval.units)
+        self.equation_quantity  = self.equation_lambda(**self.equation_variables)
     
-    def get_additional_flux_properties(self, cc, solver_system):
-        # get additional properties of the flux
-        self.get_involved_species_parameters_compartment(cc)
-        self.get_flux_dimensionality()
-        self.get_boundary_marker()
-        self.get_flux_units()
-        self.get_is_linear()
-        self.get_is_linear_comp()
-        self.get_ukeys(solver_system)
-        self.get_integration_measure(cc, solver_system)
+    @property
+    def form(self):
+        "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
+        return -1 * self.equation_value * self.destination_species.v * self.measure
+    
+    # def get_additional_flux_properties(self, cc, solver_system):
+    #     # get additional properties of the flux
+    #     self.get_involved_species_parameters_compartment(cc)
+    #     self.get_flux_dimensionality()
+    #     self.get_boundary_marker()
+    #     self.get_flux_units()
+    #     self.get_is_linear()
+    #     self.get_is_linear_comp()
+    #     self.get_ukeys(solver_system)
+    #     self.get_integration_measure(cc, solver_system)
 
-    # def get_involved_species_parameters_compartment(self, cc):
-    #     sym_str_list = {str(x) for x in self.sym_list}
-    #     self.involved_species = sym_str_list.intersection(self.species_map.keys())
-    #     self.involved_species.add(self.species_name)
-    #     self.involved_parameters = sym_str_list.intersection(self.param_map.keys())
 
-    #     # truncate species_map and param_map so they only contain the species and parameters we need
-    #     self.species_map = dict((k, self.species_map[k]) for k in self.involved_species if k in self.species_map)
-    #     self.param_map = dict((k, self.param_map[k]) for k in self.involved_parameters if k in self.param_map)
+    # def get_is_linear(self):
+    #     """
+    #     For a given flux we want to know which terms are linear
+    #     """
+    #     is_linear_wrt = {}
+    #     for sym_var in self.sym_list:
+    #         var_name = str(sym_var)
+    #         if var_name in self.involved_species:
+    #             if sym.diff(self.equation, var_name , 2).is_zero:
+    #                 is_linear_wrt[var_name] = True
+    #             else:
+    #                 is_linear_wrt[var_name] = False
 
-    #     self.involved_compartments = dict([(sp.compartment.name, sp.compartment) for sp in self.species_map.values()])
+    #     self.is_linear_wrt = is_linear_wrt
 
-    #     if self.explicit_restriction_to_domain:
-    #         self.involved_compartments.update({self.explicit_restriction_to_domain: cc[self.explicit_restriction_to_domain]})
-    #     if len(self.involved_compartments) not in (1,2):
-    #         raise Exception("Number of compartments involved in a flux must be either one or two!")
-    # #def flux_to_dolfin(self):
+    # def get_is_linear_comp(self):
+    #     """
+    #     Is the flux linear in terms of a compartment vector (e.g. dj/du['pm'])
+    #     """
+    #     is_linear_wrt_comp = {}
+    #     umap = {}
 
-    # def get_flux_dimensionality(self):
-    #     destination_compartment = self.species_map[self.species_name].compartment
-    #     destination_dim = destination_compartment.dimensionality
-    #     comp_names = set(self.involved_compartments.keys())
-    #     comp_dims = set([comp.dimensionality for comp in self.involved_compartments.values()])
-    #     comp_names.remove(destination_compartment.name)
-    #     comp_dims.remove(destination_dim)
+    #     for var_name in self.sym_list:
+    #         if var_name in self.involved_species:
+    #             comp_name = self.species_map[var_name].compartment_name
+    #             umap.update({var_name: 'u'+comp_name})
 
-    #     if len(comp_names) == 0:
-    #         self.flux_dimensionality = [destination_dim]*2
-    #         self.source_compartment = destination_compartment.name
-    #     else:
-    #         source_dim = comp_dims.pop()
-    #         self.flux_dimensionality = [source_dim, destination_dim]
-    #         self.source_compartment = comp_names.pop()
+    #     new_eqn = self.equation.subs(umap)
 
-    #     self.destination_compartment = destination_compartment.name
-
-    # def get_boundary_marker(self):
-    #     dim = self.flux_dimensionality
-    #     if dim[1] <= dim[0]:
-    #         self.boundary_marker = None
-    #     elif dim[1] > dim[0]: # boundary flux
-    #         self.boundary_marker = self.involved_compartments[self.source_compartment].first_index_marker
-
-    # def get_flux_units(self):
-    #     sp = self.species_map[self.species_name]
-    #     compartment_units = sp.compartment.compartment_units
-    #     # a boundary flux
-    #     if (self.boundary_marker and self.flux_dimensionality[1]>self.flux_dimensionality[0]):
-    #         self.flux_units = sp.concentration_units / compartment_units * sp.diffusion_units
-    #     else:
-    #         self.flux_units = sp.concentration_units / unit.s
-
-    def get_is_linear(self):
-        """
-        For a given flux we want to know which terms are linear
-        """
-        is_linear_wrt = {}
-        for sym_var in self.sym_list:
-            var_name = str(sym_var)
-            if var_name in self.involved_species:
-                if sym.diff(self.equation, var_name , 2).is_zero:
-                    is_linear_wrt[var_name] = True
-                else:
-                    is_linear_wrt[var_name] = False
-
-        self.is_linear_wrt = is_linear_wrt
-
-    def get_is_linear_comp(self):
-        """
-        Is the flux linear in terms of a compartment vector (e.g. dj/du['pm'])
-        """
-        is_linear_wrt_comp = {}
-        umap = {}
-
-        for var_name in self.sym_list:
-            if var_name in self.involved_species:
-                comp_name = self.species_map[var_name].compartment_name
-                umap.update({var_name: 'u'+comp_name})
-
-        new_eqn = self.equation.subs(umap)
-
-        for comp_name in self.involved_compartments:
-            if sym.diff(new_eqn, 'u'+comp_name, 2).is_zero:
-                is_linear_wrt_comp[comp_name] = True
-            else:
-                is_linear_wrt_comp[comp_name] = False
-
-        self.is_linear_wrt_comp = is_linear_wrt_comp
-
-    # def get_integration_measure(self, cc, solver_system):
-    #     sp = self.species_map[self.species_name]
-    #     flux_dim = self.flux_dimensionality
-    #     min_dim = min(cc.get_property('dimensionality').values())
-    #     max_dim = max(cc.get_property('dimensionality').values())
-
-    #     # boundary flux
-    #     if flux_dim[0] < flux_dim[1]:
-    #         self.int_measure = sp.compartment.ds(self.boundary_marker)
-    #     # volumetric flux (max dimension)
-    #     elif flux_dim[0] == flux_dim[1] == max_dim:
-    #         self.int_measure = sp.compartment.dx
-    #     # volumetric flux (min dimension)
-    #     elif flux_dim[1] == min_dim < max_dim:
-    #         if solver_system.ignore_surface_diffusion:
-    #             self.int_measure = sp.compartment.dP
+    #     for comp_name in self.involved_compartments:
+    #         if sym.diff(new_eqn, 'u'+comp_name, 2).is_zero:
+    #             is_linear_wrt_comp[comp_name] = True
     #         else:
-    #             self.int_measure = sp.compartment.dx
-    #     else:
-    #         raise Exception("I'm not sure what integration measure to use on a flux with this dimensionality")
+    #             is_linear_wrt_comp[comp_name] = False
 
-    def get_ukeys(self, solver_system):
-        """
-        Given the dimensionality of a flux (e.g. 2d surface to 3d vol) and the dimensionality
-        of a species, determine which term of u should be used
-        """
-        self.ukeys = {}
-        flux_vars = [str(x) for x in self.sym_list if str(x) in self.involved_species]
-        for var_name in flux_vars:
-            self.ukeys[var_name] = self.get_ukey(var_name, solver_system)
+    #     self.is_linear_wrt_comp = is_linear_wrt_comp
 
-    def get_ukey(self, var_name, solver_system):
-        sp = self.species_map[self.species_name]
-        var = self.species_map[var_name]
+    # def get_ukeys(self, solver_system):
+    #     """
+    #     Given the dimensionality of a flux (e.g. 2d surface to 3d vol) and the dimensionality
+    #     of a species, determine which term of u should be used
+    #     """
+    #     self.ukeys = {}
+    #     flux_vars = [str(x) for x in self.sym_list if str(x) in self.involved_species]
+    #     for var_name in flux_vars:
+    #         self.ukeys[var_name] = self.get_ukey(var_name, solver_system)
 
-        if solver_system.nonlinear_solver.method == 'newton':
-            # if var.dimensionality > sp.dimensionality:
-            #     return 'b'+sp.compartment_name
-            # else:
-            #     return 'u'
+    # def get_ukey(self, var_name, solver_system):
+    #     sp = self.species_map[self.species_name]
+    #     var = self.species_map[var_name]
 
-            # Testing volume interpolated functions
-            if var.dimensionality > sp.dimensionality:
-                return 'b_'+sp.compartment_name
-            elif var.dimensionality < sp.dimensionality:
-                return 'v_'+sp.compartment_name
-            else:
-                return 'u'
+    #     if solver_system.nonlinear_solver.method == 'newton':
+    #         # if var.dimensionality > sp.dimensionality:
+    #         #     return 'b'+sp.compartment_name
+    #         # else:
+    #         #     return 'u'
 
-        elif solver_system.nonlinear_solver.method == 'IMEX':
-            ## same compartment
-            # dynamic lhs
-            # if var.name == sp.name:
-            #     if self.is_linear_wrt[sp.name]:
-            #         return 't'
-            #     else:
-            #         return 'n'
-            # static lhs
-            if var.compartment_name == sp.compartment_name:
-                if self.is_linear_wrt_comp[sp.compartment_name]:
-                    return 't'
-                else:
-                    return 'n'
-            ## different compartments
-            # volume -> surface
-            if var.dimensionality > sp.dimensionality:
-                return 'b_'+sp.compartment_name
-            # surface -> volume is covered by first if statement in get_ukey()
+    #         # Testing volume interpolated functions
+    #         if var.dimensionality > sp.dimensionality:
+    #             return 'b_'+sp.compartment_name
+    #         elif var.dimensionality < sp.dimensionality:
+    #             return 'v_'+sp.compartment_name
+    #         else:
+    #             return 'u'
 
-        raise Exception("Missing logic in get_ukey(); contact a developer...")
+    #     elif solver_system.nonlinear_solver.method == 'IMEX':
+    #         ## same compartment
+    #         # dynamic lhs
+    #         # if var.name == sp.name:
+    #         #     if self.is_linear_wrt[sp.name]:
+    #         #         return 't'
+    #         #     else:
+    #         #         return 'n'
+    #         # static lhs
+    #         if var.compartment_name == sp.compartment_name:
+    #             if self.is_linear_wrt_comp[sp.compartment_name]:
+    #                 return 't'
+    #             else:
+    #                 return 'n'
+    #         ## different compartments
+    #         # volume -> surface
+    #         if var.dimensionality > sp.dimensionality:
+    #             return 'b_'+sp.compartment_name
+    #         # surface -> volume is covered by first if statement in get_ukey()
+
+    #     raise Exception("Missing logic in get_ukey(); contact a developer...")
 
     # def flux_to_dolfin(self):
     #     value_dict = {}
@@ -1078,42 +1070,55 @@ class Flux(ObjectInstance):
     #     self.prod = prod
     #     self.unit_prod = unit_prod
 
-class FormContainer:
+
+class FormContainer(ObjectContainer):
     def __init__(self):
-        self.form_list = []
-    def add(self, new_form):
-        self.form_list.append(new_form)
-    def select_by(self, selection_key, value):
-        return [f for f in self.form_list if getattr(f, selection_key)==value]
-    def inspect(self, form_list=None):
-        if not form_list:
-            form_list = self.form_list
+        super().__init__(Form)
 
-        for index, form in enumerate(form_list):
-            Print("Form with index %d from form_list..." % index)
-            if form.flux_name:
-                Print("Flux name: %s" % form.flux_name)
-            Print("Species name: %s" % form.species_name)
-            Print("Form type: %s" % form.form_type)
-            form.inspect()
+        self.properties_to_print = ['form', 'form_type', '_compartment_name']
+    
+    def print(self, tablefmt='fancy_grid', properties_to_print=None):
+        for f in self:
+            f.integrals
+        super().print(tablefmt, self.properties_to_print)
 
+    # def inspect(self, form_list=None):
+    #     if not form_list:
+    #         form_list = self.form_list
 
-class Form:
-    def __init__(self, dolfin_form, species, form_type, flux_name=None):
-        # form_type:
-        # 'M': transient/mass form (holds time derivative)
-        # 'D': diffusion form
-        # 'R': domain reaction forms
-        # 'B': boundary reaction forms
+    #     for index, form in enumerate(form_list):
+    #         Print("Form with index %d from form_list..." % index)
+    #         if form.flux_name:
+    #             Print("Flux name: %s" % form.flux_name)
+    #         Print("Species name: %s" % form.species_name)
+    #         Print("Form type: %s" % form.form_type)
+    #         form.inspect()
+        
 
-        self.dolfin_form = dolfin_form
-        self.species = species
-        self.species_name = species.name
-        self.compartment_name = species.compartment_name
-        self.form_type = form_type
-        self.flux_name = flux_name
+@dataclass
+class Form(ObjectInstance):
+    """
+    form_type:
+    'mass': transient/mass form (holds time derivative)
+    'diffusion'
+    'domain_reaction'
+    'boundary_reaction'
+    """
+    name: str
+    form: ufl.Form
+    species: Species
+    form_type: str
+
+    def __post_init__(self):
+        self.compartment = self.species.compartment
+        self._compartment_name = self.compartment.name
+        pass
+
+    @property
+    def integrals(self):
+        self._integrals = self.form.integrals()
+        return self._integrals
 
     def inspect(self):
-        integrals = self.dolfin_form.integrals()
-        for index, integral in enumerate(integrals):
-            Print(str(integral) + "\n")
+        for index, integral in enumerate(self.integrals):
+            print(str(integral) + "\n")

@@ -21,21 +21,22 @@ pc, sc, cc, rc = common.empty_sbmodel()
 
 # parameters
 pc.add([    
-    #Parameter('kf'      , 5.0, meter/sec, 'forward rate'),
-    # volume-to-volume [m/s]
+    Parameter('kf'      , 5.0, meter/sec, 'forward rate'),
+    # # volume-to-volume [m/s]
+    # Parameter('testing', 5, 1/sec),
     Parameter.from_expression('gating_f' , '5.0+t', um/sec),
     Parameter('gating_r'      , 1.0, um/sec),#um/sec, 'reverse rate'),
     # volume mass-action 2 to 1
-    Parameter('kf', 3.0, 1/(uM*sec), 'volume mass-action forward A+B -> C'),
-    Parameter('kr', 7.0, 1/(sec), 'volume mass-action reverse C -> A+B'),
-    # volume to surface / surface to volume
+    Parameter('kf', 3.0, 1/(uM*sec), 'volume mass-action forward A+A2 -> A3'),
+    Parameter('kr', 7.0, 1/(sec), 'volume mass-action reverse A3 -> A+A2'),
+    # # volume to surface / surface to volume
     Parameter('kf_AX_X2', 3.0, 1/(uM*sec), 'A+X -> X2'),
     Parameter('kr_AX_X2', 3.0, 1/(sec), 'X2 -> A+X'),
-    # volume-surface to volume 
+    # # volume-surface to volume 
     Parameter('kf_AY_B', 3.0, 1/(uM*sec), 'A+Y -> B'),
-    # volume-volume to surface 
+    # # volume-volume to surface 
     Parameter('kf_AB_Y', 3.0, um/(uM*sec), 'A+B -> Y'),
-    # volume/surface degradation [1/s]
+    # # volume/surface degradation [1/s]
     Parameter('kdeg_B', 2.0, 1/sec, 'degradation rate'),
     Parameter('kdeg_X', 2.0, 1/sec, 'degradation rate'),
     Parameter('kdeg_Y', 2.0, 1/sec, 'degradation rate'),
@@ -43,12 +44,13 @@ pc.add([
 
 # species
 sc.add([
-    #Species('A'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
-    Species('A'    , 'z'  , uM            , 100, um**2/sec, 'cytosol'),
-    Species('A2'   , 'z+3', uM            , 100, um**2/sec, 'cytosol'),
-    Species('A3'   , 0    , uM            , 100, um**2/sec, 'cytosol'),
+    Species('A'   , '10+z' , uM            , 100, um**2/sec, 'cytosol'),
+    # Species('A'    , 'z'  , uM            , 100, um**2/sec, 'cytosol'),
+    Species('A2'   , '3+z', uM            , 100, um**2/sec, 'cytosol'),
+    Species('A2'   , '5+z', uM            , 100, um**2/sec, 'cytosol'),
+    Species('A3'   , '7+z'    , uM            , 100, um**2/sec, 'cytosol'),
     Species('B' , 3    , uM            , 100, um**2/sec, 'er_vol'),
-    Species('X' , 100  , molecule/um**2, 10 , um**2/sec, 'pm'),
+    Species('X' , '100+z'  , molecule/um**2, 10 , um**2/sec, 'pm'),
     Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
     Species('Y', 60  , molecule/um**2, 10 , um**2/sec, 'er_mem'),
 ])
@@ -76,6 +78,7 @@ rc.add([
 
 # config
 stubs_config = stubs.config.Config()
+stubs_config.flags['allow_unused_components'] = True
 # stubs_config.loglevel['dolfin'] = 'CRITICAL'
 # Define solvers
 mps           = stubs.solvers.MultiphysicsSolver()
@@ -99,10 +102,8 @@ model = stubs.model.Model(pc, sc, cc, rc, stubs_config, solver_system, stubs_mes
 # aliases
 p = model.pc.get_index(0)
 s = model.sc.get_index(0)
-s2 = model.sc.get_index(2)
 c = model.cc.get_index(0)
 r = model.rc.get_index(0)
-r2 = model.rc.get_index(2)
 
 import cProfile
 
@@ -111,17 +112,17 @@ model._init_2()
 cProfile.run("model._init_3()")                 
 model._init_4()                 
 model._init_5_1_reactions_to_fluxes()
-model._init_5_2_set_flux_units()
+model._init_5_2_create_variational_forms()
+#model._init_5_3_create_variational_problems()
+#model._init_5_2_set_flux_units()
 #model._init_5_3_reaction_fluxes_to_forms()
 
-#aliases
-m = model.parent_mesh
-u = s.u['u']
-f = model.fc.get_index(13)
-f1 = model.fc.get_index(1)
-r = f.reaction
 
-# aliases
+
+#====================
+
+
+# # aliases
 A = model.sc['A']
 B = model.sc['B']
 Y = model.sc['Y']
@@ -132,7 +133,91 @@ merv  = model.cc['er_vol'].mesh
 merm  = model.cc['er_mem'].mesh
 mpm   = model.cc['pm'].mesh
 
-mall = [mtot, mcyto, merv, merm, mpm]
+# Manual implementation of form assembly / solve
+Vcyto  = d.VectorFunctionSpace(mcyto.dolfin_mesh, "P", 1, dim=3)
+Verv   = d.FunctionSpace(merv.dolfin_mesh, "P", 1)
+Vpm    = d.VectorFunctionSpace(mpm.dolfin_mesh, "P", 1, dim=2)
+Verm   = d.FunctionSpace(merm.dolfin_mesh, "P", 1)
+W = d.MixedFunctionSpace(*[Vcyto, Verv, Vpm, Verm])
+
+u = d.Function(W)
+ucyto, uerv, upm, uerm = u.split()
+
+vcyto, verv, vpm, verm = d.TestFunctions(W)
+utcyto, uterv, utpm, uterm = d.TrialFunctions(W)
+
+
+form_utcyto = utcyto[0] * vcyto[0] * mcyto.dx
+form_uterv  = uterv * verv * merv.dx
+
+
+d.assemble(form_utcyto).array().shape
+d.assemble(form_uterv).array().shape
+
+# solve
+# model.all_forms = sum([f.form for f in model.forms])
+# model.problem = d.MixedNonlinearVariationalProblem(model.all_forms, model.u['u'], bcs=None)
+# d.solve(model.all_forms == 0, model.u['u'])
+all_forms_a = sum([f.form for f in model.forms if f.form_type in ['diffusion'] and f._compartment_name=='cytosol'])
+all_forms_a = sum([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion'] and f._compartment_name=='cytosol'])
+all_forms_L = sum([f.form for f in model.forms if f.form_type in ['mass_un'] and f._compartment_name=='cytosol'])
+cProfile.run("d.solve(all_forms_a == all_forms_L, model.u['u'])")
+
+all_forms   = sum([f.form for f in model.forms])
+a_00 = d.extract_blocks(all_forms,0,0)
+a_01 = d.extract_blocks(all_forms,0,1)
+a_10 = d.extract_blocks(all_forms,1,0)
+a_11 = d.extract_blocks(all_forms,1,1)
+
+d.solve(all_forms == 0, model.u['u']._functions)
+d.MixedLinearVariationalProblem(all_forms==0, model.u['u']._functions)
+u = model.u['u']
+bcs=[]
+eq = all_forms==0
+eq_lhs_forms = d.extract_blocks(eq.lhs)
+
+# Give the list of jacobian for each eq_lhs
+Js = []
+import dolfin.fem.formmanipulations as formmanipulations
+from ufl.algorithms.ad import expand_derivatives
+for Fi in eq_lhs_forms:
+    for uj in model.u['u']._functions:
+        derivative = formmanipulations.derivative(Fi, uj)
+        derivative = expand_derivatives(derivative)
+        print()
+        Js.append(derivative)
+
+#eq_rhs_forms = d.extract_blocks(eq.rhs)
+problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, model.u['u']._functions, [], Js)
+
+# copying code from dolfin/fem/solving.py _solve_varproblem()
+# Create problem
+all_forms_a = sum([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']])
+all_forms_L = sum([-1*f.form for f in model.forms if f.form_type in ['mass_un']]) # moving to RHS
+problem = d.MixedLinearVariationalProblem(d.extract_blocks(all_forms_a), d.extract_blocks(all_forms_L), model.u['u']._functions, [])
+solver = d.MixedLinearVariationalSolver(problem)
+solver_parameters={"linear_solver":"direct"}
+solver.parameters.update(solver_parameters)
+solver.solve()
+
+
+
+
+u = c.u['u'].sub(0)
+v = c.v[0]
+dx = c.mesh.dx
+f = u*v*dx
+
+
+
+#aliases
+m = model.parent_mesh
+u = s.u['u']
+f = model.fc.get_index(1)
+r = f.reaction
+
+
+# mall = [mtot, mcyto, merv, merm, mpm]
 
 # build mappings (dim 2 -> 3)
 # merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)

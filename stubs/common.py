@@ -38,6 +38,8 @@ def sub(func, idx):
             return func
         else:
             return func[idx]
+    
+    raise AssertionError()
 
 
 # pandas
