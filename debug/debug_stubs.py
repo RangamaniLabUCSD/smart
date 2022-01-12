@@ -206,25 +206,73 @@ ermJ  = Js[12:16] #nonzero
 # ===================
 # Testing if formmanipulations.derivative(F,u) works on a single Vector Function
 # ===================
-_mesh = model.parent_mesh.dolfin_mesh
-# is_vector = True
-#if is_vector:
-_V  = d.VectorFunctionSpace(_mesh, "P", 1, dim=2)
-_u  = d.Function(_V)
-_v  = d.TestFunction(_V)
-_v0 = _v[0]
-_v1 = _v[1]
-_u0 = _u.sub(0)
-_u1 = _u.sub(1)
-_F  = _u0*_u1*d.dx + _u0*_v0*d.dx
+#mesh = model.parent_mesh.dolfin_mesh
+mesh = d.UnitCubeMesh(5,5,5)
+dx = d.Measure('dx', mesh)
+
+V  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
+u  = d.Function(V)
+u.assign(d.Expression(('3.0', '7.0'), degree=2, domain=mesh))
+v  = d.TestFunction(V)
+v0 = v[0]
+v1 = v[1]
+u0 = u.sub(0)
+u1 = u.sub(1)
+F  = u0*v0*dx + u1*v1*dx
+G  = d.inner(u,v)*dx
+i  = ufl.indices(1)
+H  = u[i]*v[i]*dx
+all(d.assemble(F) == d.assemble(G)) # True
+all(d.assemble(G) == d.assemble(H)) # True
+
+dFdu = dict()
+dGdu = dict()
+
+one_vec = d.Expression(('1.0', '1.0'), degree=2, domain=mesh)
+
+dFdu['dolfin.derivative'] = d.derivative(F, u)
+dGdu['dolfin.derivative'] = d.derivative(G, u)
+dFdu['ufl.derivative'] = ufl.derivative(F, u, v)
+dGdu['ufl.derivative'] = ufl.derivative(G, u, v)
+dFdu['ufl.derivative_tuple'] = ufl.derivative(F, (u0,u1))
+dGdu['ufl.derivative_tuple'] = ufl.derivative(G, (u0,u1))
+dFdu['ufl.diff'] = ufl.diff(F, u)
+dGdu['ufl.diff'] = ufl.diff(G, u)
+
+def print_
+
+class Printer(ufl.algorithms.Transformer):
+    def __init__(self):
+        ufl.algorithms.Transformer.__init__(self)
+
+    def expr(self, o, *operands):
+        print(f"Visiting, {str(o)}, with operands:")
+        print(f", ".join(map(str,operands)))
+        return o
+
+for method_name, dform in dFdu.items():
+    print("Arguments:")
+    for a in dform.arguments():
+        print(a)
+    print("Coefficients:")
+    for a in dform.coefficients():
+        print(a)
+    
+    b = d.assemble(dform)
+    print(f"{method_name} (manual inner): assembled = {b}")#, assembled norm = {b.norm('l2')}")
+
+for method_name, result in dGdu.items():
+    b = d.assemble(dform)
+    print(f"{method_name} (inner): assembled = {b}, assembled norm = {b.norm('l2')}")
+
+
+
 # else:
 #     _V  = d.FunctionSpace(_mesh, "P", 1)
 #     _u0 = d.Function(_V)
 #     _v0 = d.TestFunction(_V)
 #     _F  = _u0*d.dx
 
-expr = d.Expression(('3.0', '7.0'), degree=2, domain=_u.function_space().mesh())
-_u.assign(expr)
 
 # _F  = _u0*_u0*d.dx
 # _F  = _u0*_u1*d.dx
@@ -233,7 +281,7 @@ _F  = (_u0*_v0 + _u1*_v1) * d.dx
 _F2  = d.dot(_u,_v) * d.dx
 
 #_dFdu  = expand_derivatives(formmanipulations.derivative(_F, _u))
-dFdu  = d.derivative(_F,_u)
+dFdu  = d.derivative(_F,_u.split())
 dFdu2 = d.derivative(_F2,_u)
 M  = d.assemble(dFdu)
 M2 = d.assemble(dFdu)
