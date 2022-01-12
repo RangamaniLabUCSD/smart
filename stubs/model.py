@@ -597,7 +597,7 @@ class Model:
         # reactive terms
         for flux in self.fc:
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
-            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type))
+            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, True))
         for species in self.sc:
             # if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
             #     u = sp.u['t']
@@ -610,13 +610,13 @@ class Model:
             v  = species.v
             D  = species.D
             dx = species.compartment.mesh.dx
-            Dform = D * d.inner(d.grad(ut), d.grad(v)) * dx
-            self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion'))
+            Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
+            self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', True))
             # mass (time derivative) terms
-            Muform = (ut)/self.dT * v * dx
-            self.forms.add(stubs.model_assembly.Form(f"mass_{species.name}", Muform, species, 'mass_u'))
+            Muform = (u)/self.dT * v * dx
+            self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', True))
             Munform = (-un)/self.dT * v * dx
-            self.forms.add(stubs.model_assembly.Form(f"mass_{species.name}", Munform, species, 'mass_un'))
+            self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', True))
 
     def _init_5_3_create_variational_problems(self):
         fancy_print("Formulating problem as F(u;v) == 0 for newton iterations", format_type='log')

@@ -1108,6 +1108,20 @@ class Form(ObjectInstance):
     form: ufl.Form
     species: Species
     form_type: str
+    is_lhs: bool
+
+    @property
+    def lhs(self):
+        if self.is_lhs:
+            return self.form
+        else:
+            return -1 * self.form
+    @property
+    def rhs(self):
+        if self.is_lhs:
+            return -1 * self.form
+        else:
+            return self.form
 
     def __post_init__(self):
         self.compartment = self.species.compartment
