@@ -115,6 +115,32 @@ def solve_system(n, t, dt, Tstop, ion_list, M, order):
 
     # ------------------------- Setup functions ----------------------------- #
     # create functions
+    # Element over interior mesh
+    # P1 = FiniteElement('P', interior_mesh.ufl_cell(), 1)    # ion concentrations and potentials
+    # P2 = FiniteElement('P', interior_mesh.ufl_cell(), 2)
+    # P3 = FiniteElement('P', interior_mesh.ufl_cell(), 3)
+    # Pk = [P1,P2,P3]
+    # R0 = FiniteElement('R', interior_mesh.ufl_cell(), 0)    # Lagrange to enforce /int phi_i = 0
+    # # Element over gamma mesh
+    # Q1 = FiniteElement('P', gamma_mesh.ufl_cell(), 1)        # membrane ion channels
+    # Q2 = FiniteElement('P', gamma_mesh.ufl_cell(), 2)
+    # Q3 = FiniteElement('P', gamma_mesh.ufl_cell(), 3)
+    # Qk = [Q1,Q2,Q3]
+    
+    # # Intracellular ion concentrations for each ion (N_ion), potential, Lagrange multiplier
+    # interior_element_list = [Pk[order-1]]*(N_ions + 1) + [R0]
+    # # Extracellular ion concentrations for each (N_ion), potential
+    # exterior_element_list = [Pk[order-1]]*(N_ions + 1)
+    # Wi = FunctionSpace(interior_mesh, MixedElement(interior_element_list))
+    # We = FunctionSpace(exterior_mesh, MixedElement(exterior_element_list))
+    # Wg = FunctionSpace(gamma_mesh, Qk[order-1])
+    # W = MixedFunctionSpace(Wi, We, Wg)
+
+    # e.g. Nions = 2
+    # Wi = [ion_1, ion_2, V, lambda]
+    # We = [ion_1, ion_2, V]
+    # Wg = [mion_1]
+    # W = [Wi, We, Wg]  - lengths are (nion+2), (nion+1), (1)
     (ui, ue, p_IM) = TrialFunctions(W)
     (vi, ve, q_IM) = TestFunctions(W)
     u_p = Function(W)

@@ -402,6 +402,10 @@ class Parameter(ObjectInstance):
     @property
     def dolfin_quantity(self):
         return self.dolfin_constant * self.unit
+    
+    @property
+    def quantity(self):
+        return self.value * self.unit
 
     def check_validity(self):
         if self.is_time_dependent:
@@ -539,8 +543,8 @@ class Species(ObjectInstance):
         self.is_an_added_species = False
         self.dof_map = None
         self.u       = dict()
+        self._usplit = dict()
         self.ut      = None
-        self.v       = None
         self.v       = None
         self.t       = 0.0
 
@@ -579,6 +583,10 @@ class Species(ObjectInstance):
     @property
     def dolfin_quantity(self):
         return self.u['u'] * self.concentration_units
+
+    @property
+    def D_quantity(self):
+        return self.D * self.diffusion_units
 
 
 
@@ -620,6 +628,7 @@ class Compartment(ObjectInstance):
         # Initialize
         self.species = odict()
         self.u       = dict()
+        self._usplit = dict()
         self.V       = dict()
         self.v       = dict()
     

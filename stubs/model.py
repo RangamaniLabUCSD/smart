@@ -479,8 +479,12 @@ class Model:
         Arrange the compartments based on the number of degrees of freedom they have
         (We want to have the highest number of dofs first)
         """
-        self.sorted_compartments = self.cc.sort_by('num_dofs')[0]
-        for idx, compartment in enumerate(self.sorted_compartments):
+        self._sorted_compartments = self.cc.sort_by('num_dofs')[0]
+        for compartment in self._sorted_compartments:
+            if compartment.num_dofs < 1:
+                self._sorted_compartments.remove(compartment)
+                
+        for idx, compartment in enumerate(self._sorted_compartments):
             compartment.dof_index = idx
 
     # Step 4 - Dolfin Functions 
@@ -490,7 +494,7 @@ class Model:
         max_compartment_name = max([len(compartment_name) for compartment_name in self.cc.keys])
         
         # Make the individual function spaces (per compartment)
-        for compartment in self.sorted_compartments:
+        for compartment in self._sorted_compartments:
             # Aliases
             fancy_print(f"Defining function space for {compartment.name}{' '*(max_compartment_name-len(compartment.name))} "
                         f"(dim: {compartment.dimensionality}, species: {compartment.num_species}, dofs: {compartment.num_dofs})", format_type='log')
@@ -500,11 +504,49 @@ class Model:
             else:
                 compartment.V = d.FunctionSpace(compartment.dolfin_mesh, 'P', 1)
 
-        self.V = [compartment.V for compartment in self.sorted_compartments]
+        self.V = [compartment.V for compartment in self._sorted_compartments]
         # Make the MixedFunctionSpace
         self.W = d.MixedFunctionSpace(*self.V)
 
     def _init_4_3_define_dolfin_functions(self):
+        """
+        Some notes on functions in VectorFunctionSpaces:
+        u.sub(idx) gives us a shallow copy to the idx sub-function of u. 
+        This is useful when we want to look at function values
+        
+        u.split()[idx] is equivalent to u.sub(idx)
+        
+        d.split(u)[idx] (same thing as ufl.split(u)) gives us ufl objects (ufl.indexed.Indexed)
+        that can be used in variational formulations.
+
+        u.sub(idx) can be used in a variational formulation but it won't behave properly.
+        E.g. consider u as a 2d function
+        V  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
+        u  = d.Function(V)
+        u0 = u.sub(0); u1 = u.sub(1)
+        v  = d.TestFunction(V)
+        v0 = v[0]; v1 = v[1]
+        F  = u0*v0*dx + u1*v1*dx
+        G  = d.inner(u,v)*dx
+        get_F    = lambda F: d.assemble(F).get_local()
+        get_dFdu = lambda F,u: d.assemble(d.derivative(F,u)).array()
+        (get_F(F) == get_F(G)).all() # True
+        (get_dFdu(F,u) == get_dFdu(G,u)).all() # False
+
+        Using u0,u1 = d.split(u) will give the right results
+        
+        For TestFunctions/TrialFunctions, we will always get a ufl.indexed.Indexed object
+        # type(v) == d.function.argument.Argument
+        v = d.TestFunction(V) 
+        v[0] == d.split(v)[0]
+        # type(v_) == tuple(ufl.indexed.Indexed, ufl.indexed.Indexed)
+        v_ = d.TestFunctions(V)
+        v_[0] == v[0] == d.split(v)[0]
+
+        For a MixedFunctionSpace e.g. W=d.MixedFunctionSpace(*[V1,V2])
+        we can use sub() to get the subfunctions
+
+        """
         fancy_print(f"Defining dolfin functions", format_type='log')
         # dolfin functions created from MixedFunctionSpace
         self.u['u'] = d.Function(self.W)
@@ -512,26 +554,33 @@ class Model:
         self.u['n'] = d.Function(self.W)
 
         # Trial and test functions
-        self.ut     = d.TrialFunctions(self.W)
-        self.v      = d.TestFunctions(self.W)
+        self.ut     = d.TrialFunctions(self.W) # list of TrialFunctions
+        self.v      = d.TestFunctions(self.W) # list of TestFunctions
 
         # Create references in compartments to the subfunctions
-        for compartment in self.sorted_compartments:
+        for compartment in self._sorted_compartments:
             # alias
             cidx = compartment.dof_index
 
             # functions
             for key, func in self.u.items():
                 #compartment.u[key] = sub(func,cidx) #func.sub(cidx)
-                compartment.u[key] = func.sub(cidx)
+                # u is a function from a MixedFunctionSpace so u.sub() is appropriate here
+                compartment.u[key] = sub(func, cidx)#func.sub(cidx)
+                if compartment.u[key].num_sub_spaces() > 1:
+                    # _usplit are the actual functions we use to construct variational forms
+                    compartment._usplit[key] = d.split(compartment.u[key])
+                else:
+                    compartment._usplit[key] = (compartment.u[key],) # one element tuple
 
-            # trial and test functions
-            compartment.ut = self.ut[cidx]
-            compartment.v  = self.v[cidx]
+            # since we are using TrialFunctions() and TestFunctions() this is the proper
+            # syntax even if there is just one compartment
+            compartment.ut = sub(self.ut, cidx)#self.ut[cidx]
+            compartment.v  = sub(self.v, cidx)#self.v[cidx]
             
     def _init_4_4_get_species_u_v_V_dofmaps(self):
         fancy_print(f"Extracting subfunctions/function spaces/dofmap for each species", format_type='log')
-        for compartment in self.sorted_compartments:
+        for compartment in self._sorted_compartments:
             # loop through species and add the name/index
             for species in compartment.species.values():
                 species.V = sub(compartment.V, species.dof_index)
@@ -539,12 +588,13 @@ class Model:
                 species.dof_map = self.dolfin_get_dof_indices(species) # species.V.dofmap().dofs()
 
                 for key in compartment.u.keys():
-                    species.u[key] = sub(compartment.u[key], species.dof_index) #compartment.u[key].sub(species.dof_index)
+                    species.u[key]       = sub(compartment.u[key], species.dof_index) #compartment.u[key].sub(species.dof_index)
+                    species._usplit[key] = sub(compartment._usplit[key], species.dof_index) #compartment.u[key].sub(species.dof_index)
                 species.ut = sub(compartment.ut, species.dof_index)
                     
     def _init_4_5_name_functions(self):
         fancy_print(f"Naming functions and subfunctions", format_type='log')
-        for compartment in self.sorted_compartments:
+        for compartment in self._sorted_compartments:
             # name of the compartment function
             for key in self.u.keys():
                 compartment.u[key].rename(f"{compartment.name}_{key}", "")
@@ -558,7 +608,7 @@ class Model:
         "Sanity check... If an error occurs here it is likely an internal bug..."
         fancy_print(f"Checking that dolfin functions were created correctly", format_type='log')
         # sanity check
-        for compartment in self.cc:
+        for compartment in self._sorted_compartments:#self.cc:
             idx = compartment.dof_index
             # function size == dofs
             assert compartment.u['u'].vector().size() == compartment.num_dofs
@@ -604,7 +654,7 @@ class Model:
             # elif self.solver_system.nonlinear_solver.method == 'newton':
             #     u = sp.u['u']
             # diffusive terms
-            u  = species.u['u']
+            u  = species._usplit['u']
             ut = species.ut
             un = species.u['n']
             v  = species.v
@@ -1196,9 +1246,10 @@ class Model:
         """
         if species.dof_map is not None:
             return species.dof_map
-        #V           = sp.compartment.V
-        V           = species.V
         species_idx = species.dof_index
+        #V           = species.compartment.V
+        V = sub(species.compartment.V, species_idx, collapse_function_space=False)
+        #V           = species.V.sub(species_idx)
 
         # if V.num_sub_spaces() > 1:
         #     indices = np.array(V.sub(species_idx).dofmap().dofs())

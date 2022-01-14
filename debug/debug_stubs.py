@@ -3,6 +3,7 @@
 import stubs
 import stubs.common as common
 import dolfin as d
+import ufl
 import numpy as np
 import pint
 unit = stubs.unit # unit registry
@@ -27,8 +28,8 @@ pc.add([
     Parameter.from_expression('gating_f' , '5.0+t', um/sec),
     Parameter('gating_r'      , 1.0, um/sec),#um/sec, 'reverse rate'),
     # volume mass-action 2 to 1
-    Parameter('kf', 3.0, 1/(uM*sec), 'volume mass-action forward A+A2 -> A3'),
-    Parameter('kr', 7.0, 1/(sec), 'volume mass-action reverse A3 -> A+A2'),
+    Parameter('kf', 13.0, 1/(uM*sec), 'volume mass-action forward A+A2 -> A3'),
+    Parameter('kr', 2.0, 1/(sec), 'volume mass-action reverse A3 -> A+A2'),
     # # volume to surface / surface to volume
     Parameter('kf_AX_X2', 3.0, 1/(uM*sec), 'A+X -> X2'),
     Parameter('kr_AX_X2', 3.0, 1/(sec), 'X2 -> A+X'),
@@ -46,13 +47,13 @@ pc.add([
 sc.add([
     Species('A'   , '10+z' , uM            , 100, um**2/sec, 'cytosol'),
     # Species('A'    , 'z'  , uM            , 100, um**2/sec, 'cytosol'),
-    Species('A2'   , '3+z', uM            , 100, um**2/sec, 'cytosol'),
-    Species('A2'   , '5+z', uM            , 100, um**2/sec, 'cytosol'),
-    Species('A3'   , '7+z'    , uM            , 100, um**2/sec, 'cytosol'),
+    #Species('A2'   , '3+z', uM            , 100, um**2/sec, 'cytosol'),
+    # Species('A2'   , '5+z', uM            , 100, um**2/sec, 'cytosol'),
+    # Species('A3'   , '7+z'    , uM            , 100, um**2/sec, 'cytosol'),
     Species('B' , 3    , uM            , 100, um**2/sec, 'er_vol'),
-    Species('X' , '100+z'  , molecule/um**2, 10 , um**2/sec, 'pm'),
-    Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
-    Species('Y', 60  , molecule/um**2, 10 , um**2/sec, 'er_mem'),
+    # Species('X' , '100+z'  , molecule/um**2, 10 , um**2/sec, 'pm'),
+    # Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
+    # Species('Y', 60  , molecule/um**2, 10 , um**2/sec, 'er_mem'),
 ])
 
 # compartments
@@ -67,13 +68,13 @@ cc.add([
 # flux topologies are commented
 rc.add([
     Reaction('A <-> B'      , ['A']     , ['B'] , {'on': 'gating_f', 'off': 'gating_r'} , explicit_restriction_to_domain='er_mem'), # [volume_to_volume] 
-    Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                                ), # [volume] volume mass action (2 to 1)
-    Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'    ), # [volume] degradation
-    Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                          ), # [volume_to_surface] [surface_to_volume]
-    Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
-    Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
-    Reaction('A + Y <-> B'  , ['A','Y'] , ['B'] , {'on': 'kf_AY_B'}                     , reaction_type='mass_action_forward'    ), # [volume-surface_to_volume]
-    Reaction('A + B <-> Y'  , ['A','B'] , ['Y'] , {'on': 'kf_AB_Y'}                     , reaction_type='mass_action_forward'    ), # [volume-volume_to_surface]
+    # Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                                ), # [volume] volume mass action (2 to 1)
+    # Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'    ), # [volume] degradation
+    # Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                          ), # [volume_to_surface] [surface_to_volume]
+    # Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
+    # Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
+    # Reaction('A + Y <-> B'  , ['A','Y'] , ['B'] , {'on': 'kf_AY_B'}                     , reaction_type='mass_action_forward'    ), # [volume-surface_to_volume]
+    # Reaction('A + B <-> Y'  , ['A','B'] , ['Y'] , {'on': 'kf_AB_Y'}                     , reaction_type='mass_action_forward'    ), # [volume-volume_to_surface]
 ])
 
 # config
@@ -109,7 +110,8 @@ import cProfile
 
 model._init_1()
 model._init_2()
-cProfile.run("model._init_3()")                 
+model._init_3()
+#cProfile.run("model._init_3()")                 
 model._init_4()                 
 model._init_5_1_reactions_to_fluxes()
 model._init_5_2_create_variational_forms()
@@ -125,45 +127,45 @@ model._init_5_2_create_variational_forms()
 # # aliases
 A = model.sc['A']
 B = model.sc['B']
-Y = model.sc['Y']
-X = model.sc['X']
-mtot  = model.parent_mesh
-mcyto = model.cc['cytosol'].mesh
-merv  = model.cc['er_vol'].mesh
-merm  = model.cc['er_mem'].mesh
-mpm   = model.cc['pm'].mesh
+# Y = model.sc['Y']
+# X = model.sc['X']
+# mtot  = model.parent_mesh
+# mcyto = model.cc['cytosol'].mesh
+# merv  = model.cc['er_vol'].mesh
+# merm  = model.cc['er_mem'].mesh
+# mpm   = model.cc['pm'].mesh
 
-# Manual implementation of form assembly / solve
-Vcyto  = d.VectorFunctionSpace(mcyto.dolfin_mesh, "P", 1, dim=3)
-Verv   = d.FunctionSpace(merv.dolfin_mesh, "P", 1)
-Vpm    = d.VectorFunctionSpace(mpm.dolfin_mesh, "P", 1, dim=2)
-Verm   = d.FunctionSpace(merm.dolfin_mesh, "P", 1)
-W = d.MixedFunctionSpace(*[Vcyto, Verv, Vpm, Verm])
+# # Manual implementation of form assembly / solve
+# Vcyto  = d.VectorFunctionSpace(mcyto.dolfin_mesh, "P", 1, dim=3)
+# Verv   = d.FunctionSpace(merv.dolfin_mesh, "P", 1)
+# Vpm    = d.VectorFunctionSpace(mpm.dolfin_mesh, "P", 1, dim=2)
+# Verm   = d.FunctionSpace(merm.dolfin_mesh, "P", 1)
+# W = d.MixedFunctionSpace(*[Vcyto, Verv, Vpm, Verm])
 
-u = d.Function(W)
-ucyto, uerv, upm, uerm = u.split()
+# u = d.Function(W)
+# ucyto, uerv, upm, uerm = u.split()
 
-vcyto, verv, vpm, verm = d.TestFunctions(W)
-utcyto, uterv, utpm, uterm = d.TrialFunctions(W)
-
-
-form_utcyto = utcyto[0] * vcyto[0] * mcyto.dx
-form_uterv  = uterv * verv * merv.dx
+# vcyto, verv, vpm, verm = d.TestFunctions(W)
+# utcyto, uterv, utpm, uterm = d.TrialFunctions(W)
 
 
-d.assemble(form_utcyto).array().shape
-d.assemble(form_uterv).array().shape
+# form_utcyto = utcyto[0] * vcyto[0] * mcyto.dx
+# form_uterv  = uterv * verv * merv.dx
+
+
+# d.assemble(form_utcyto).array().shape
+# d.assemble(form_uterv).array().shape
 
 # solve
 # model.all_forms = sum([f.form for f in model.forms])
 # model.problem = d.MixedNonlinearVariationalProblem(model.all_forms, model.u['u'], bcs=None)
 # d.solve(model.all_forms == 0, model.u['u'])
 #all_forms_a = sum([f.form for f in model.forms if f.form_type in ['diffusion'] and f._compartment_name=='cytosol'])
-all_forms_a = sum([f.lhs for f in model.forms if f.form_type in ['mass_u', 'diffusion']])# and f._compartment_name=='cytosol'])
-all_forms_L = sum([f.rhs for f in model.forms if f.form_type in ['mass_un']])# and f._compartment_name=='cytosol'])
+# all_forms_a = sum([f.lhs for f in model.forms if f.form_type in ['mass_u', 'diffusion']])# and f._compartment_name=='cytosol'])
+# all_forms_L = sum([f.rhs for f in model.forms if f.form_type in ['mass_un']])# and f._compartment_name=='cytosol'])
 
-print(len([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']]))
-print(len([f.form for f in model.forms if f.form_type in ['mass_un']]))
+# print(len([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']]))
+# print(len([f.form for f in model.forms if f.form_type in ['mass_un']]))
 
 #cProfile.run("d.solve(all_forms_a == all_forms_L, model.u['u'])")
 # d.solve(all_forms_a == all_forms_L, model.u['u'])
@@ -175,18 +177,20 @@ print(len([f.form for f in model.forms if f.form_type in ['mass_un']]))
 # Nonlinear F==0
 # ===================
 # Setup
-_extract_args  = d.fem.solving._extract_args
+# _extract_args  = d.fem.solving._extract_args
 extract_blocks = d.fem.formmanipulations.extract_blocks
-import dolfin.fem.formmanipulations as formmanipulations
-from ufl.algorithms.ad import expand_derivatives
+# import dolfin.fem.formmanipulations as formmanipulations
+# from ufl.algorithms.ad import expand_derivatives
 #from dolfin.fem.formmanipulations import derivative
-F = all_forms_a - all_forms_L
+F = sum([f.lhs for f in model.forms])
+#F = all_forms_a - all_forms_L
 u = model.u['u']
 
-#solve(F==0, u)
+d.solve(F==0, u)
 #_solve_var_problem(F==0, u)
-eq, u, bcs, J, tol, M, preconditioner, form_compiler_parameters, solver_parameters = _extract_args(F==0, u)
+#eq, u, bcs, J, tol, M, preconditioner, form_compiler_parameters, solver_parameters = _extract_args(F==0, u)
 # Extract blocks from the variational formulation
+eq = F == 0
 eq_lhs_forms = extract_blocks(eq.lhs)
 
 #if J is None:
@@ -203,141 +207,13 @@ pmJ   = Js[4:8]
 ervJ  = Js[8:12] #nonzero
 ermJ  = Js[12:16] #nonzero
 
-# ===================
-# Testing if formmanipulations.derivative(F,u) works on a single Vector Function
-# ===================
-#mesh = model.parent_mesh.dolfin_mesh
-mesh = d.UnitCubeMesh(5,5,5)
-dx = d.Measure('dx', mesh)
 
-V  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
-u  = d.Function(V)
-u.assign(d.Expression(('3.0', '7.0'), degree=2, domain=mesh))
-v  = d.TestFunction(V)
-v0 = v[0]
-v1 = v[1]
-u0 = u.sub(0)
-u1 = u.sub(1)
-F  = u0*v0*dx + u1*v1*dx
-G  = d.inner(u,v)*dx
-i  = ufl.indices(1)
-H  = u[i]*v[i]*dx
-all(d.assemble(F) == d.assemble(G)) # True
-all(d.assemble(G) == d.assemble(H)) # True
-
-dFdu = dict()
-dGdu = dict()
-
-one_vec = d.Expression(('1.0', '1.0'), degree=2, domain=mesh)
-
-dFdu['dolfin.derivative'] = d.derivative(F, u)
-dGdu['dolfin.derivative'] = d.derivative(G, u)
-dFdu['ufl.derivative'] = ufl.derivative(F, u, v)
-dGdu['ufl.derivative'] = ufl.derivative(G, u, v)
-dFdu['ufl.derivative_tuple'] = ufl.derivative(F, (u0,u1))
-dGdu['ufl.derivative_tuple'] = ufl.derivative(G, (u0,u1))
-dFdu['ufl.diff'] = ufl.diff(F, u)
-dGdu['ufl.diff'] = ufl.diff(G, u)
-
-def print_
-
-class Printer(ufl.algorithms.Transformer):
-    def __init__(self):
-        ufl.algorithms.Transformer.__init__(self)
-
-    def expr(self, o, *operands):
-        print(f"Visiting, {str(o)}, with operands:")
-        print(f", ".join(map(str,operands)))
-        return o
-
-for method_name, dform in dFdu.items():
-    print("Arguments:")
-    for a in dform.arguments():
-        print(a)
-    print("Coefficients:")
-    for a in dform.coefficients():
-        print(a)
-    
-    b = d.assemble(dform)
-    print(f"{method_name} (manual inner): assembled = {b}")#, assembled norm = {b.norm('l2')}")
-
-for method_name, result in dGdu.items():
-    b = d.assemble(dform)
-    print(f"{method_name} (inner): assembled = {b}, assembled norm = {b.norm('l2')}")
-
-
-
-# else:
-#     _V  = d.FunctionSpace(_mesh, "P", 1)
-#     _u0 = d.Function(_V)
-#     _v0 = d.TestFunction(_V)
-#     _F  = _u0*d.dx
-
-
-# _F  = _u0*_u0*d.dx
-# _F  = _u0*_u1*d.dx
-# _F  = (d.inner(d.grad(_u0), d.grad(_v0)) + _u0*_v0)*d.dx
-_F  = (_u0*_v0 + _u1*_v1) * d.dx
-_F2  = d.dot(_u,_v) * d.dx
-
-#_dFdu  = expand_derivatives(formmanipulations.derivative(_F, _u))
-dFdu  = d.derivative(_F,_u.split())
-dFdu2 = d.derivative(_F2,_u)
-M  = d.assemble(dFdu)
-M2 = d.assemble(dFdu)
-
-dFdu  = d.derivative(_F,_u0)
-dFdu2 = d.derivative(_F2,_u0)
-M  = d.assemble(dFdu)
-M2 = d.assemble(dFdu2)
-
-
-import ufl
-Argument = ufl.Argument
-def my_derivative(_F, _u):
-    "formmanipulations.derivative()"
-    form_arguments = _F.arguments()
-    number = max([-1] + [arg.number() for arg in form_arguments]) + 1
-    part = _u.part()
-    V = _u.function_space()
-    du = Argument(V, number, part)
-
-    print(f"V = {V.ufl_element()}")
-    print(f"number = {number}")
-    print(f"part = {part}")
-    #print(f"du = {du}")
-
-    dFdu = ufl.derivative(_F, _u, du, None)
-    print(f"dFdu = {dFdu}")
-    expanded_derivative = expand_derivatives(dFdu)
-    print(f"dFdu nonzero == {not expanded_derivative.empty()}\n")
-
-    return expanded_derivative
-
-my_derivative(_F, _u)
-my_derivative(_F, _u0)
-my_derivative(_F, _u1)
-
-_dFdu  = expand_derivatives(formmanipulations.derivative(_F, _u))
-_dFdu0 = expand_derivatives(formmanipulations.derivative(_F, _u0))
-_dFdu1 = expand_derivatives(formmanipulations.derivative(_F, _u1))
-
-
-
-
-print(f"dFdu nonzero == {not _dFdu.empty()}")
-print(f"dFdu{0} nonzero == {not _dFdu0.empty()}")
-print(f"dFdu{1} nonzero == {not _dFdu1.empty()}")
-
-
-
-
-problem = MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, bcs, Js,
-                                            form_compiler_parameters=form_compiler_parameters)
-# Create solver and call solve
-solver = MixedNonlinearVariationalSolver(problem)
-solver.parameters.update(solver_parameters)
-solver.solve()
+problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, bcs, Js)#,
+#form_compiler_parameters=form_compiler_parameters)
+# # Create solver and call solve
+# solver = MixedNonlinearVariationalSolver(problem)
+# solver.parameters.update(solver_parameters)
+# solver.solve()
 
 
 # all_forms   = sum([f.form for f in model.forms])
@@ -388,7 +264,7 @@ solver.solve()
 
 
 # #aliases
-u = model.sc['A'].u['u']
+# u = model.sc['A'].u['u']
 
 
 # mall = [mtot, mcyto, merv, merm, mpm]
@@ -405,8 +281,8 @@ u = model.sc['A'].u['u']
 
 # surf to vol
 #print(d.assemble((A.u['u'] * X_pm.u['u']) * mpm.dx_map[mcyto.id](1))) 
-print(d.assemble((A.u['u']) * mpm.dx_map[mcyto.id](1))) 
-print(f"expected value: 24")
+# print(d.assemble((A.u['u']) * mpm.dx_map[mcyto.id](1))) 
+# print(f"expected value: 24")
 
 #d.assemble((A.u['u'] * X_pm.u['u']) * mcyto.ds(2)) # not implemented yet
 

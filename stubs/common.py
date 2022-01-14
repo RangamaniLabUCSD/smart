@@ -19,19 +19,43 @@ rank = comm.rank
 size = comm.size
 root = 0
 
-def sub(func, idx):
-    "This is just a hack patch to allow us to refer to a function/functionspace with no subspaces using .sub(0)"
+def sub(func, idx, collapse_function_space=True):
+    "A collection of the proper ways to refer to a (sub) function, functionspace, etc. in dolfin"
+    if isinstance(func, (list, tuple)):
+        return func[idx]
+    
     if isinstance(func, d.Function):
-        if func.num_sub_spaces() <= 1 and idx == 0:
-            return func
-        else:
+        # MixedFunctionSpace
+        if func._functions:
+            assert func.sub(idx) is func._functions[idx]
             return func.sub(idx)
+            # if func.num_sub_spaces() <= 1 and idx == 0:
+            #     # instead of just returning func, testing func.sub(0). u from W=MixedFunctionSpace is missing
+            #     # a lot of information, even if W is defined from a single subspace, W = d.MixedFunctionSpace(V)
+            #     return func.sub(0)
+            # else:
+            #     # should be equivalent to func._functions[idx]
+            #     assert func.sub(idx) is func._functions[idx]
+            #     return func.sub(idx)
+        else:
+            # scalar FunctionSpace
+            if func.num_sub_spaces() <= 1 and idx == 0:
+                return func
+            else: 
+                # Use d.split() to get subfunctions from a VectorFunctionSpace that can be used in forms
+                return func.sub(idx)
 
-    if isinstance(func, (d.MixedFunctionSpace, d.FunctionSpace)):
+    if isinstance(func, d.MixedFunctionSpace):
+        return func.sub(idx)
+        
+    if isinstance(func, d.FunctionSpace):
         if func.num_sub_spaces() <= 1 and idx == 0:
             return func
         else:
-            return func.sub(idx).collapse()
+            if collapse_function_space:
+                return func.sub(idx).collapse()
+            else:
+                return func.sub(idx)
     
     if isinstance(func, d.function.argument.Argument):
         if func.function_space().num_sub_spaces() <= 1 and idx == 0:
