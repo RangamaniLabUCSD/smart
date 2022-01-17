@@ -642,20 +642,21 @@ class Model:
             self.fc.add(reaction.fluxes)
             
     def _init_5_2_create_variational_forms(self):
-        """Setup the variational forms in dolfin"""
+        """
+        Setup the variational forms in dolfin
+        Forms:
+        F(u;v) =    Muform      +   Munform   +       Dform         +         Rform           = 0
+                 linear wrt u         (v)         linear wrt u       possibly nonlinear wrt u
+        """
         fancy_print(f"Creating functional forms", format_type='log')
         # reactive terms
         for flux in self.fc:
+            # -1 factor in flux.form means this is a lhs term
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
             self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, True))
         for species in self.sc:
-            # if self.solver_system.nonlinear_solver.method in ['picard', 'IMEX']:
-            #     u = sp.u['t']
-            # elif self.solver_system.nonlinear_solver.method == 'newton':
-            #     u = sp.u['u']
-            # diffusive terms
             u  = species._usplit['u']
-            ut = species.ut
+            #ut = species.ut
             un = species.u['n']
             v  = species.v
             D  = species.D

@@ -582,12 +582,11 @@ class Species(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        return self.u['u'] * self.concentration_units
+        return self._usplit['u'] * self.concentration_units
 
     @property
     def D_quantity(self):
         return self.D * self.diffusion_units
-
 
 
 class CompartmentContainer(ObjectContainer):
@@ -952,7 +951,10 @@ class Flux(ObjectInstance):
     @property
     def form(self):
         "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
-        return -1 * self.equation_value * self.destination_species.v * self.measure
+        self.evaluate_equation()
+        form_result = -1 * self.equation_value * self.destination_species.v * self.measure
+        self._form = form_result
+        return form_result
     
     # def get_additional_flux_properties(self, cc, solver_system):
     #     # get additional properties of the flux
