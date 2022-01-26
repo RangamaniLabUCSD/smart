@@ -419,21 +419,6 @@ class SpeciesContainer(ObjectContainer):
 
         self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
-    # def assemble_compartment_indices(self, rc, cc):
-    #     """
-    #     Adds a column to the species dataframe which indicates the index of a species relative to its compartment
-    #     """
-    #     num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
-    #     for compartment, num_species in num_species_per_compartment.items():
-    #         idx = 0
-    #         comp_species = [sp for sp in self.values if sp.compartment_name==compartment]
-    #         for sp in comp_species:
-    #             if sp.is_in_a_reaction:
-    #                 sp.dof_index = idx
-    #                 idx += 1
-    #             else:
-    #                 print('Warning: species %s is not used in any reactions!' % sp.name)
-
     def assemble_dolfin_functions(self, rc, cc):
         """
         define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
@@ -674,31 +659,6 @@ class ReactionContainer(ObjectContainer):
 
         #self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_map', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['lhs', 'rhs', 'eqn_f_str', 'eqn_r_str']
-
-    # def get_species_compartment_counts(self, sc, cc):
-    #     """
-    #     Returns a Counter object with the number of times a species appears in each compartment
-    #     """
-    #     self.do_to_all('get_involved_species_and_compartments', {"sc": sc, "cc": cc})
-    #     all_involved_species = set([sp for species_set in [rxn.involved_species_link.values() for rxn in self.values] for sp in species_set])
-    #     for sp_name, sp in sc.items:
-    #         if sp in all_involved_species:
-    #             sp.is_in_a_reaction = True
-
-    #     compartment_counts = [sp.compartment_name for sp in all_involved_species]
-
-    #     return Counter(compartment_counts)
-
-
-    # def reaction_to_fluxes(self):
-    #     self.do_to_all('reaction_to_fluxes')
-    #     flux_list = []
-    #     for rxn in self.values:
-    #         for f in rxn.flux_list:
-    #             flux_list.append(f)
-    #     self.flux_list = flux_list
-    # def get_flux_container(self):
-    #     return FluxContainer(Dict=odict([(f.flux_name, f) for f in self.flux_list]))
 
 @dataclass
 class Reaction(ObjectInstance):
@@ -955,18 +915,6 @@ class Flux(ObjectInstance):
         form_result = -1 * self.equation_value * self.destination_species.v * self.measure
         self._form = form_result
         return form_result
-    
-    # def get_additional_flux_properties(self, cc, solver_system):
-    #     # get additional properties of the flux
-    #     self.get_involved_species_parameters_compartment(cc)
-    #     self.get_flux_dimensionality()
-    #     self.get_boundary_marker()
-    #     self.get_flux_units()
-    #     self.get_is_linear()
-    #     self.get_is_linear_comp()
-    #     self.get_ukeys(solver_system)
-    #     self.get_integration_measure(cc, solver_system)
-
 
     # def get_is_linear(self):
     #     """
@@ -1005,82 +953,6 @@ class Flux(ObjectInstance):
 
     #     self.is_linear_wrt_comp = is_linear_wrt_comp
 
-    # def get_ukeys(self, solver_system):
-    #     """
-    #     Given the dimensionality of a flux (e.g. 2d surface to 3d vol) and the dimensionality
-    #     of a species, determine which term of u should be used
-    #     """
-    #     self.ukeys = {}
-    #     flux_vars = [str(x) for x in self.sym_list if str(x) in self.involved_species]
-    #     for var_name in flux_vars:
-    #         self.ukeys[var_name] = self.get_ukey(var_name, solver_system)
-
-    # def get_ukey(self, var_name, solver_system):
-    #     sp = self.species_map[self.species_name]
-    #     var = self.species_map[var_name]
-
-    #     if solver_system.nonlinear_solver.method == 'newton':
-    #         # if var.dimensionality > sp.dimensionality:
-    #         #     return 'b'+sp.compartment_name
-    #         # else:
-    #         #     return 'u'
-
-    #         # Testing volume interpolated functions
-    #         if var.dimensionality > sp.dimensionality:
-    #             return 'b_'+sp.compartment_name
-    #         elif var.dimensionality < sp.dimensionality:
-    #             return 'v_'+sp.compartment_name
-    #         else:
-    #             return 'u'
-
-    #     elif solver_system.nonlinear_solver.method == 'IMEX':
-    #         ## same compartment
-    #         # dynamic lhs
-    #         # if var.name == sp.name:
-    #         #     if self.is_linear_wrt[sp.name]:
-    #         #         return 't'
-    #         #     else:
-    #         #         return 'n'
-    #         # static lhs
-    #         if var.compartment_name == sp.compartment_name:
-    #             if self.is_linear_wrt_comp[sp.compartment_name]:
-    #                 return 't'
-    #             else:
-    #                 return 'n'
-    #         ## different compartments
-    #         # volume -> surface
-    #         if var.dimensionality > sp.dimensionality:
-    #             return 'b_'+sp.compartment_name
-    #         # surface -> volume is covered by first if statement in get_ukey()
-
-    #     raise Exception("Missing logic in get_ukey(); contact a developer...")
-
-    # def flux_to_dolfin(self):
-    #     value_dict = {}
-
-    #     for var_name in [str(x) for x in self.sym_list]:
-    #         if var_name in self.param_map.keys():
-    #             var = self.param_map[var_name]
-    #             if var.is_time_dependent:
-    #                 value_dict[var_name] = var.dolfin_constant * var.unit
-    #             else:
-    #                 value_dict[var_name] = var.value_unit
-    #         elif var_name in self.species_map.keys():
-    #             var = self.species_map[var_name]
-    #             ukey = self.ukeys[var_name]
-    #             value_dict[var_name] = var.u[ukey]
-
-    #             value_dict[var_name] *= var.concentration_units * 1
-
-    #     eqn_eval = self.lambda_eqn(**value_dict)
-    #     prod = eqn_eval.magnitude
-    #     unit_prod = 1 * (1*eqn_eval.units).units
-    #     #unit_prod = self.lambda_eqn(**unit_dict)
-    #     #unit_prod = 1 * (1*unit_prod).units # trick to make object a "Quantity" class
-
-    #     self.prod = prod
-    #     self.unit_prod = unit_prod
-
 
 class FormContainer(ObjectContainer):
     def __init__(self):
@@ -1092,20 +964,7 @@ class FormContainer(ObjectContainer):
         for f in self:
             f.integrals
         super().print(tablefmt, self.properties_to_print)
-
-    # def inspect(self, form_list=None):
-    #     if not form_list:
-    #         form_list = self.form_list
-
-    #     for index, form in enumerate(form_list):
-    #         Print("Form with index %d from form_list..." % index)
-    #         if form.flux_name:
-    #             Print("Flux name: %s" % form.flux_name)
-    #         Print("Species name: %s" % form.species_name)
-    #         Print("Form type: %s" % form.form_type)
-    #         form.inspect()
         
-
 @dataclass
 class Form(ObjectInstance):
     """
