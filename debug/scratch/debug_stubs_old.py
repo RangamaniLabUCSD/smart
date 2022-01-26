@@ -389,3 +389,75 @@ problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, bcs, Js
 # # d.assemble(u_*v1*ds1) does not work (Exception: codim != 0 or 1 - Not (yet) implemented)
 
 # # volume -> volume
+
+
+
+
+# # Manual implementation of form assembly / solve
+# Vcyto  = d.VectorFunctionSpace(mcyto.dolfin_mesh, "P", 1, dim=3)
+# Verv   = d.FunctionSpace(merv.dolfin_mesh, "P", 1)
+# Vpm    = d.VectorFunctionSpace(mpm.dolfin_mesh, "P", 1, dim=2)
+# Verm   = d.FunctionSpace(merm.dolfin_mesh, "P", 1)
+# W = d.MixedFunctionSpace(*[Vcyto, Verv, Vpm, Verm])
+
+# u = d.Function(W)
+# ucyto, uerv, upm, uerm = u.split()
+
+# vcyto, verv, vpm, verm = d.TestFunctions(W)
+# utcyto, uterv, utpm, uterm = d.TrialFunctions(W)
+
+
+# form_utcyto = utcyto[0] * vcyto[0] * mcyto.dx
+# form_uterv  = uterv * verv * merv.dx
+
+
+# d.assemble(form_utcyto).array().shape
+# d.assemble(form_uterv).array().shape
+
+# solve
+# model.all_forms = sum([f.form for f in model.forms])
+# model.problem = d.MixedNonlinearVariationalProblem(model.all_forms, model.u['u'], bcs=None)
+# d.solve(model.all_forms == 0, model.u['u'])
+#all_forms_a = sum([f.form for f in model.forms if f.form_type in ['diffusion'] and f._compartment_name=='cytosol'])
+# all_forms_a = sum([f.lhs for f in model.forms if f.form_type in ['mass_u', 'diffusion']])# and f._compartment_name=='cytosol'])
+# all_forms_L = sum([f.rhs for f in model.forms if f.form_type in ['mass_un']])# and f._compartment_name=='cytosol'])
+
+# print(len([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']]))
+# print(len([f.form for f in model.forms if f.form_type in ['mass_un']]))
+
+#cProfile.run("d.solve(all_forms_a == all_forms_L, model.u['u'])")
+# d.solve(all_forms_a == all_forms_L, model.u['u'])
+# d.solve(all_forms_a - all_forms_L == 0, model.u['u'])
+
+# Linear a == L
+# d.MixedLinearVariationalProblem(all_forms==0, model.u['u']._functions)
+# u = model.u['u']
+# bcs=[]
+# eq = all_forms==0
+# eq_lhs_forms = d.extract_blocks(eq.lhs)
+
+# # Give the list of jacobian for each eq_lhs
+# Js = []
+# import dolfin.fem.formmanipulations as formmanipulations
+# from ufl.algorithms.ad import expand_derivatives
+# for Fi in eq_lhs_forms:
+#     for uj in model.u['u']._functions:
+#         derivative = formmanipulations.derivative(Fi, uj)
+#         derivative = expand_derivatives(derivative)
+#         print()
+#         Js.append(derivative)
+
+# #eq_rhs_forms = d.extract_blocks(eq.rhs)
+# problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, model.u['u']._functions, [], Js)
+
+# # copying code from dolfin/fem/solving.py _solve_varproblem()
+# # Create problem
+# all_forms_a = sum([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']])
+# all_forms_L = sum([-1*f.form for f in model.forms if f.form_type in ['mass_un']]) # moving to RHS
+# problem = d.MixedLinearVariationalProblem(d.extract_blocks(all_forms_a), d.extract_blocks(all_forms_L), model.u['u']._functions, [])
+# solver = d.MixedLinearVariationalSolver(problem)
+# solver_parameters={"linear_solver":"direct"}
+# solver.parameters.update(solver_parameters)
+# solver.solve()
+
+

@@ -594,8 +594,6 @@ class CompartmentContainer(ObjectContainer):
         super().__init__(Compartment)
 
         self.properties_to_print = ['dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_cells', 'cell_marker', '_nvolume']
-        self.meshes = {}
-        self.vertex_mappings = {} # from submesh -> parent indices
     
     def print(self, tablefmt='fancy_grid', properties_to_print=None):
         for c in self:

@@ -116,13 +116,9 @@ model._init_4()
 model._init_5_1_reactions_to_fluxes()
 model._init_5_2_create_variational_forms()
 #model._init_5_3_create_variational_problems()
-#model._init_5_2_set_flux_units()
-#model._init_5_3_reaction_fluxes_to_forms()
-
 
 
 #====================
-
 
 # # aliases
 A = model.sc['A']
@@ -134,44 +130,6 @@ B = model.sc['B']
 # merv  = model.cc['er_vol'].mesh
 # merm  = model.cc['er_mem'].mesh
 # mpm   = model.cc['pm'].mesh
-
-# # Manual implementation of form assembly / solve
-# Vcyto  = d.VectorFunctionSpace(mcyto.dolfin_mesh, "P", 1, dim=3)
-# Verv   = d.FunctionSpace(merv.dolfin_mesh, "P", 1)
-# Vpm    = d.VectorFunctionSpace(mpm.dolfin_mesh, "P", 1, dim=2)
-# Verm   = d.FunctionSpace(merm.dolfin_mesh, "P", 1)
-# W = d.MixedFunctionSpace(*[Vcyto, Verv, Vpm, Verm])
-
-# u = d.Function(W)
-# ucyto, uerv, upm, uerm = u.split()
-
-# vcyto, verv, vpm, verm = d.TestFunctions(W)
-# utcyto, uterv, utpm, uterm = d.TrialFunctions(W)
-
-
-# form_utcyto = utcyto[0] * vcyto[0] * mcyto.dx
-# form_uterv  = uterv * verv * merv.dx
-
-
-# d.assemble(form_utcyto).array().shape
-# d.assemble(form_uterv).array().shape
-
-# solve
-# model.all_forms = sum([f.form for f in model.forms])
-# model.problem = d.MixedNonlinearVariationalProblem(model.all_forms, model.u['u'], bcs=None)
-# d.solve(model.all_forms == 0, model.u['u'])
-#all_forms_a = sum([f.form for f in model.forms if f.form_type in ['diffusion'] and f._compartment_name=='cytosol'])
-# all_forms_a = sum([f.lhs for f in model.forms if f.form_type in ['mass_u', 'diffusion']])# and f._compartment_name=='cytosol'])
-# all_forms_L = sum([f.rhs for f in model.forms if f.form_type in ['mass_un']])# and f._compartment_name=='cytosol'])
-
-# print(len([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']]))
-# print(len([f.form for f in model.forms if f.form_type in ['mass_un']]))
-
-#cProfile.run("d.solve(all_forms_a == all_forms_L, model.u['u'])")
-# d.solve(all_forms_a == all_forms_L, model.u['u'])
-# d.solve(all_forms_a - all_forms_L == 0, model.u['u'])
-
-# Linear a == L
 
 # ===================
 # Nonlinear F==0
@@ -186,36 +144,145 @@ F = sum([f.lhs for f in model.forms])
 #F = all_forms_a - all_forms_L
 u = model.u['u']
 
-d.solve(F==0, u)
+#d.solve(F==0, u)
+cProfile.run("d.solve(F==0,u)")                 
+
 #_solve_var_problem(F==0, u)
 #eq, u, bcs, J, tol, M, preconditioner, form_compiler_parameters, solver_parameters = _extract_args(F==0, u)
 # Extract blocks from the variational formulation
 eq = F == 0
 eq_lhs_forms = extract_blocks(eq.lhs)
 
+# by compartment
+F1 = eq_lhs_forms[0]
+F11 = sum([f.lhs for f in model.forms if f.species.name == 'A'])
+F2 = eq_lhs_forms[1]
+u1 = u._functions[0]
+u2 = u._functions[1]
+u11 = A._usplit['u']
+
+
+
 #if J is None:
 # Give the list of jacobian for each eq_lhs
 import dolfin.fem.formmanipulations as formmanipulations
 from ufl.algorithms.ad import expand_derivatives
+import dolfin.cpp as cpp
+from dolfin.fem.form import Form
+from ufl.form import sub_forms_by_domain
 
-Js = []
+
+# Jacobian in the form expected by MixedNonlinearVariationalProblem
+J = []
 for Fi in eq_lhs_forms:
     for uj in u._functions:
         derivative = formmanipulations.derivative(Fi, uj)
         derivative = expand_derivatives(derivative)
-        Js.append(derivative)
+        J.append(derivative)
+
+problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, [], J)
+
+
+# Jacobian in the form given to the cpp object
+J_list = list()
+print("[problem.py] size J = ", len(J))
+for Ji in J:
+    if Ji is None:
+        J_list.append([cpp.fem.Form(2, 0)])
+    elif Ji.empty():
+        J_list.append([cpp.fem.Form(2, 0)])
+    else:
+        Js = []
+        for Jsub in sub_forms_by_domain(Ji):
+            Js.append(Form(Jsub))
+        J_list.append(Js)
     
 # cytoJ = Js[0:4]
 # pmJ   = Js[4:8]
 # ervJ  = Js[8:12] #nonzero
 # ermJ  = Js[12:16] #nonzero
 
+# TODO
+# look into
+# M01 = d.assemble_mixed(J_list[0][1])
+# d.PETScNestMatrix (demo_matnest.py)
+# it is possible to use petsc4py directly  e.g.
+# M = PETSc.Mat().createNest([[M00,M01], [M10,M11]], comm=MPI.COMM_WORLD)
+# d.as_backend_type(M00).mat()
+#https://fenicsproject.discourse.group/t/custom-newtonsolver-using-the-mixed-dimensional-branch-and-petscnestmatrix/2788/3
 
-problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, bcs, Js)#,
-#form_compiler_parameters=form_compiler_parameters)
-# # Create solver and call solve
-# solver = MixedNonlinearVariationalSolver(problem)
-# solver.parameters.update(solver_parameters)
+# =====================
+# solve(F==0, u)
+# =====================
+# 
+#
+
+
+# =====================
+# Dissecting MixedNonlinearVariationalProblem()
+# =====================
+# dolfin/fem/problem.py
+from ufl.form import sub_forms_by_domain
+import dolfin.cpp as cpp
+from dolfin.fem.form import Form
+# aliases
+F = eq_lhs_forms
+J = Js
+u = u._functions
+
+# ====
+# Extract and check arguments (u is a list of Function)
+u_comps = [u[i]._cpp_object for i in range(len(u))]
+# Store input UFL forms and solution Function
+F_ufl = eq_lhs_forms
+J_ufl = Js
+u_ufl = u
+
+assert len(F) == len(u)
+assert(len(J) == len(u) * len(u))
+# Create list of forms/blocks
+F_list = list()
+print("[problem.py] size F = ", len(F))
+for Fi in F:
+    if Fi is None:
+        # dolfin/fem/Form.cpp
+        # cpp.fem.Form(rank, num_coefficients)
+        F_list.append([cpp.fem.Form(1, 0)])
+    elif Fi.empty():
+        F_list.append([cpp.fem.Form(1, 0)])  # single-elt list
+    else:
+        Fs = []
+        for Fsub in sub_forms_by_domain(Fi):
+            if Fsub is None:
+                Fs.append(cpp.fem.Form(1, 0))
+            elif Fsub.empty():
+                Fs.append(cpp.fem.Form(1, 0))
+            else:
+                Fs.append(Form(Fsub, form_compiler_parameters=form_compiler_parameters))
+        F_list.append(Fs)
+print("[problem] create list of residual forms OK")
+
+J_list = None
+if J is not None:
+    J_list = list()
+    print("[problem.py] size J = ", len(J))
+    for Ji in J:
+        if Ji is None:
+            J_list.append([cpp.fem.Form(2, 0)])
+        elif Ji.empty():
+            J_list.append([cpp.fem.Form(2, 0)])
+        else:
+            Js = []
+            for Jsub in sub_forms_by_domain(Ji):
+                Js.append(Form(Jsub, form_compiler_parameters=form_compiler_parameters))
+            J_list.append(Js)
+print("[problem] create list of jacobian forms OK, J_list size = ", len(J_list))
+
+# Initialize C++ base class
+cpp.fem.MixedNonlinearVariationalProblem.__init__(self, F_list, u_comps, bcs, J_list)
+
+# # # Create solver and call solve
+# solver = d.MixedNonlinearVariationalSolver(problem)
 # solver.solve()
 
 
@@ -226,166 +293,11 @@ problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, bcs, Js
 # a_11 = d.extract_blocks(all_forms,1,1)
 
 # d.solve(all_forms == 0, model.u['u']._functions)
-# d.MixedLinearVariationalProblem(all_forms==0, model.u['u']._functions)
-# u = model.u['u']
-# bcs=[]
-# eq = all_forms==0
-# eq_lhs_forms = d.extract_blocks(eq.lhs)
-
-# # Give the list of jacobian for each eq_lhs
-# Js = []
-# import dolfin.fem.formmanipulations as formmanipulations
-# from ufl.algorithms.ad import expand_derivatives
-# for Fi in eq_lhs_forms:
-#     for uj in model.u['u']._functions:
-#         derivative = formmanipulations.derivative(Fi, uj)
-#         derivative = expand_derivatives(derivative)
-#         print()
-#         Js.append(derivative)
-
-# #eq_rhs_forms = d.extract_blocks(eq.rhs)
-# problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, model.u['u']._functions, [], Js)
-
-# # copying code from dolfin/fem/solving.py _solve_varproblem()
-# # Create problem
-# all_forms_a = sum([f.form for f in model.forms if f.form_type in ['mass_u', 'diffusion']])
-# all_forms_L = sum([-1*f.form for f in model.forms if f.form_type in ['mass_un']]) # moving to RHS
-# problem = d.MixedLinearVariationalProblem(d.extract_blocks(all_forms_a), d.extract_blocks(all_forms_L), model.u['u']._functions, [])
-# solver = d.MixedLinearVariationalSolver(problem)
-# solver_parameters={"linear_solver":"direct"}
-# solver.parameters.update(solver_parameters)
-# solver.solve()
 
 
-
-
-# u = c.u['u'].sub(0)
-# v = c.v[0]
-# dx = c.mesh.dx
-# f = u*v*dx
-
-
-
-# #aliases
-# u = model.sc['A'].u['u']
-
-
-# mall = [mtot, mcyto, merv, merm, mpm]
-
-# build mappings (dim 2 -> 3)
-# merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
-# merm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
-
-
-#mpm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
-
-# vol to vol
-# d.assemble((A.u['u'] - B.u['u']) * merm.dx)
-
-# surf to vol
-#print(d.assemble((A.u['u'] * X_pm.u['u']) * mpm.dx_map[mcyto.id](1))) 
-# print(d.assemble((A.u['u']) * mpm.dx_map[mcyto.id](1))) 
-# print(f"expected value: 24")
-
-#d.assemble((A.u['u'] * X_pm.u['u']) * mcyto.ds(2)) # not implemented yet
-
-#merm.mesh_view
-
-
-# for m in mall:
-#     #print(m.mesh_view)
-#     print(m.id)
-
-# build mappings (dim 2 -> 3)
-# merm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
-# merm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
-# mpm.dolfin_mesh.build_mapping(mcyto.dolfin_mesh)
-# mpm.dolfin_mesh.build_mapping(merv.dolfin_mesh)
-
-# mtest = d.MeshView.create(mcyto.mf['facets'], 4)
-# mcyto.mesh_view[3].create(mcyto.mf['facets'], 4)
-
-
-
-
-
-
-
-
-# #==============================
-# #==============================
-# # MWE volume-volume
-# #==============================
-# #==============================
-# m = d.Mesh('data/adjacent_cubes.xml')
-# mf3 = d.MeshFunction('size_t', m, 3, value=m.domains())
-# mf2 = d.MeshFunction('size_t', m, 2, value=m.domains())
-
-# # try unmarking some of mf2(4)
-# d.CompiledSubDomain('x[0] < 0.0').mark(mf2,6)
-
-# m1 = d.MeshView.create(mf3, 11)
-# m2 = d.MeshView.create(mf3, 12)
-# m_ = d.MeshView.create(mf2, 4)
-
-# V0 = d.FunctionSpace(m,"P",1); V1 = d.FunctionSpace(m1,"P",1); V2 = d.FunctionSpace(m2,"P",1); V_ = d.FunctionSpace(m_,"P",1);
-# V  = d.MixedFunctionSpace(V0,V1,V2,V_)
-
-# u = d.Function(V)
-# u0 = u.sub(0); u1 = u.sub(1); u2 = u.sub(2); u_ = u.sub(3)
-# u0.vector()[:] = 1; u1.vector()[:] = 5; u2.vector()[:] = 3; u_.vector()[:] = 7
-
-# (ut0, ut1, ut2, ut_) = d.TrialFunctions(V)
-
-
-# v = d.TestFunctions(V)
-# v0,v1,v2,v_ = v
-
-# u = d.Function(V)
-
-# dx0 = d.Measure('dx', domain=m);  dx1 = d.Measure('dx', domain=m1);
-# dx2 = d.Measure('dx', domain=m2); dx_ = d.Measure('dx', domain=m_);
-
-# mf1 = d.MeshFunction('size_t', m1, 2, 0)
-# d.CompiledSubDomain('near(x[2],0)').mark(mf1,4)
-# ds1 = d.Measure('ds', domain=V1.mesh(), subdomain_data=mf1)
-
-# m_.build_mapping(m1)
-# m_.build_mapping(m2)
-
-# # volume PDE: volume+surface -> volume
-# def volPDE_volsurf2vol():
-#     return d.assemble(u1*u_*u2*v1*dx_)
-
-# # volume PDE: volume -> volume
-# def volPDE_vol2vol():
-#     # m1.build_mapping(m2) does not work
-#     # needs mapping
-#     return d.assemble((u1-u2)*v1*dx_)
-
-# # surface PDE: volume -> surface
-# # only works after m_.build_mapping(m1)
-# def surfPDE_vol2surf_trial():
-#     return d.assemble(ut1*v_*dx_) #Works
-
-# def surfPDE_vol2surf():
-#     return d.assemble(u1*v_*dx_) #Segfault if mapping is not built
-
-# # volume PDE: surface -> volume
-# def volPDE_surf2vol_trial():
-#     return d.assemble(ut_*v1*dx_) #Works
-
-# def volPDE_surf2vol():
-#     return d.assemble(u_*v1*dx_) #Works
-
-# # volume PDE: volume -> surface
-# def volPDE_vol2surf_trial():
-#     return d.assemble(ut1*v1*dx_) #Works
-
-# def volPDE_vol2surf():
-#     return d.assemble(u1*v1*dx_) #Segfault if mapping is not built
-
-
-# # d.assemble(u_*v1*ds1) does not work (Exception: codim != 0 or 1 - Not (yet) implemented)
-
-# # volume -> volume
+# ufl/form.py
+# def sub_forms_by_domain(form):
+#     "return a list of forms each with an integration domain"
+#     if not isinstance(form, form):
+#         error("Unable to convert object to a UFL form: %s" % ufl_err_str(form))
+#     return [Form(form.integrals_by_domain(domain)) for domain in form.ufl_domains()]

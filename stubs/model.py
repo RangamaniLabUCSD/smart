@@ -7,6 +7,7 @@ from cached_property import cached_property
 import itertools
 
 import dolfin as d
+import ufl
 import petsc4py.PETSc as PETSc
 
 Print = PETSc.Sys.Print
@@ -691,6 +692,17 @@ class Model:
             # p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
             # p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
             # p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+    
+    def compute_jacobian(self):
+        "Taken from doflin.fem.solving._solve_varproblem()"
+        eq_lhs_forms = d.fem.formmanipulations.extract_blocks(model.)
+        Js = []
+        for Fi in eq_lhs_forms:
+            for uj in u._functions:
+                derivative = d.fem.formmanipulations.derivative(Fi, uj)
+                derivative = ufl.algorithms.ad.expand_derivatives(derivative)
+                Js.append(derivative)
+                FIXME
 
     #     self.set_allow_extrapolation()
 
@@ -1027,9 +1039,13 @@ class Model:
         After finishing a time step, assign all the most recently computed solutions as 
         the solutions for the previous time step.
         """
-        for key in self.u.keys():
-            for ukey in ukeys:
-                self.u[key][ukey].assign(self.u[key]['u'])
+        for ukey in ukeys:
+            # for a function from a mixed function space
+            for idx in range(self.num_sorted_compartments):
+                self.u[ukey].sub(idx).assign(self.u['u'].sub(idx))
+            # for key in self.u.keys():
+            #     self.u[ukey][key].assign(self.u[key]['u'])
+            
 
     def adjust_dt(self):
         ## check if time step should be changed
@@ -1333,6 +1349,10 @@ class Model:
 
             # uvec.set_local(values)
             # uvec.apply('insert')
+    
+    @property
+    def num_active_compartments(self):
+        return len(self._sorted_compartments)
 
     # def assign_initial_conditions(self):
     #     ukeys = ['k', 'n', 'u']
