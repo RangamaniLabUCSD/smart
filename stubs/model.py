@@ -117,64 +117,6 @@ class Model:
     # ==============================================================================
 
     # def initialize(self):
-    #     # parameter/unit assembly
-    #     print("\n\n********** Model initialization (Part 1/6) **********")
-    #     print("Assembling parameters and units...\n")
-    #     self.pc.do_to_all('assemble_units', {'unit_name': 'unit'})
-    #     self.pc.do_to_all('assemble_units', {'value_name':'value', 'unit_name':'unit', 'assembled_name': 'value_unit'})
-    #     self.pc.do_to_all('assemble_time_dependent_parameters')
-    #     self.sc.do_to_all('assemble_units', {'unit_name': 'concentration_units'})
-    #     self.sc.do_to_all('assemble_units', {'unit_name': 'diffusion_units'})
-    #     self.cc.do_to_all('assemble_units', {'unit_name':'compartment_units'})
-    #     self.rc.do_to_all('initialize_flux_equations_for_known_reactions', {"reaction_database": self.config.reaction_database})
-
-    #     # linking containers with one another
-    #     print("\n\n********** Model initialization (Part 2/6) **********")
-    #     print("Linking different containers with one another...\n")
-    #     self.rc._link_object(self.pc,'param_map','name','parameters', value_is_key=True)
-    #     self.sc._link_object(self.cc,'compartment_name','name','compartment')
-    #     self.sc._copy_linked_property('compartment', 'dimensionality', 'dimensionality')
-    #     self.rc.do_to_all('get_involved_species_and_compartments', {"sc": self.sc, "cc": self.cc})
-    #     self.rc._link_object(self.sc,'involved_species','name','involved_species_link')
-
-    #     # meshes
-    #     print("\n\n********** Model initialization (Part 3/6) **********")
-    #     print("Loading in mesh and computing statistics...\n")
-    #     setattr(self.cc, 'meshes', {self.parent_mesh.name: self.parent_mesh.mesh})
-    #     self.cc.extract_submeshes(save_to_file=False)
-    #     self.cc.compute_scaling_factors()
-
-    #     # Associate species and compartments
-    #     print("\n\n********** Model initialization (Part 4/6) **********")
-    #     print("Associating species with compartments...\n")
-    #     num_species_per_compartment = self.rc.get_species_compartment_counts(self.sc, self.cc)
-    #     self.cc.get_min_max_dim()
-    #     self.sc.assemble_compartment_indices(self.rc, self.cc)
-    #     self.cc.add_property_to_all('is_in_a_reaction', False)
-    #     self.cc.add_property_to_all('V', None)
-
-    #     # dolfin functions
-    #     print("\n\n********** Model initialization (Part 5/6) **********")
-    #     print("Creating dolfin functions and assinging initial conditions...\n")
-    #     self.sc.assemble_dolfin_functions(self.rc, self.cc)
-    #     self.u = self.sc.u
-    #     self.v = self.sc.v
-    #     self.V = self.sc.V
-    #     self.assign_initial_conditions()
-
-    #     print("\n\n********** Model initialization (Part 6/6) **********")
-    #     print("Assembling reactive and diffusive fluxes...\n")
-    #     self.rc.reaction_to_fluxes()
-    #     #self.rc.do_to_all('reaction_to_fluxes')
-    #     self.fc = self.rc.get_flux_container()
-    #     self.fc.do_to_all('get_additional_flux_properties', {"cc": self.cc, "solver_system": self.solver_system})
-    #     self.fc.do_to_all('flux_to_dolfin')
- 
-    #     self.set_allow_extrapolation()
-    #     # Turn fluxes into fenics/dolfin expressions
-    #     self.assemble_reactive_fluxes()
-    #     self.assemble_diffusive_fluxes()
-    #     self.sort_forms()
 
     #     self.init_solutions_and_plots()
 
@@ -757,14 +699,6 @@ class Model:
 #                 p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
 #                 p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
 #                 p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
-#         elif self.solver_system.nonlinear_solver.method == 'IMEX':
-#             raise Exception("IMEX functionality needs to be reviewed")
-# #            Print("Keeping forms separated by compartment and form_type for IMEX scheme.")
-# #            for comp in comp_list:
-# #                comp_forms = self.forms.select_by('compartment_name', comp.name)
-# #                for form_type in form_types:
-# #                    self.split_forms[comp.name][form_type] = sum([f.dolfin_form for f in comp_forms if f.form_type==form_type])
 
     #===============================================================================
     # Model - Solving
@@ -1390,40 +1324,3 @@ class Model:
     #             return closestPoint, min_dist_global
     #     else:
     #         return closestPoint, minDist
-
-# # # Monkey patching
-#     @staticmethod
-#     def sub_patch(func, idx):
-#         "This is just a hack patch to allow us to refer to a function/functionspace with no subspaces using .sub(0)"
-#         if func.num_sub_spaces() <= 1 and idx == 0:
-#             return func
-#         else:
-#             sub_func = func.sub(idx)
-#             Model.apply_patch(sub_func, )
-#             sub_func._sub = sub_func.sub
-#             sub_func.sub = Model.sub_patch.__get__(sub_func, d.Function)
-#             return func.sub(idx)
-#     @staticmethod
-#     def apply_patch(func, base_class):
-#         func._sub = func.sub
-#         func.sub = Model.sub_patch.__get__(func, base_class)
-            
-#     @staticmethod    
-#     def Function(function_space):
-#         func = d.Function(function_space)
-
-#         func._sub = func.sub
-#         func.sub = Model.sub_patch.__get__(func, d.Function)
-#         return func
-
-#     @staticmethod
-#     def VectorFunctionSpace(mesh, family, degree, dim):
-#         if dim > 1:
-#             func_space = d.VectorFunctionSpace(mesh, family, degree, dim=dim)
-#             return func_space
-#         elif dim == 1:
-#             func_space = d.FunctionSpace(mesh, family, degree)
-        
-#             func_space._sub = func_space.sub
-#             func_space.sub = Model.sub_patch.__get__(func_space, d.FunctionSpace)
-#             return func_space
