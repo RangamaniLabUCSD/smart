@@ -130,9 +130,15 @@ class ParentMesh(_Mesh):
     Mesh loaded in from data. Submeshes are extracted from the ParentMesh based 
     on marker values from the .xml file.
     """
-    def __init__(self, mesh_filename, name='parent_mesh'):
+    def __init__(self, mesh_filename, mesh_filetype='xml', name='parent_mesh'):
         super().__init__(self, name)
-        self.load_mesh_from_xml(mesh_filename)
+        if mesh_filetype == 'xml':
+            self.load_mesh_from_xml(mesh_filename)
+        elif mesh_filetype == 'hdf5':
+            self.load_mesh_from_hdf5(mesh_filename)
+        self.mesh_filename = mesh_filename
+        self.mesh_filetype = mesh_filetype
+        
         self.child_meshes = {}
         self.parent_mesh = self
         # get mesh functions
@@ -144,10 +150,29 @@ class ParentMesh(_Mesh):
 
     def load_mesh_from_xml(self, mesh_filename):
         self.dolfin_mesh = d.Mesh(mesh_filename)
+
         self.dolfin_mesh.init()
         self.dimensionality = self.dolfin_mesh.topology().dim()
-        self.mesh_filename = mesh_filename
-        print(f"Mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
+        print(f"XML mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
+
+    def load_mesh_from_hdf5(self, mesh_filename):
+        #mesh, mfs = common.read_hdf5(hdf5_filename)
+        self.dolfin_mesh = d.Mesh()
+        hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, 'r')
+        hdf5.read(self.dolfin_mesh, '/mesh', False)
+
+        self.dolfin_mesh.init()
+        self.dimensionality = self.dolfin_mesh.topology().dim()
+        print(f"HDF5 mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
+
+    def _get_mesh_function(self, dim):
+        if self.mesh_filetype == 'xml':
+            mf = d.MeshFunction('size_t', self.dolfin_mesh, dim, value=self.dolfin_mesh.domains())
+        elif self.mesh_filetype == 'hdf5':
+            hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, 'r')
+            mf = d.MeshFunction('size_t', self.dolfin_mesh, dim, value=0)
+            hdf5.read(mf, f"/mf{dim}")
+        return mf
 
     def get_mesh_functions(self):
         # Aliases
@@ -163,15 +188,15 @@ class ParentMesh(_Mesh):
         assert len(self.child_meshes) > 0 # there should be at least one child mesh
 
         # Init mesh functions
-        self.mf['cells'] = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
+        self.mf['cells'] = self._get_mesh_function(volume_dim)
         if has_surface:
-            self.mf['facets'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+            self.mf['facets'] = self._get_mesh_function(surface_dim)
             
         # If any cell markers are given as a list we also create mesh functions to store the uncombined markers
         if any([cm.marker_list is not None for cm in self.child_meshes.values()]):
-            self.mf['cells_uncombined']  = d.MeshFunction('size_t', mesh, volume_dim, value=mesh.domains())
+            self.mf['cells_uncombined'] = self._get_mesh_function(volume_dim)
             if has_surface:
-                self.mf['facets_uncombined'] = d.MeshFunction('size_t', mesh, surface_dim, value=mesh.domains())
+                self.mf['facets_uncombined'] = self._get_mesh_function(surface_dim)
         # Combine markers in a list 
         for cm in self.child_meshes.values(): 
             if cm.marker_list is None:
@@ -181,7 +206,7 @@ class ParentMesh(_Mesh):
                     self.mf['cells'].array()[self.mf['cells_uncombined'].array() == marker] = cm.primary_marker
                 if cm.dimensionality < self.max_dim:
                     self.mf['facets'].array()[self.mf['facets_uncombined'].array() == marker] = cm.primary_marker
-        
+
 
 class ChildMesh(_Mesh):
     """
@@ -300,7 +325,7 @@ class ChildMesh(_Mesh):
         self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
         self.dolfin_mesh.init()
 
-    def get_mesh_functions(self):
+    def init_mesh_functions(self):
         "Child mesh functions require transfering data from parent mesh functions"
         assert hasattr(self.parent_mesh, 'mf')
         # Alias

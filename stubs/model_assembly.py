@@ -611,8 +611,8 @@ class Compartment(ObjectInstance):
         self.species = odict()
         self.u       = dict()
         self._usplit = dict()
-        self.V       = dict()
-        self.v       = dict()
+        self.V       = None
+        self.v       = None
     
     def check_validity(self):
         if self.dimensionality not in [1,2,3]:

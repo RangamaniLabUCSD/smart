@@ -8,6 +8,9 @@ import itertools
 
 import dolfin as d
 import ufl
+from ufl.algorithms.ad import expand_derivatives
+from ufl.form import sub_forms_by_domain
+
 import petsc4py.PETSc as PETSc
 
 Print = PETSc.Sys.Print
@@ -405,7 +408,7 @@ class Model:
         # Aliases
         child_meshes = self.parent_mesh.child_meshes.values()
         for mesh in child_meshes:
-            mesh.get_mesh_functions()
+            mesh.init_mesh_functions()
             # get mappings to siblings of higher dimension
             if not mesh.is_volume_mesh:
                 for sibling_mesh in child_meshes:
@@ -634,17 +637,98 @@ class Model:
             # p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
             # p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
             # p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
+
     
-    def compute_jacobian(self):
-        "Taken from doflin.fem.solving._solve_varproblem()"
-        eq_lhs_forms = d.fem.formmanipulations.extract_blocks(model.)
-        Js = []
-        for Fi in eq_lhs_forms:
-            for uj in u._functions:
-                derivative = d.fem.formmanipulations.derivative(Fi, uj)
-                derivative = ufl.algorithms.ad.expand_derivatives(derivative)
-                Js.append(derivative)
-                FIXME
+    def get_block_system(self):
+        """
+        The high level dolfin.solve(F==0, u) eventually calls cpp.fem.MixedNonlinearVariationalSolver,
+        but first modifies F and defines J into a specific structure that is required for d.assemble_mixed()
+
+        ====================================================
+        Comments on d.extract_blocks(F) (which is just a wrapper around ufl.algorithms.formsplitter)
+        ====================================================
+        There is some indexing going on behind the scenes, so just manually summing what we know to be the
+        components of Fblock[0] will not be the same as extract_blocks(F)[0]. Here is an example:
+
+        F  = sum([f.lhs for f in model.forms]) # single form
+        F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol']) # first compartment
+        Fb0 = extract_blocks(F)[0] # tuple of forms
+
+        F0.equals(Fb0) -> False
+        I0 = F0.integrals()[0].integrand()
+        Ib0 = Fb0.integrals()[0].integrand()
+        I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
+        I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
+        I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
+        """
+        # Aliases
+        Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
+        u = self.u['u']._functions
+
+        # =====================================================================
+        # doflin.fem.solving._solve_varproblem()
+        # =====================================================================
+        Fblock = d.extract_blocks(Fsum) # blocks/partitions are by compartment, not species
+        J = []
+        for Fi in Fblock:
+            for uj in u:
+                dFdu = expand_derivatives(d.derivative(Fi, uj))
+                J.append(dFdu)
+    
+        # =====================================================================
+        # doflin.fem.problem.MixedNonlinearVariationalProblem()
+        # =====================================================================
+        # basically is a wrapper around the cpp class that finalizes preparing F and J into the right format
+        # TODO: add dirichlet BCs
+
+        # Add in placeholders for empty blocks of F
+        if len(Fblock) != len(u):
+            Ftemp = [None for i in range(len(u))]
+            for Fi in Fblock:
+                Ftemp[Fi.arguments()[0].part()] = Fi
+            Fblock = Ftemp
+
+        # Check number of blocks in the residual and solution are coherent
+        assert(len(J) == len(u) * len(u))
+        assert(len(Fblock) == len(u))
+
+        # Decompose F blocks into subforms based on domain of integration
+        # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
+        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]] If a form has integrals on multiple domains, they are split into a list
+        Flist = list()
+        for Fi in Fblock:
+            if Fi is None or Fi.empty():
+                Flist.append([d.cpp.fem.Form(1, 0)])
+            else:
+                Fs = []
+                for Fsub in sub_forms_by_domain(Fi):
+                    if Fsub is None or Fsub.empty():
+                        Fs.append(d.cpp.fem.Form(1, 0))
+                    else:
+                        Fs.append(d.Form(Fsub))
+                Flist.append(Fs)
+        #fancy_print("[problem] create list of residual forms OK", format_type='log')
+
+        # Decompose J blocks into subforms based on domain of integration
+        Jlist = list()
+        for Ji in J:
+            if Ji is None or Ji.empty():
+                Jlist.append([cpp.fem.Form(2, 0)])
+            else:
+                Js = []
+                for Jsub in sub_forms_by_domain(Ji):
+                    Js.append(d.Form(Jsub))
+                Jlist.append(Js)
+
+        return Flist, Jlist
+        #fancy_print(f"[problem] create list of jacobian forms OK, Jlist size = {len(Jlist)}", format_type='log')
+
+        # M01 = d.assemble_mixed(J_list[0][1])
+        # d.PETScNestMatrix (demo_matnest.py)
+        # it is possible to use petsc4py directly  e.g.
+        # M = PETSc.Mat().createNest([[M00,M01], [M10,M11]], comm=MPI.COMM_WORLD)
+        # d.as_backend_type(M00).mat()
+    
 
     #     self.set_allow_extrapolation()
 

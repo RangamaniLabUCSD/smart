@@ -12,7 +12,7 @@ import pint
 from termcolor import colored
 import stubs
 from pandas import read_json
-from contextlib import contextmanager
+from contextlib import contextmanager as _contextmanager
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -492,7 +492,7 @@ def _fileno(file_or_fd):
         raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
     return fd
 
-@contextmanager
+@_contextmanager
 def _stdout_redirected(to=os.devnull, stdout=None):
     if stdout is None:
        stdout = sys.stdout
@@ -514,3 +514,40 @@ def _stdout_redirected(to=os.devnull, stdout=None):
             #NOTE: dup2 makes stdout_fd inheritable unconditionally
             stdout.flush()
             os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
+    
+
+def convert_xml_to_hdf5(xml_filename, hdf5_filename, metadata_dims=None):
+    if metadata_dims is None:
+        metadata_dims = []
+    else:
+        assert all([dim in [0,1,2,3] for dim in metadata_dims])
+
+    # write
+    mesh = d.Mesh(xml_filename)
+    hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, 'w')
+    hdf5.write(mesh, '/mesh')
+    # write mesh functions
+    for dim in metadata_dims:
+        mf = d.MeshFunction('size_t', mesh, dim, value=mesh.domains())
+        hdf5.write(mf, f"/mf{dim}")
+    hdf5.close()
+
+def read_hdf5(hdf5_filename, metadata_dims=None):
+    if metadata_dims is None:
+        metadata_dims = []
+    else:
+        assert all([dim in [0,1,2,3] for dim in metadata_dims])
+    
+    # read
+    mesh = d.Mesh()
+    hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, 'r')
+    hdf5.read(mesh, '/mesh', False)
+
+    mfs = dict()
+    for dim in metadata_dims:
+        mfs[dim] = d.MeshFunction('size_t', mesh, dim)
+        hdf5.read(mfs[dim], f"/mf{dim}")
+
+    return mesh, mfs
+    
+
