@@ -19,12 +19,14 @@ molecule = unit.molecule
 sec      = unit.s
 
 import stubs_model 
+
+from memory_profiler import profile
 model = stubs_model.make_model(refined_mesh=True)
 
-#====================
-# init model
-# ===================
-import cProfile
+# #====================
+# # init model
+# # ===================
+# #import cProfile
 model._init_1()
 model._init_2()
 model._init_3()
@@ -32,47 +34,54 @@ model._init_3()
 model._init_4()                 
 model._init_5_1_reactions_to_fluxes()
 model._init_5_2_create_variational_forms()
+
+# if __name__=='__main':
+#     model = stubs_model.make_model(refined_mesh=True)
+#     model._init_1()
+#     model._init_2()
+#     init_model()
+
 #model._init_5_3_create_variational_problems()
 
 
 #====================
 # aliases
 # ===================
-p = model.pc.get_index(0)
-s = model.sc.get_index(0)
-c = model.cc.get_index(0)
-r = model.rc.get_index(0)
-A = model.sc['A']
-B = model.sc['B']
-# Y = model.sc['Y']
-# X = model.sc['X']
-# mtot  = model.parent_mesh
-# mcyto = model.cc['cytosol'].mesh
-# merv  = model.cc['er_vol'].mesh
-# merm  = model.cc['er_mem'].mesh
-# mpm   = model.cc['pm'].mesh
+# p = model.pc.get_index(0)
+# s = model.sc.get_index(0)
+# c = model.cc.get_index(0)
+# r = model.rc.get_index(0)
+# A = model.sc['A']
+# B = model.sc['B']
+# # Y = model.sc['Y']
+# # X = model.sc['X']
+# # mtot  = model.parent_mesh
+# # mcyto = model.cc['cytosol'].mesh
+# # merv  = model.cc['er_vol'].mesh
+# # merm  = model.cc['er_mem'].mesh
+# # mpm   = model.cc['pm'].mesh
 
-# ===================
-# Nonlinear F==0
-# ===================
-# Imports
-# _extract_args  = d.fem.solving._extract_args
-from dolfin.fem.formmanipulations import derivative, extract_blocks
-import dolfin.cpp as cpp
-from dolfin.fem.form import Form
-from ufl.algorithms.ad import expand_derivatives
-from ufl.form import sub_forms_by_domain
+# # ===================
+# # Nonlinear F==0
+# # ===================
+# # Imports
+# # _extract_args  = d.fem.solving._extract_args
+# from dolfin.fem.formmanipulations import derivative, extract_blocks
+# import dolfin.cpp as cpp
+# from dolfin.fem.form import Form
+# from ufl.algorithms.ad import expand_derivatives
+# from ufl.form import sub_forms_by_domain
 
 
-# Aliases 
-dfdu = lambda F,u: expand_derivatives(d.derivative(F,u))
-F = sum([f.lhs for f in model.forms]) # single form
-u = model.u['u']
-Fblock = extract_blocks(F)
+# # Aliases 
+# dfdu = lambda F,u: expand_derivatives(d.derivative(F,u))
+# F = sum([f.lhs for f in model.forms]) # single form
+# u = model.u['u']
+# Fblock = extract_blocks(F)
 
-Flist, Jlist = model.get_block_system()
+# Flist, Jlist = model.get_block_system()
 
-d.solve(F==0, u)
+# d.solve(F==0, u)
 
 # TODO
 # look into

@@ -236,7 +236,7 @@ def color_print(full_text, color):
 # fancy printing
 # ====================================================
 def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_char='=',
-                             num_banners=0, newlines=[0,0], left_justify=False, format_type=None):
+                             num_banners=0, newlines=[0,0], left_justify=False, format_type=None, include_rank=False):
     "Formatted text to stand out."
     # some default options
     if format_type == 'title':
@@ -257,6 +257,11 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
         text_color = 'magenta'; num_banners = 1; filler_char = '.'; newlines=[1,1]
     elif format_type is not None:
         raise ValueError("Unknown formatting_type.")
+    
+    # parallelism
+    if include_rank:
+        title_text = f"CPU {rank}: {title_text}"
+        
 
     # calculate optimal buffer size
     min_buffer_size = 5

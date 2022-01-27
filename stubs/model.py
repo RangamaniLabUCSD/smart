@@ -103,6 +103,10 @@ class Model:
     def child_meshes(self):
         return self.parent_mesh.child_meshes
 
+    @property
+    def rank(self):
+        return d.MPI.comm_world.Get_rank()
+
     @cached_property
     def min_dim(self):
         dim                         = min([comp.dimensionality for comp in self.cc])
@@ -446,13 +450,13 @@ class Model:
                         f"(dim: {compartment.dimensionality}, species: {compartment.num_species}, dofs: {compartment.num_dofs})", format_type='log')
 
             if compartment.num_species > 1:
-                compartment.V = d.VectorFunctionSpace(compartment.dolfin_mesh, 'P', 1, dim=compartment.num_species)
+                V = d.VectorFunctionSpace(self.child_meshes[compartment.name].dolfin_mesh, 'P', 1, dim=compartment.num_species)
             else:
-                compartment.V = d.FunctionSpace(compartment.dolfin_mesh, 'P', 1)
+                V = d.FunctionSpace(self.child_meshes[compartment.name].dolfin_mesh, 'P', 1)
 
-        self.V = [compartment.V for compartment in self._sorted_compartments]
-        # Make the MixedFunctionSpace
-        self.W = d.MixedFunctionSpace(*self.V)
+        # self.V = [compartment.V for compartment in self._sorted_compartments]
+        # # Make the MixedFunctionSpace
+        # self.W = d.MixedFunctionSpace(*self.V)
 
     def _init_4_3_define_dolfin_functions(self):
         """
