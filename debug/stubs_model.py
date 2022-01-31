@@ -81,12 +81,15 @@ def make_model(refined_mesh=True):
     # config
     stubs_config = stubs.config.Config()
     stubs_config.flags['allow_unused_components'] = True
+
+    solver_parameters = {'final_t':0.1, 'initial_dt':0.01, 'dt_increase_factor':1.1}
+    stubs_config.solver.update(solver_parameters)
     # stubs_config.loglevel['dolfin'] = 'CRITICAL'
     # Define solvers
-    mps           = stubs.solvers.MultiphysicsSolver()
-    nls           = stubs.solvers.NonlinearNewtonSolver()
-    ls            = stubs.solvers.DolfinKrylovSolver()
-    solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01, multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
+    # mps           = stubs.solvers.MultiphysicsSolver()
+    # nls           = stubs.solvers.NonlinearNewtonSolver()
+    # ls            = stubs.solvers.DolfinKrylovSolver()
+    # solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01, multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
     # mesh
     from pathlib import Path
     path    = Path('.').resolve()
@@ -104,4 +107,4 @@ def make_model(refined_mesh=True):
         stubs_mesh = stubs.mesh.ParentMesh(str(path / 'adjacent_cubes.h5'), 'hdf5')
     #stubs_mesh.dolfin_mesh = d.refine(stubs_mesh.dolfin_mesh)
 
-    return stubs.model.Model(pc, sc, cc, rc, stubs_config, solver_system, stubs_mesh)
+    return stubs.model.Model(pc, sc, cc, rc, stubs_config, stubs_mesh)

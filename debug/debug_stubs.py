@@ -20,7 +20,6 @@ sec      = unit.s
 
 import stubs_model 
 
-from memory_profiler import profile
 model = stubs_model.make_model(refined_mesh=True)
 
 # #====================
@@ -41,7 +40,62 @@ model._init_5_2_create_variational_forms()
 #     model._init_2()
 #     init_model()
 
-#model._init_5_3_create_variational_problems()
+model._init_5_3_create_variational_problem()
+
+print(model.u['u'].sub(0).compute_vertex_values().min())
+print(model.u['u'].sub(0).compute_vertex_values().max())
+a = model.solver.solve()
+
+print(model.u['u'].sub(0).compute_vertex_values().min())
+print(model.u['u'].sub(0).compute_vertex_values().max())
+# 2.9026068866967845
+# 11.249856899995862
+# 2.9026068866967845
+# 11.249856899995862
+
+
+
+def get_nestmat_from_Jlist(Jlist):
+    # For some reason assemble_mixed() doesn't work on forms with multiple integration domains, so the Jlist
+    # that is fed to d.MixedNonlinearVariationalSolver is in a form like
+    # [[J0(Omega_0), J0(Omega_1)], ..., [Jn(Omega_n)]]
+    new_Jlist = list()
+    for Jsublist in Jlist:
+        Jsub = [d.assemble_mixed(J) for J in Jsublist]
+        J = Jsub[0]
+        if len(Jsub) > 1:
+            for i in range(1,len(Jsub)):
+                J += Jsub[i]
+            
+        new_Jlist.append(J)
+    
+    # call d.PETScNestMatrix(new_Jlist)
+    return new_Jlist
+        
+# Jlist = get_nestmat_from_Jlist(model.Jlist)
+# J_petsc = d.PETScNestMatrix(Jlist)
+# Jblock  = d.BlockMatrix(2,2)
+# Jblock[0,0] = Jlist[0]
+# Jblock[0,1] = Jlist[1]
+# Jblock[1,0] = Jlist[2]
+# Jblock[1,1] = Jlist[3]
+
+# duv0 = d.Vector()
+# duv1 = d.Vector()
+
+# Jblock[0,0].init_vector(duv0, 0)
+# Jblock[1,1].init_vector(duv1, 0)
+# du = d.BlockVector(2)
+# du[0] = duv0
+# du[1] = duv1
+# d
+
+
+# d.PETScNestMatrix (demo_matnest.py)
+# J00 = d.assemble_mixed(model.Jlist[0][0])
+# J01 = d.assemble_mixed(model.Jlist[0][1])
+# Jlist = [d.assemble_mixed(J) for J in model.Jlist]
+# J00 = d.as_backend_type(d.assemble_mixed(model.Jlist[0][0])).mat()
 
 
 #====================
@@ -83,11 +137,29 @@ model._init_5_2_create_variational_forms()
 
 # d.solve(F==0, u)
 
+# from ufl.algorithms.ad import expand_derivatives
+# Fsum = sum([f.lhs for f in model.forms]) # Sum of all forms
+# u = model.u['u']._functions
+# Fblock = d.extract_blocks(Fsum) # blocks/partitions are by compartment, not species
+# J = []
+# for Fi in Fblock:
+#     for uj in u:
+#         dFdu = expand_derivatives(d.derivative(Fi, uj))
+#         J.append(dFdu)
+
+
 # TODO
 # look into
 # M01 = d.assemble_mixed(Jlist[0][1])
 # d.PETScNestMatrix (demo_matnest.py)
-# it is possible to use petsc4py directly  e.g.
+# J00 = d.assemble_mixed(model.Jlist[0][0])
+# J01 = d.assemble_mixed(model.Jlist[0][1])
+# Jlist = [d.assemble_mixed(J) for J in model.Jlist]
+# J00 = d.as_backend_type(d.assemble_mixed(model.Jlist[0][0])).mat()
+# J01 = d.as_backend_type(d.assemble_mixed(model.Jlist[0][1])).mat()
+# # it is possible to use petsc4py directly  e.g.
+# import petsc4py.PETSc as petsc
+# M = petsc.Mat().createNest([J00,J01], comm=d.MPI.comm_world)
 # M = PETSc.Mat().createNest([[M00,M01], [M10,M11]], comm=MPI.COMM_WORLD)
 # d.as_backend_type(M00).mat()
 #https://fenicsproject.discourse.group/t/custom-newtonsolver-using-the-mixed-dimensional-branch-and-petscnestmatrix/2788/3

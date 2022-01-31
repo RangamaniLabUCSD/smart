@@ -531,7 +531,7 @@ class Species(ObjectInstance):
         self._usplit = dict()
         self.ut      = None
         self.v       = None
-        self.t       = 0.0
+        #self.t       = 0.0
 
         if isinstance(self.initial_condition, int):
             self.initial_condition = float(self.initial_condition)

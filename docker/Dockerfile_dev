@@ -13,11 +13,13 @@
 FROM quay.io/fenicsproject/dev
 
 # Install desired packages using apt-get
+# libgl for visualization with vedo
 RUN apt-get -qq update && \
     apt-get -qq -y install \
     curl \
     vim \
     htop && \
+    libgl1-mesa-glx && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -34,6 +36,7 @@ RUN apt-get -qq update && \
 RUN python3 -m pip install meshio
 RUN python3 -m pip install bpython
 RUN python3 -m pip install gmsh
+RUN python3 -m pip install vedo
 # this is to install just the dependencies so that we can use the local version of stubs
 RUN python3 -m pip install fenics-stubs
 RUN python3 -m pip uninstall --yes fenics-stubs

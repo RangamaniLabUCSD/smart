@@ -13,6 +13,11 @@ class Config:
          - logging
     """
     def __init__(self):
+        self.solver             = {'final_t': None,
+                                   'initial_dt': None,
+                                   'adjust_dt': None,
+                                   'dt_decrease_factor': 1.0,
+                                   'dt_increase_factor': 1.0,}
 
         # initialize with default values
         self.flags              = {'store_solutions': True,
@@ -53,6 +58,11 @@ class Config:
         valid_filetypes = ['xdmf', 'vtk', None]
         if self.output_type not in valid_filetypes:
             raise ValueError(f"Only filetypes: '{valid_filetypes}' are supported.")
+        
+        if self.solver['final_t'] is None:
+            raise ValueError(f"Please provide a final time in config.solver")
+        if self.solver['initial_dt'] is None:
+            raise ValueError(f"Please provide an initial time-step size in config.solver")
 
     def set_logger_levels(self):
         # set for dolfin
