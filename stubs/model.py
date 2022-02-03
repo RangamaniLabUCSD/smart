@@ -1403,11 +1403,20 @@ class Model:
         else:
             return d.assemble_mixed(species.u['u'] * species.compartment.mesh.dx)
         
-    def get_compartment_residual(self, compartment, norm='l1'):
-        return sum([d.assemble_mixed(form) for form in self.Fblocks[compartment.dof_index]]).norm(norm)
+    def get_compartment_residual(self, compartment, norm=None):
+        res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in self.Fblocks[compartment.dof_index]])
+        if norm is None:
+            return res_vec
+        else:
+            return np.linalg.norm(res_vec, norm)
     
-    def get_total_residual(self, norm='l1'):
-        return sum([d.assemble_mixed(form) for form in itertools.chain.from_iterable(self.Fblocks)]).norm(norm)
+    def get_total_residual(self, norm=None):
+        res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in itertools.chain.from_iterable(self.Fblocks)])
+        assert len(res_vec.shape) == 1
+        if norm is None:
+            return res_vec
+        else:
+            return np.linalg.norm(res_vec, norm)
     
 
     # def assign_initial_conditions(self):

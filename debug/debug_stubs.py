@@ -37,7 +37,14 @@ import stubs_model
 
 model = stubs_model.make_model(refined_mesh=True)
 
-#model.config.solver['use_snes'] = False
+model.parent_mesh = stubs.mesh.ParentMesh(str(stubs.common.data_path() / 'adjacent_cubes_from_dolfin_40.h5'), 'hdf5')
+
+print(model.parent_mesh.num_vertices)
+
+
+
+use_snes = True
+model.config.solver['use_snes'] = use_snes
 
 # #====================
 # # init model
@@ -65,8 +72,12 @@ for species in model.sc.values:
     umax = model.dolfin_get_function_values(species).max()
     mass = model.get_mass(species)
     print(f"species {species.name} : ({umin, umax}), mass={mass}")
-#model.solver.solve()
-model.solver.solve(None, model._ubackend)
+model.stopwatch('solve')
+if use_snes:
+    model.solver.solve(None, model._ubackend)
+else:
+    model.solver.solve()
+model.stopwatch('solve', stop=True)
 print('post: ')
 for species in model.sc.values:
     umin = model.dolfin_get_function_values(species).min()
@@ -79,9 +90,7 @@ print(model.u['u'].sub(0).compute_vertex_values().max())
 
 print(model.get_mass(A))
 
-Fflat = itertools.chain.from_iterable(model.Fblocks)
-Fvec = [sum(d.assemble_mixed(F)) for F in Fflat]
-print(f"sum of Fvec {sum(Fvec)}")
+print(f"sum of residuals {sum(model.get_total_residual())}")
 # 743.7527142501965
 # 1e-6
 

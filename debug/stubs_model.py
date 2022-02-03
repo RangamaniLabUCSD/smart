@@ -91,14 +91,7 @@ def make_model(refined_mesh=True):
     # ls            = stubs.solvers.DolfinKrylovSolver()
     # solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01, multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
     # mesh
-    from pathlib import Path
-    path    = Path('.').resolve()
-    subdir  = 'data'
-    while True:
-        if path.parts[-1]=='stubs' and path.joinpath(subdir).is_dir():
-            path = path.joinpath(subdir)
-            break
-        path = path.parent
+    path = stubs.common.data_path()
     if refined_mesh:
         #stubs_mesh = stubs.mesh.ParentMesh(mesh_filename=str(path / 'adjacent_cubes_refined.xml'))
         stubs_mesh = stubs.mesh.ParentMesh(str(path / 'adjacent_cubes_refined.h5'), 'hdf5')

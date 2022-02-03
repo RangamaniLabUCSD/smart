@@ -111,11 +111,11 @@ class stubsSNESProblem():
                 for k in range(1,len(self.Jforms[ij])):
                     Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
 
-                Jsum.mat().assemble() # ?
+                #Jsum.mat().assemble() 
                 Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
 
         self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
-        self.Jpetsc_nest.assemble() # ?
+        self.Jpetsc_nest.assemble() 
         #return Jpetsc_nest
 
  
@@ -146,41 +146,39 @@ class stubsSNESProblem():
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
         dim = self.dim
-        #Jmats = [[None]*dim]*dim #list of two lists
-        Jmats = []
+        #Jmats = []
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using dolfin wrapper as tensor
         #for ij, Jij_forms in enumerate(self.Jforms):
         for i in range(dim):
             for j in range(dim):
                 ij = i*dim+j
                 Jij_petsc = Jnest.getNestSubMatrix(i,j)
-                Jij_dolfin = d.PETScMatrix(Jij_petsc)
-                Jmats.append([])
-                # Jijk == dFi/duj(Omega_k)
-                for k, Jijk_form in enumerate(self.Jforms[ij]):
-                    # if we have the sparsity pattern re-use it, if not save it for next time
-                    # if self.tensors[ij][k] is None:
-                    #     tensor = d.PETScMatrix()
-                    #     Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=tensor))
-                    #     self.tensors[ij][k] = tensor
-                    # else:
-                    #     Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=self.tensors[ij][k]))
-                    #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_dolfin))
-                    #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_petsc)
-                    # if k==0:
-                    Jmats[ij].append(d.assemble_mixed(Jijk_form))
-                    # else:
-                    #     Jmats[ij].append(d.assemble_mixed(Jijk_form))
-                        
+                num_subforms = len(self.Jforms[ij])
 
-                # sum the matrices
-                Jij_petsc.zeroEntries()
-                for k in range(1, len(Jmats[ij])):
-                    Jij_petsc.axpy(1, d.as_backend_type(Jmats[ij][k]).mat())
-                # for Jmat in Jmats[ij]:
-                #     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
-                # assemble petsc
-                Jij_petsc.assemble()    
+                if num_subforms==1:
+                    d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
+                    #Jij_petsc.assemble()
+                    continue
+                else:
+                    #Jmats.append([])
+                    Jmats=[]
+                    # Jijk == dFi/duj(Omega_k)
+                    for k, Jijk_form in enumerate(self.Jforms[ij]):
+                        # if we have the sparsity pattern re-use it, if not save it for next time
+                        if self.tensors[ij][k] is None:
+                            self.tensors[ij][k] = d.PETScMatrix()
+                        Jmats.append(d.assemble_mixed(Jijk_form, tensor=self.tensors[ij][k]))
+                        #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_dolfin))
+                        #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_petsc)
+
+                    # sum the matrices
+                    Jij_petsc.zeroEntries() # this maintains sparse structure
+                    for Jmat in Jmats:
+                        # structure options: SAME_NONZERO_PATTERN, DIFFERENT_NONZERO_PATTERN, SUBSET_NONZERO_PATTERN, UNKNOWN_NONZERO_PATTERN 
+                        Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
+                    #     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
+                    # assemble petsc
+                    #Jij_petsc.assemble()    
         # assemble petsc
         Jnest.assemble()
 

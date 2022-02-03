@@ -14,6 +14,7 @@ from termcolor import colored
 import stubs
 from pandas import read_json
 from contextlib import contextmanager as _contextmanager
+from pathlib import Path
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -573,3 +574,14 @@ def read_hdf5(hdf5_filename, metadata_dims=None):
 #     tmesh = trimesh.Trimesh(vertices, triangles, process=False)
 #     tmesh.fix_normals()
 #     tmesh.export()
+
+
+def data_path():
+    path    = Path('.').resolve()
+    subdir  = 'data'
+    while True:
+        if path.parts[-1]=='stubs' and path.joinpath(subdir).is_dir():
+            path = path.joinpath(subdir)
+            break
+        path = path.parent
+    return path
