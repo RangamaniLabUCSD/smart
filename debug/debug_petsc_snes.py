@@ -429,20 +429,20 @@ snesproblem = mySNESProblem_nest(u, Fblocks, Jblocks)
 d.assemble_mixed(Jblocks[0][0], tensor=d.PETScMatrix())
 Jpetsc_nest = snesproblem.initialize_petsc_matnest()
 Fpetsc_nest = snesproblem.initialize_petsc_vecnest()
-upetsc = PETSc.Vec().createNest([u.sub(0).vector().vec().copy(), u.sub(1).vector().vec().copy()])
+#upetsc = PETSc.Vec().createNest([u.sub(0).vector().vec().copy(), u.sub(1).vector().vec().copy()])
+upetsc = PETSc.Vec().createNest([u.vector().vec().copy() for u in u._functions])
 
-snes_solve_mixed(snesproblem, Fpetsc_nest, Jpetsc_nest, upetsc)
-snes = PETSc.SNES().create(d.MPI.comm_world)    
-snes.setFunction(snesproblem.F, Fpetsc_nest)
-snes.setJacobian(snesproblem.J, Jpetsc_nest)
-
-print("after solve")
+print("before solve")
 try:
     print(f"solve: u1 min = {u.sub(0).vector().get_local()[:].min()}, u1 max = {u.sub(0).vector().get_local()[:].max()}")
     print(f"solve: u2 min = {u.sub(1).vector().get_local()[:].min()}, u2 max = {u.sub(1).vector().get_local()[:].max()}")
 except:
     print(f"proc {rank} does not have u1/u2 min/max")
-snes.solve(None, upetsc)
+
+snes_solve_mixed(snesproblem, Fpetsc_nest, Jpetsc_nest, upetsc)
+
+#snes.solve(None, upetsc)
+
 print("after solve")
 try:
     print(f"solve: u1 min = {u.sub(0).vector().get_local()[:].min()}, u1 max = {u.sub(0).vector().get_local()[:].max()}")

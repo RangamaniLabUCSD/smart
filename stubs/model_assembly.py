@@ -36,8 +36,6 @@ import stubs.common as common
 from stubs.common import _fancy_print as fancy_print
 from stubs import unit
 
-color_print = common.color_print
-
 import dataclasses
 from dataclasses import dataclass
 
@@ -419,97 +417,97 @@ class SpeciesContainer(ObjectContainer):
 
         self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
 
-    def assemble_dolfin_functions(self, rc, cc):
-        """
-        define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
-        IMPORTANT: this function will create additional species on boundaries in order to use operator-splitting later on
-        e.g.
-        A [cyto] + B [pm] <-> C [pm]
-        Since the value of A is needed on the pm there will be a species A_b_pm which is just the values of A on the boundary pm
-        """
+    # def assemble_dolfin_functions(self, rc, cc):
+    #     """
+    #     define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
+    #     IMPORTANT: this function will create additional species on boundaries in order to use operator-splitting later on
+    #     e.g.
+    #     A [cyto] + B [pm] <-> C [pm]
+    #     Since the value of A is needed on the pm there will be a species A_b_pm which is just the values of A on the boundary pm
+    #     """
 
-        # functions to run beforehand as we need their results
-        num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
-        #cc.get_min_max_dim() # refactor
-        self.assemble_compartment_indices(rc, cc)
-        cc.add_property_to_all('is_in_a_reaction', False)
-        cc.add_property_to_all('V', None)
+    #     # functions to run beforehand as we need their results
+    #     num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
+    #     #cc.get_min_max_dim() # refactor
+    #     self.assemble_compartment_indices(rc, cc)
+    #     cc.add_property_to_all('is_in_a_reaction', False)
+    #     cc.add_property_to_all('V', None)
 
-        V, u, v = {}, {}, {}
-        for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = cc[compartment_name].dimensionality
-            cc[compartment_name].num_species = num_species
-            if rank==root:
-                print('Compartment %s (dimension: %d) has %d species associated with it' %
-                      (compartment_name, compartmentDim, num_species))
+    #     V, u, v = {}, {}, {}
+    #     for compartment_name, num_species in num_species_per_compartment.items():
+    #         compartmentDim = cc[compartment_name].dimensionality
+    #         cc[compartment_name].num_species = num_species
+    #         if rank==root:
+    #             print('Compartment %s (dimension: %d) has %d species associated with it' %
+    #                   (compartment_name, compartmentDim, num_species))
 
-            # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
-            if num_species == 1:
-                V[compartment_name] = d.FunctionSpace(cc.meshes[compartment_name], 'P', 1)
-                u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunction(V[compartment_name]),
-                'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
-                v[compartment_name] = d.TestFunction(V[compartment_name])
-            else: # vector space
-                V[compartment_name] = d.VectorFunctionSpace(cc.meshes[compartment_name], 'P', 1, dim=num_species)
-                u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunctions(V[compartment_name]),
-                'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
-                v[compartment_name] = d.TestFunctions(V[compartment_name])
+    #         # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
+    #         if num_species == 1:
+    #             V[compartment_name] = d.FunctionSpace(cc.meshes[compartment_name], 'P', 1)
+    #             u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunction(V[compartment_name]),
+    #             'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
+    #             v[compartment_name] = d.TestFunction(V[compartment_name])
+    #         else: # vector space
+    #             V[compartment_name] = d.VectorFunctionSpace(cc.meshes[compartment_name], 'P', 1, dim=num_species)
+    #             u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunctions(V[compartment_name]),
+    #             'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
+    #             v[compartment_name] = d.TestFunctions(V[compartment_name])
 
-        # now we create boundary functions, i.e. interpolations of functions defined on the volume
-        # to function spaces of the surrounding mesh
-        V['boundary'] = {}
-        for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = cc[compartment_name].dimensionality
-            if compartmentDim == cc.max_dim: # mesh may have boundaries
-                V['boundary'][compartment_name] = {}
-                for mesh_name, mesh in cc.meshes.items():
-                    if compartment_name != mesh_name and mesh.topology().dim() < compartmentDim:
-                        if num_species == 1:
-                            boundaryV = d.FunctionSpace(mesh, 'P', 1)
-                        else:
-                            boundaryV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
-                        V['boundary'][compartment_name].update({mesh_name: boundaryV})
-                        u[compartment_name]['b_'+mesh_name] = d.Function(boundaryV, name="concentration_ub")
+    #     # now we create boundary functions, i.e. interpolations of functions defined on the volume
+    #     # to function spaces of the surrounding mesh
+    #     V['boundary'] = {}
+    #     for compartment_name, num_species in num_species_per_compartment.items():
+    #         compartmentDim = cc[compartment_name].dimensionality
+    #         if compartmentDim == cc.max_dim: # mesh may have boundaries
+    #             V['boundary'][compartment_name] = {}
+    #             for mesh_name, mesh in cc.meshes.items():
+    #                 if compartment_name != mesh_name and mesh.topology().dim() < compartmentDim:
+    #                     if num_species == 1:
+    #                         boundaryV = d.FunctionSpace(mesh, 'P', 1)
+    #                     else:
+    #                         boundaryV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
+    #                     V['boundary'][compartment_name].update({mesh_name: boundaryV})
+    #                     u[compartment_name]['b_'+mesh_name] = d.Function(boundaryV, name="concentration_ub")
 
-        # now we create volume functions, i.e. interpolations of functions defined on the surface
-        # to function spaces of the associated volume
-        V['volume'] = {}
-        for compartment_name, num_species in num_species_per_compartment.items():
-            compartmentDim = cc[compartment_name].dimensionality
-            if compartmentDim == cc.min_dim: # mesh may be a boundary with a connected volume
-                V['volume'][compartment_name] = {}
-                for mesh_name, mesh in cc.meshes.items():
-                    if compartment_name != mesh_name and mesh.topology().dim() > compartmentDim:
-                        if num_species == 1:
-                            volumeV = d.FunctionSpace(mesh, 'P', 1)
-                        else:
-                            volumeV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
-                        V['volume'][compartment_name].update({mesh_name: volumeV})
-                        u[compartment_name]['v_'+mesh_name] = d.Function(volumeV, name="concentration_uv")
+    #     # now we create volume functions, i.e. interpolations of functions defined on the surface
+    #     # to function spaces of the associated volume
+    #     V['volume'] = {}
+    #     for compartment_name, num_species in num_species_per_compartment.items():
+    #         compartmentDim = cc[compartment_name].dimensionality
+    #         if compartmentDim == cc.min_dim: # mesh may be a boundary with a connected volume
+    #             V['volume'][compartment_name] = {}
+    #             for mesh_name, mesh in cc.meshes.items():
+    #                 if compartment_name != mesh_name and mesh.topology().dim() > compartmentDim:
+    #                     if num_species == 1:
+    #                         volumeV = d.FunctionSpace(mesh, 'P', 1)
+    #                     else:
+    #                         volumeV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
+    #                     V['volume'][compartment_name].update({mesh_name: volumeV})
+    #                     u[compartment_name]['v_'+mesh_name] = d.Function(volumeV, name="concentration_uv")
 
-        # associate indexed functions with dataframe
-        for key, sp in self.items:
-            sp.u = {}
-            sp.v = None
-            if sp.is_in_a_reaction:
-                sp.compartment.is_in_a_reaction = True
-                num_species = sp.compartment.num_species
-                for key in u[sp.compartment_name].keys():
-                    if num_species == 1:
-                        sp.u.update({key: u[sp.compartment_name][key]})
-                        sp.v = v[sp.compartment_name]
-                    else:
-                        sp.u.update({key: u[sp.compartment_name][key][sp.dof_index]})
-                        sp.v = v[sp.compartment_name][sp.dof_index]
+    #     # associate indexed functions with dataframe
+    #     for key, sp in self.items:
+    #         sp.u = {}
+    #         sp.v = None
+    #         if sp.is_in_a_reaction:
+    #             sp.compartment.is_in_a_reaction = True
+    #             num_species = sp.compartment.num_species
+    #             for key in u[sp.compartment_name].keys():
+    #                 if num_species == 1:
+    #                     sp.u.update({key: u[sp.compartment_name][key]})
+    #                     sp.v = v[sp.compartment_name]
+    #                 else:
+    #                     sp.u.update({key: u[sp.compartment_name][key][sp.dof_index]})
+    #                     sp.v = v[sp.compartment_name][sp.dof_index]
 
-        # # associate function spaces with dataframe
-        for key, comp in cc.items:
-            if comp.is_in_a_reaction:
-                comp.V = V[comp.name]
+    #     # # associate function spaces with dataframe
+    #     for key, comp in cc.items:
+    #         if comp.is_in_a_reaction:
+    #             comp.V = V[comp.name]
 
-        self.u = u
-        self.v = v
-        self.V = V
+    #     self.u = u
+    #     self.v = v
+    #     self.V = V
 
 @dataclass
 class Species(ObjectInstance):
@@ -868,6 +866,7 @@ class Flux(ObjectInstance):
         elif self.topology == 'surface_to_volume':
             assert len(self.source_compartments) == 1
             self._source_surface     = list(self.source_compartments.values())[0]
+            # intersection of this surface with boundary of destination volume
             self.measure       = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
         elif self.topology == 'volume-surface_to_volume':
             assert len(self.source_compartments) == 2
@@ -880,10 +879,12 @@ class Flux(ObjectInstance):
             # check that there is at least one intersecting face between the two volumes
             mf_map_1 = self._source_surface.mesh.mf_map[self.destination_compartment.mesh.id]
             mf_map_2 = self._source_surface.mesh.mf_map[self._source_volume.mesh.id]
+            # this is not entirely correct
+            # replace this with more robust intersection of meshes
             if not (1 in mf_map_1 and 1 in mf_map_2):
                 raise Error(f"Flux {self.name} has two volumes and a surface which do not connect with each other.")
             if np.all(mf_map_1.array() != mf_map_2.array()):
-                raise NotImplementedError(f"The the surface between two volumes in a reaction must be completely specified.")
+                raise NotImplementedError(f"The surface between two volumes in a reaction must be completely specified.")
 
             self.measure = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
         else:

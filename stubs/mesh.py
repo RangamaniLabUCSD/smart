@@ -7,6 +7,11 @@ from cached_property import cached_property
 from stubs.common import _fancy_print as fancy_print
 import stubs.common as common
 
+comm = d.MPI.comm_world
+rank = comm.rank
+size = comm.size
+root = 0
+
 class _Mesh:
     """
     General mesh class
@@ -93,9 +98,6 @@ class _Mesh:
     def nvolume(self):
         return d.assemble(1*self.dx)
 
-    def nvolume_sibling_union(self, sibling_mesh):
-        return d.assemble(1*self.dx_map[sibling_mesh.id](1))
-
     def get_nvolume(self, measure_type, marker=None):
         if measure_type=='dx':
             measure = self.dx
@@ -110,20 +112,25 @@ class _Mesh:
     def get_integration_measures(self):
         # Aliases
         mesh = self.dolfin_mesh
-
         # if self.is_volume_mesh:
             #self.ds = d.Measure('ds', domain=mesh, subdomain_data=self.mf['facets'])
             # if 'facets_uncombined' in self.mf:
             #     self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=self.mf['facets_uncombined'])
 
-        self.dx = d.Measure('dx', domain=mesh, subdomain_data=self.mf['cells'])
+        # Regular measures
+        if 'cells' in self.mf:
+            self.dx = d.Measure('dx', domain=mesh, subdomain_data=self.mf['cells'])
+        else:
+            self.dx = d.Measure('dx', domain=mesh)
+
+        # Uncombined marker measure
         if 'cells_uncombined' in self.mf:
             self.dx_uncombined = d.Measure('dx', domain=mesh, subdomain_data=self.mf['cells_uncombined'])
         
         # mf maps
         if isinstance(self, ChildMesh):
-            for id, mf in self.mf_map.items():
-                self.dx_map[id] = d.Measure('dx', domain=mesh, subdomain_data=mf)
+            for id, mf_map in self.mf_map.items():
+                self.dx_map[id] = d.Measure('dx', domain=mesh, subdomain_data=mf_map)
         
 class ParentMesh(_Mesh):
     """
@@ -139,7 +146,7 @@ class ParentMesh(_Mesh):
         self.mesh_filename = mesh_filename
         self.mesh_filetype = mesh_filetype
         
-        self.child_meshes = {}
+        self.child_meshes = dict()
         self.parent_mesh = self
         # get mesh functions
         #self.mesh_functions = self.get_mesh_functions()
@@ -165,7 +172,7 @@ class ParentMesh(_Mesh):
         self.dimensionality = self.dolfin_mesh.topology().dim()
         print(f"HDF5 mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
 
-    def _get_mesh_function(self, dim):
+    def _read_parent_mesh_function_from_file(self, dim):
         if self.mesh_filetype == 'xml':
             mf = d.MeshFunction('size_t', self.dolfin_mesh, dim, value=self.dolfin_mesh.domains())
         elif self.mesh_filetype == 'hdf5':
@@ -174,10 +181,9 @@ class ParentMesh(_Mesh):
             hdf5.read(mf, f"/mf{dim}")
         return mf
 
-    def get_mesh_functions(self):
+    def read_parent_mesh_functions_from_file(self):
         # Aliases
         mesh        = self.dolfin_mesh
-        has_surface = self.min_dim < self.max_dim
         volume_dim  = self.max_dim
         surface_dim = self.min_dim
 
@@ -188,25 +194,29 @@ class ParentMesh(_Mesh):
         assert len(self.child_meshes) > 0 # there should be at least one child mesh
 
         # Init mesh functions
-        self.mf['cells'] = self._get_mesh_function(volume_dim)
-        if has_surface:
-            self.mf['facets'] = self._get_mesh_function(surface_dim)
+        self.mf['cells'] = self._read_parent_mesh_function_from_file(volume_dim)
+        if self.has_surface:
+            self.mf['facets'] = self._read_parent_mesh_function_from_file(surface_dim)
             
         # If any cell markers are given as a list we also create mesh functions to store the uncombined markers
-        if any([cm.marker_list is not None for cm in self.child_meshes.values()]):
-            self.mf['cells_uncombined'] = self._get_mesh_function(volume_dim)
-            if has_surface:
-                self.mf['facets_uncombined'] = self._get_mesh_function(surface_dim)
+        if any([(cm.marker_list is not None and not cm.is_surface) for cm in self.child_meshes.values()]):
+            self.mf['cells_uncombined'] = self._read_parent_mesh_function_from_file(volume_dim)
+        if any([(cm.marker_list is not None and cm.is_surface) for cm in self.child_meshes.values()]):
+            self.mf['facets_uncombined'] = self._read_parent_mesh_function_from_file(surface_dim)
+
         # Combine markers in a list 
         for cm in self.child_meshes.values(): 
             if cm.marker_list is None:
                 continue
             for marker in cm.marker_list:
-                if cm.dimensionality == self.max_dim:
+                if not cm.is_surface:
                     self.mf['cells'].array()[self.mf['cells_uncombined'].array() == marker] = cm.primary_marker
-                if cm.dimensionality < self.max_dim:
+                if cm.is_surface:
                     self.mf['facets'].array()[self.mf['facets_uncombined'].array() == marker] = cm.primary_marker
 
+    @property
+    def has_surface(self):
+        return self.min_dim < self.max_dim
 
 class ChildMesh(_Mesh):
     """
@@ -236,6 +246,13 @@ class ChildMesh(_Mesh):
         # mapping (0 or 1) of intersection with sibling mesh
         self.dx_map = dict()
         self.mf_map = dict()
+    
+    @property
+    def is_surface(self):
+        return self.dimensionality < self.parent_mesh.max_dim
+
+    def nvolume_sibling_union(self, sibling_mesh):
+        return d.assemble(1*self.dx_map[sibling_mesh.id](1))
     
     @cached_property
     def map_cell_to_parent_entity(self):
@@ -281,34 +298,35 @@ class ChildMesh(_Mesh):
 
     def get_mesh_function_cell_to_sibling_facet(self, sibling_mesh):
         """
-        Create a mesh function over this meshes cells with value 0 if it does not coincide
+        Create a mesh function over this mesh's cells with value 0 if it does not coincide
         with a facet from sibling_mesh, and value 1 if it does.
+
+        Example: 
+        * child_mesh_0 is a 2d submesh adjacent to child_mesh_1 with 6 cells (e.g. triangles).
+        Cells [0,1,4] of child_mesh_0 are part of cells on child_mesh_1
+
+        * child_mesh_1 (dolfin id = 38) is a 3d submesh with 6 cells. cells [0, 1, 4] have facets on 
+
+        child_mesh_0.mf_map[38] =  [1,1,0,0,1,0]
         """
         assert self.dimensionality == sibling_mesh.dimensionality - 1
-        # initialize 
-        # our_map   = self.map_cell_to_parent_entity
-        # their_map = sibling_mesh.map_facet_to_parent_entity
-        self.mf_map[sibling_mesh.id] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
 
-        # need to use this or else it will segfault when trying to assemble
+        import sys
+        # with open(f"output{rank}.out", 'w') as f:
+        #     sys.stdout = f
+
+        # not creating maps with build_mapping() will lead to a segfault when trying to assemble
         # we also suppress the c++ output because it prints a lot of 'errors' 
         # even though the mapping was successfully built (when (surface intersect volume) != surface)
-        with common._stdout_redirected():
-            self.dolfin_mesh.build_mapping(sibling_mesh.dolfin_mesh)
+       # with common._stdout_redirected():
+        self.dolfin_mesh.build_mapping(sibling_mesh.dolfin_mesh)
+
+        # map from our cells to sibling facets
+        self.mf_map[sibling_mesh.id] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+
         bool_array = np.array(self.mesh_view[sibling_mesh.id].cell_map())
         bool_array[bool_array!=0] = 1
-
         self.mf_map[sibling_mesh.id].set_values(bool_array)
-
-        # for our_cell, parent_facet in enumerate(our_map):
-        #     their_facet = np.where(their_map==parent_facet)[0]
-        #     if their_facet.size == 0:
-        #         pass
-        #     elif their_facet.size == 1:
-        #         self.mf_map[sibling_mesh.id][our_cell] = 1
-        #     else:
-        #         raise AssertionError
-
 
     def set_parent_mesh(self, parent_mesh):
         # remove existing parent mesh if not None
@@ -325,13 +343,13 @@ class ChildMesh(_Mesh):
         self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
         self.dolfin_mesh.init()
 
-    def init_mesh_functions(self):
+    def init_marker_list_mesh_function(self):
         "Child mesh functions require transfering data from parent mesh functions"
         assert hasattr(self.parent_mesh, 'mf')
-        # Alias
-        pmf = self.parent_mesh.mf
+        assert self.marker_list is not None
 
         # initialize
+        raise NotImplementedError("Need to check this")
         self.mf['cells']  = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
 
         # # Easiest case, just directly transfer from parent_mesh mesh function

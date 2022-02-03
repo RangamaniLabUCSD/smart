@@ -14,6 +14,7 @@ class Config:
     """
     def __init__(self):
         self.solver             = {'final_t': None,
+                                   'use_snes': True,
                                    'initial_dt': None,
                                    'adjust_dt': None,
                                    'dt_decrease_factor': 1.0,
@@ -44,6 +45,7 @@ class Config:
         
         self.loglevel           = {'FFC': 'DEBUG',
                                    'UFL': 'DEBUG',
+                                   'dijitso': 'DEBUG',
                                    'dolfin': 'INFO'}
         
         self._loglevel_to_int   = {'CRITICAL': 50,

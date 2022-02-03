@@ -1,14 +1,29 @@
 """Scratch code for whatever I'm trying to figure out at the moment"""
-
 import stubs
 import stubs.common as common
 import dolfin as d
 import ufl
 import numpy as np
 import pint
+import logging
+import itertools
 unit = stubs.unit # unit registry
 
-#====================
+# ===================
+# logging
+# ===================
+d.set_log_level(10) # highest logging
+# set for others
+logging.getLogger('UFL').setLevel('DEBUG')
+logging.getLogger('FFC').setLevel('DEBUG')
+logging.getLogger('dijitso').setLevel('DEBUG')
+
+# ===================
+# MPI
+# ===================
+rank = d.MPI.comm_world.rank
+
+# ===================
 # aliases - unit registry
 # ===================
 from stubs.model_assembly import Parameter, Species, Compartment, Reaction
@@ -22,80 +37,94 @@ import stubs_model
 
 model = stubs_model.make_model(refined_mesh=True)
 
+#model.config.solver['use_snes'] = False
+
 # #====================
 # # init model
 # # ===================
 # #import cProfile
+#cProfile.run("model._init_3()")                 
 model._init_1()
 model._init_2()
 model._init_3()
-#cProfile.run("model._init_3()")                 
 model._init_4()                 
 model._init_5_1_reactions_to_fluxes()
 model._init_5_2_create_variational_forms()
-
-# if __name__=='__main':
-#     model = stubs_model.make_model(refined_mesh=True)
-#     model._init_1()
-#     model._init_2()
-#     init_model()
-
-model._init_5_3_create_variational_problem()
+model._init_5_3_setup_variational_problem_and_solver()
+A = model.sc['A']
+A2 = model.sc['A2']
+A3 = model.sc['A3']
+B = model.sc['B']
 
 print(model.u['u'].sub(0).compute_vertex_values().min())
 print(model.u['u'].sub(0).compute_vertex_values().max())
-a = model.solver.solve()
+
+print('pre: ')
+for species in model.sc.values:
+    umin = model.dolfin_get_function_values(species).min()
+    umax = model.dolfin_get_function_values(species).max()
+    mass = model.get_mass(species)
+    print(f"species {species.name} : ({umin, umax}), mass={mass}")
+#model.solver.solve()
+model.solver.solve(None, model._ubackend)
+print('post: ')
+for species in model.sc.values:
+    umin = model.dolfin_get_function_values(species).min()
+    umax = model.dolfin_get_function_values(species).max()
+    mass = model.get_mass(species)
+    print(f"species {species.name} : ({umin, umax}), mass={mass}")
 
 print(model.u['u'].sub(0).compute_vertex_values().min())
 print(model.u['u'].sub(0).compute_vertex_values().max())
+
+print(model.get_mass(A))
+
+Fflat = itertools.chain.from_iterable(model.Fblocks)
+Fvec = [sum(d.assemble_mixed(F)) for F in Fflat]
+print(f"sum of Fvec {sum(Fvec)}")
+# 743.7527142501965
+# 1e-6
+
+
+#66.0937846550966
+
+# pre:
+# species A : ((10.0, 12.0)), mass=88.00000000000044
+# species A2 : ((5.0, 7.0)), mass=48.0000000000001
+# species A3 : ((7.0, 9.0)), mass=63.99999999999959
+# species B : ((3.0, 3.0)), mass=23.99999999999995
+# Solving mixed nonlinear variational problem.
+#   Newton iteration 0: r (abs) = 5.444e+02 (tol = 1.000e-10) r (rel) = 1.000e+00 (tol = 1.000e-09)
+#   Newton iteration 1: r (abs) = 5.978e+01 (tol = 1.000e-10) r (rel) = 1.098e-01 (tol = 1.000e-09)
+#   Newton iteration 2: r (abs) = 1.077e+00 (tol = 1.000e-10) r (rel) = 1.978e-03 (tol = 1.000e-09)
+#   Newton iteration 3: r (abs) = 4.883e-03 (tol = 1.000e-10) r (rel) = 8.970e-06 (tol = 1.000e-09)
+#   Newton iteration 4: r (abs) = 2.270e-04 (tol = 1.000e-10) r (rel) = 4.170e-07 (tol = 1.000e-09)
+#   Newton iteration 5: r (abs) = 1.054e-05 (tol = 1.000e-10) r (rel) = 1.936e-08 (tol = 1.000e-09)
+#   Newton iteration 6: r (abs) = 4.895e-07 (tol = 1.000e-10) r (rel) = 8.991e-10 (tol = 1.000e-09)
+#   Newton solver finished in 6 iterations and 6 linear solver iterations.
+# post:
+# species A : ((7.548343292705323, 8.14060106376936)), mass=63.16422134119935
+# species A2 : ((2.9026068866967845, 3.2340659382693833)), mass=24.539835437570275
+# species A3 : ((10.613295946765282, 11.249856899995862)), mass=87.46016456242998
+# species B : ((3.0936829244406403, 3.3572813784050592)), mass=25.37599643259512
+
+
+
+
+
+
+# # Time loop
+# while True:
+#     end_simulation = model.solve_single_timestep(plot_period)
+#     if end_simulation:
+#         break
+
+
+
 # 2.9026068866967845
 # 11.249856899995862
 # 2.9026068866967845
 # 11.249856899995862
-
-
-
-def get_nestmat_from_Jlist(Jlist):
-    # For some reason assemble_mixed() doesn't work on forms with multiple integration domains, so the Jlist
-    # that is fed to d.MixedNonlinearVariationalSolver is in a form like
-    # [[J0(Omega_0), J0(Omega_1)], ..., [Jn(Omega_n)]]
-    new_Jlist = list()
-    for Jsublist in Jlist:
-        Jsub = [d.assemble_mixed(J) for J in Jsublist]
-        J = Jsub[0]
-        if len(Jsub) > 1:
-            for i in range(1,len(Jsub)):
-                J += Jsub[i]
-            
-        new_Jlist.append(J)
-    
-    # call d.PETScNestMatrix(new_Jlist)
-    return new_Jlist
-        
-# Jlist = get_nestmat_from_Jlist(model.Jlist)
-# J_petsc = d.PETScNestMatrix(Jlist)
-# Jblock  = d.BlockMatrix(2,2)
-# Jblock[0,0] = Jlist[0]
-# Jblock[0,1] = Jlist[1]
-# Jblock[1,0] = Jlist[2]
-# Jblock[1,1] = Jlist[3]
-
-# duv0 = d.Vector()
-# duv1 = d.Vector()
-
-# Jblock[0,0].init_vector(duv0, 0)
-# Jblock[1,1].init_vector(duv1, 0)
-# du = d.BlockVector(2)
-# du[0] = duv0
-# du[1] = duv1
-# d
-
-
-# d.PETScNestMatrix (demo_matnest.py)
-# J00 = d.assemble_mixed(model.Jlist[0][0])
-# J01 = d.assemble_mixed(model.Jlist[0][1])
-# Jlist = [d.assemble_mixed(J) for J in model.Jlist]
-# J00 = d.as_backend_type(d.assemble_mixed(model.Jlist[0][0])).mat()
 
 
 #====================
@@ -115,129 +144,6 @@ def get_nestmat_from_Jlist(Jlist):
 # # merm  = model.cc['er_mem'].mesh
 # # mpm   = model.cc['pm'].mesh
 
-# # ===================
-# # Nonlinear F==0
-# # ===================
-# # Imports
-# # _extract_args  = d.fem.solving._extract_args
-# from dolfin.fem.formmanipulations import derivative, extract_blocks
-# import dolfin.cpp as cpp
-# from dolfin.fem.form import Form
-# from ufl.algorithms.ad import expand_derivatives
-# from ufl.form import sub_forms_by_domain
-
-
-# # Aliases 
-# dfdu = lambda F,u: expand_derivatives(d.derivative(F,u))
-# F = sum([f.lhs for f in model.forms]) # single form
-# u = model.u['u']
-# Fblock = extract_blocks(F)
-
-# Flist, Jlist = model.get_block_system()
-
-# d.solve(F==0, u)
-
-# from ufl.algorithms.ad import expand_derivatives
-# Fsum = sum([f.lhs for f in model.forms]) # Sum of all forms
-# u = model.u['u']._functions
-# Fblock = d.extract_blocks(Fsum) # blocks/partitions are by compartment, not species
-# J = []
-# for Fi in Fblock:
-#     for uj in u:
-#         dFdu = expand_derivatives(d.derivative(Fi, uj))
-#         J.append(dFdu)
-
-
-# TODO
-# look into
-# M01 = d.assemble_mixed(Jlist[0][1])
-# d.PETScNestMatrix (demo_matnest.py)
-# J00 = d.assemble_mixed(model.Jlist[0][0])
-# J01 = d.assemble_mixed(model.Jlist[0][1])
-# Jlist = [d.assemble_mixed(J) for J in model.Jlist]
-# J00 = d.as_backend_type(d.assemble_mixed(model.Jlist[0][0])).mat()
-# J01 = d.as_backend_type(d.assemble_mixed(model.Jlist[0][1])).mat()
-# # it is possible to use petsc4py directly  e.g.
-# import petsc4py.PETSc as petsc
-# M = petsc.Mat().createNest([J00,J01], comm=d.MPI.comm_world)
-# M = PETSc.Mat().createNest([[M00,M01], [M10,M11]], comm=MPI.COMM_WORLD)
-# d.as_backend_type(M00).mat()
-#https://fenicsproject.discourse.group/t/custom-newtonsolver-using-the-mixed-dimensional-branch-and-petscnestmatrix/2788/3
-
-
-"""
-Solve with high-level call, d.solve(F==0, u)
-When F is multi-dimensional + non-linear d.solve() roughly executes the following:
-
-Fsum = sum([f.lhs for f in model.forms]) # single form F0+F1+...+Fn
-
-* d.solve(Fsum==0, u)                                                       [fem/solving.py]
-    * _solve_varproblem()                                                   [fem/solving.py]
-        eq, ... = _extract_args()
-        F = extract_blocks(eq.lhs) # tuple of forms (F0, F1, ..., Fn)       [fem/formmanipulations -> ufl/algorithms/formsplitter]
-        for Fi in F:
-            for uj in u._functions:
-                Js.append(expand_derivatives(formmanipulations.derivative(Fi, uj)))
-                # [J00, J01, J02, etc...]
-        problem = MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)
-        solver  = MixedNonlinearVariationalSolver(problem)
-        solver.solve()
-
-* MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)     [fem/problem.py] 
-    u_comps = [u[i]._cpp_object for i in range(len(u))] 
-
-    # if len(F)!= len(u) -> Fill empty blocks of F with None
-
-    # Check that len(J)==len(u)**2 and len(F)==len(u)
-
-    # use F to create Flist. Separate forms by domain:
-    # Flist[i] is a list of Forms separated by domain. E.g. if F1 consists of integrals on \Omega_1, \Omega_2, and \Omega_3
-    # then Flist[i] is a list with 3 forms
-    If Fi is None -> Flist[i] = cpp.fem.Form(1,0) 
-    else -> Flist[i] = [Fi[domain=0], Fi[domain=1], ...]
-
-    # Do the same for J -> Jlist
-
-    cpp.fem.MixedNonlinearVariationalProblem.__init__(self, Flist, u_comps, bcs, Jlist)
-    
-    
-
-========
-Notes:
-========
-# on extract_blocks(F)
-F  = sum([f.lhs for f in model.forms]) # single form
-Fb = extract_blocks(F) # tuple of forms
-Fb0 = Fb[0]
-
-F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
-F0.equals(Fb0) -> False
-
-I0 = F0.integrals()[0].integrand()
-Ib0 = Fb0.integrals()[0].integrand()
-I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
-I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
-I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
-
-
-# on d.functionspace
-V.__repr__() shows the UFL coordinate element (finite element over coordinate vector field) and finite element of the function space.
-We can access individually with:
-V.ufl_domain().ufl_coordinate_element()
-V.ufl_element()
-
-# on assembler
-d.fem.assembling.assemble_mixed(form, tensor)
-assembler = cpp.fem.MixedAssembler()
-
-
-fem.assemble.cpp/assemble_mixed(GenericTensor& A, const Form& a, bool add)
-  MixedAssembler assembler;
-  assembler.add_values = add;
-  assembler.assemble(A, a);
-"""
-
-
 # # by compartment
 # F1 = Fbloc[0]
 # #F11 = sum([f.lhs for f in model.forms if f.species.name == 'A'])
@@ -246,103 +152,7 @@ fem.assemble.cpp/assemble_mixed(GenericTensor& A, const Form& a, bool add)
 # u2 = u._functions[1]
 # u11 = A._usplit['u']
 
-    
 # cytoJ = Js[0:4]
 # pmJ   = Js[4:8]
 # ervJ  = Js[8:12] #nonzero
 # ermJ  = Js[12:16] #nonzero
-
-
-
-# =====================
-# solve(F==0, u)
-# =====================
-# 
-#
-
-
-# =====================
-# Dissecting MixedNonlinearVariationalProblem()
-# =====================
-flag = False
-if flag == True:
-    # dolfin/fem/problem.py
-    from ufl.form import sub_forms_by_domain
-    import dolfin.cpp as cpp
-    from dolfin.fem.form import Form
-    # aliases
-    F = eq_lhs_forms
-    J = Js
-    u = u._functions
-
-    # ====
-    # Extract and check arguments (u is a list of Function)
-    u_comps = [u[i]._cpp_object for i in range(len(u))]
-    # Store input UFL forms and solution Function
-    F_ufl = eq_lhs_forms
-    J_ufl = Js
-    u_ufl = u
-
-    assert len(F) == len(u)
-    assert(len(J) == len(u) * len(u))
-    # Create list of forms/blocks
-    F_list = list()
-    print("[problem.py] size F = ", len(F))
-    for Fi in F:
-        if Fi is None:
-            # dolfin/fem/Form.cpp
-            # cpp.fem.Form(rank, num_coefficients)
-            F_list.append([cpp.fem.Form(1, 0)])
-        elif Fi.empty():
-            F_list.append([cpp.fem.Form(1, 0)])  # single-elt list
-        else:
-            Fs = []
-            for Fsub in sub_forms_by_domain(Fi):
-                if Fsub is None:
-                    Fs.append(cpp.fem.Form(1, 0))
-                elif Fsub.empty():
-                    Fs.append(cpp.fem.Form(1, 0))
-                else:
-                    Fs.append(Form(Fsub, form_compiler_parameters=form_compiler_parameters))
-            F_list.append(Fs)
-    print("[problem] create list of residual forms OK")
-
-    J_list = None
-    if J is not None:
-        J_list = list()
-        print("[problem.py] size J = ", len(J))
-        for Ji in J:
-            if Ji is None:
-                J_list.append([cpp.fem.Form(2, 0)])
-            elif Ji.empty():
-                J_list.append([cpp.fem.Form(2, 0)])
-            else:
-                Js = []
-                for Jsub in sub_forms_by_domain(Ji):
-                    Js.append(Form(Jsub, form_compiler_parameters=form_compiler_parameters))
-                J_list.append(Js)
-    print("[problem] create list of jacobian forms OK, J_list size = ", len(J_list))
-
-    # Initialize C++ base class
-    cpp.fem.MixedNonlinearVariationalProblem.__init__(self, F_list, u_comps, bcs, J_list)
-
-    # # # Create solver and call solve
-    # solver = d.MixedNonlinearVariationalSolver(problem)
-    # solver.solve()
-
-
-    # all_forms   = sum([f.form for f in model.forms])
-    # a_00 = d.extract_blocks(all_forms,0,0)
-    # a_01 = d.extract_blocks(all_forms,0,1)
-    # a_10 = d.extract_blocks(all_forms,1,0)
-    # a_11 = d.extract_blocks(all_forms,1,1)
-
-    # d.solve(all_forms == 0, model.u['u']._functions)
-
-
-    # ufl/form.py
-    # def sub_forms_by_domain(form):
-    #     "return a list of forms each with an integration domain"
-    #     if not isinstance(form, form):
-    #         error("Unable to convert object to a UFL form: %s" % ufl_err_str(form))
-    #     return [Form(form.integrals_by_domain(domain)) for domain in form.ufl_domains()]

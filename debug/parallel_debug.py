@@ -15,15 +15,15 @@ print(f"processor {rank}: {model.parent_mesh.num_vertices} parent verts")
 print(f"processor {rank}: {model.child_meshes['cytosol'].num_vertices} cyto verts")
 print(f"processor {rank}: {model.child_meshes['er_vol'].num_vertices} ervol verts")
 print(f"processor {rank}: {model.child_meshes['er_mem'].num_vertices} ermem verts")
-fancy_print(f"{model.child_meshes['er_mem'].num_vertices} ermem verts", format_type='log_urgent', include_rank=True)
+fancy_print(f"{model.child_meshes['er_mem'].num_vertices} ermem verts", format_type='log_urgent')
 
 
-# TODO: need to change _sorted_compartments (https://github.com/justinlaughlin/stubs/issues/36)
-model._init_4_1_get_dof_ordering()
-fancy_print(f"{model.cc.sort_by('num_dofs')[1]} num_dofs", format_type='log_urgent', include_rank=True)
+# TODO: need to change _active_compartments (https://github.com/justinlaughlin/stubs/issues/36)
+model._init_4_1_get_active_compartments()
+fancy_print(f"{model.cc.sort_by('num_dofs')[1]} num_dofs", format_type='log_urgent')
 
 model._init_4_2_define_dolfin_function_spaces()
-# compartment = list(model._sorted_compartments)[0]
+# compartment = list(model._active_compartments)[0]
 # print(f"processor {rank}: child_meshes:            {id(model.child_meshes['cytosol'].dolfin_mesh)}")
 # print(f"processor {rank}: compartment.dolfin_mesh: {id(compartment.dolfin_mesh)}")
 # print(f"processor {rank}: compartment:             {id(compartment)}")

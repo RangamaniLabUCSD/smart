@@ -3,6 +3,7 @@ General functions: array manipulation, data i/o, etc
 """
 import pandas
 import dolfin as d
+#import trimesh
 import numpy as np
 import scipy.interpolate as interp
 import sys
@@ -223,20 +224,21 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
     for idx, val in enumerate(mesh_function.array()):
         md.set_marker((idx,val), mf_dim)
 
-def color_print(full_text, color):
-    if rank==root:
-        split_text = [s for s in re.split('(\n)', full_text) if s] # colored doesn't like newline characters
-        for text in split_text:
-            if text == '\n':
-                print()
-            else:
-                print(colored(text, color=color))
+# def color_print(full_text, color):
+#     if rank==root:
+#         split_text = [s for s in re.split('(\n)', full_text) if s] # colored doesn't like newline characters
+#         for text in split_text:
+#             if text == '\n':
+#                 print()
+#             else:
+#                 print(colored(text, color=color))
 
 # ====================================================
 # fancy printing
 # ====================================================
 def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_char='=',
-                             num_banners=0, newlines=[0,0], left_justify=False, format_type=None, include_rank=False):
+                             num_banners=0, newlines=[0,0], left_justify=False,
+                             format_type=None):
     "Formatted text to stand out."
     # some default options
     if format_type == 'title':
@@ -258,14 +260,15 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     elif format_type is not None:
         raise ValueError("Unknown formatting_type.")
     
-    # parallelism
-    if include_rank:
+    # include MPI rank in message
+    if size > 1:
         title_text = f"CPU {rank}: {title_text}"
         
 
     # calculate optimal buffer size
     min_buffer_size = 5
-    buffer_size = max([min_buffer_size, int((79 - len(title_text))/2 - 1)]) # terminal width == 80
+    terminal_width = 120
+    buffer_size = max([min_buffer_size, int((terminal_width-1 - len(title_text))/2 - 1)]) # terminal width == 80
     title_str_len = (buffer_size+1)*2 + len(title_text)
     parity=1 if title_str_len==78 else 0
 
@@ -555,4 +558,18 @@ def read_hdf5(hdf5_filename, metadata_dims=None):
 
     return mesh, mfs
     
-
+# def fix_mesh_normals(dolfin_mesh):
+#     assert isinstance(dolfin_mesh, d.Mesh)
+#     tdim = dolfin_mesh.topology().dim()
+#     assert tdim in [2,3]
+#     if tdim == 3:
+#         print(f"Input mesh has topological dimension 3. Fixing normals of boundary mesh instead.")
+#         mesh = d.BoundaryMesh(dolfin_mesh, 'exterior')
+#     else:
+#         mesh = dolfin_mesh
+    
+#     triangles = mesh.cells()
+#     vertices  = mesh.vertices()
+#     tmesh = trimesh.Trimesh(vertices, triangles, process=False)
+#     tmesh.fix_normals()
+#     tmesh.export()

@@ -30,15 +30,8 @@ import stubs.model_assembly
 from stubs.mesh import ChildMesh
 from stubs import unit
 
-color_print = common.color_print
 from stubs.common import _fancy_print as fancy_print
 from stubs.common import sub
-
-comm = d.MPI.comm_world
-rank = comm.rank
-size = comm.size
-root = 0
-
 
 @dataclass
 class Model:
@@ -52,6 +45,7 @@ class Model:
     config: stubs.config.Config
     #solver_system: stubs.solvers.SolverSystem
     parent_mesh: stubs.mesh.ParentMesh
+    name: str=''
 
     def __post_init__(self):
         # # Check that solver_system is valid
@@ -68,6 +62,7 @@ class Model:
 
         # Solver related parameters
         self.idx = 0
+        self.idx_nl = None
         # self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         # self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
         self.data = {'newton_iter': list(),
@@ -97,19 +92,24 @@ class Model:
         # self.scipy_odes = {}
 
         # Post processed data
-        self.data = stubs.data_manipulation.Data(self, self.config)
+        #self.data = stubs.data_manipulation.Data(self, self.config)
         
         # Set loggers to logging levels defined in config
         self.config.set_logger_levels()
+
+        # MPI
+        self.mpi_comm_world = d.MPI.comm_world
+        self.mpi_rank = self.mpi_comm_world.rank
+        self.mpi_size = self.mpi_comm_world.size
+        self.mpi_root = 0
+
+        if self.mpi_size > 1:
+            fancy_print(f"CPU {self.mpi_rank}: Model \'{self.name}\' has been parallelized (size={self.mpi_size}).",
+                        format_type='log_urgent')
  
     @property
     def child_meshes(self):
         return self.parent_mesh.child_meshes
-
-    @property
-    def rank(self):
-        return d.MPI.comm_world.Get_rank()
-
     @cached_property
     def min_dim(self):
         dim                         = min([comp.dimensionality for comp in self.cc])
@@ -164,7 +164,7 @@ class Model:
         "Mesh-related initializations"
         fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type='title')
         self._init_3_1_define_child_meshes()
-        self._init_3_2_get_parent_mesh_functions()
+        self._init_3_2_read_parent_mesh_functions_from_file()
         self._init_3_3_extract_submeshes()
         self._init_3_4_get_child_mesh_functions()
         self._init_3_5_get_integration_measures()
@@ -172,7 +172,7 @@ class Model:
     def _init_4(self):
         "Dolfin function initializations"
         fancy_print(f"Dolfin Initializations (step 4 of ZZ)", format_type='title')
-        self._init_4_1_get_dof_ordering()
+        self._init_4_1_get_active_compartments()
         self._init_4_2_define_dolfin_function_spaces()
         self._init_4_3_define_dolfin_functions()
         self._init_4_4_get_species_u_v_V_dofmaps()
@@ -398,9 +398,14 @@ class Model:
         # Check validity (one child mesh for each compartment)
         assert len(self.child_meshes) == self.cc.size
 
-    def _init_3_2_get_parent_mesh_functions(self):
+    def _init_3_2_read_parent_mesh_functions_from_file(self):
+        """
+        Reads mesh functions from an .xml or .hdf5 file.
+        If told that a child mesh consists of a list of markers, creates a separate mesh function
+        for the list and for the combined list (can be used for post-processing)
+        """
         fancy_print(f"Defining parent mesh functions", format_type='log')
-        self.parent_mesh.get_mesh_functions()
+        self.parent_mesh.read_parent_mesh_functions_from_file()
 
     def _init_3_3_extract_submeshes(self):
         """ Use dolfin.MeshView.create() to extract submeshes """
@@ -410,16 +415,32 @@ class Model:
             cm.extract_submesh()
 
     def _init_3_4_get_child_mesh_functions(self):
+        """
+        Parent mesh functions are used to create submeshes, which then define measures.
+        There are two reasons we would need a child mesh function:
+        1) Holding values from a list of marker values (for post-processing)
+        2) "mf_map", a MeshFunction defining a mapping between child mesh cells of n-1 <-> topological dimension. 
+        This is required for volume-surface-volume flux types, where it may be required to restrict a surface's
+        integration measure for proper construction of the flux
+        
+        This function also calls dolfin's build_mapping(), which is required to assemble forms
+        containing other domains without segfaulting
+        
+        Gets mappings between sibling meshes of different dimensions (n cell <-> n-1 cell)
+        """
         fancy_print(f"Defining child mesh functions", format_type='log')
-        # this requires mapping information from the parent mesh functions
         # Aliases
         child_meshes = self.parent_mesh.child_meshes.values()
+
         for mesh in child_meshes:
-            mesh.init_mesh_functions()
-            # get mappings to siblings of higher dimension
+            # 1) If child mesh has a list of markers, create a mesh function so it can be used for post-processing
+            if mesh.marker_list is not None:
+                mesh.init_marker_list_mesh_function()
+            # 2) get mappings to siblings of higher dimension
             if not mesh.is_volume_mesh:
                 for sibling_mesh in child_meshes:
                     if mesh.dimensionality == sibling_mesh.dimensionality-1:
+                        # Also calls build_mapping()
                         mesh.get_mesh_function_cell_to_sibling_facet(sibling_mesh)
 
     def _init_3_5_get_integration_measures(self):
@@ -427,18 +448,27 @@ class Model:
         for mesh in self.parent_mesh.all_meshes.values():
             mesh.get_integration_measures()
 
-    def _init_4_1_get_dof_ordering(self):
+    def _init_4_1_get_active_compartments(self):
         """
         Arrange the compartments based on the number of degrees of freedom they have
         (We want to have the highest number of dofs first)
         """
-        self._sorted_compartments = self.cc.sort_by('num_dofs')[0]
-        for compartment in self._sorted_compartments:
-            if compartment.num_dofs < 1:
-                self._sorted_compartments.remove(compartment)
+        # self._active_compartments = self.cc.sort_by('num_dofs')[0]
+        # for compartment in self._active_compartments:
+        #     if compartment.num_dofs < 1:
+        #         self._active_compartments.remove(compartment)
                 
-        for idx, compartment in enumerate(self._sorted_compartments):
+        # for idx, compartment in enumerate(self._active_compartments):
+        #     compartment.dof_index = idx
+        
+        # addressing https://github.com/justinlaughlin/stubs/issues/36
+        self._active_compartments = list(self.cc.Dict.values())
+        for compartment in self._active_compartments:
+            if compartment.num_species < 1:
+                self._active_compartments.remove(compartment)
+        for idx, compartment in enumerate(self._active_compartments):
             compartment.dof_index = idx
+
 
     # Step 4 - Dolfin Functions 
     def _init_4_2_define_dolfin_function_spaces(self):
@@ -447,7 +477,7 @@ class Model:
         max_compartment_name = max([len(compartment_name) for compartment_name in self.cc.keys])
         
         # Make the individual function spaces (per compartment)
-        for compartment in self._sorted_compartments:
+        for compartment in self._active_compartments:
             # Aliases
             fancy_print(f"Defining function space for {compartment.name}{' '*(max_compartment_name-len(compartment.name))} "
                         f"(dim: {compartment.dimensionality}, species: {compartment.num_species}, dofs: {compartment.num_dofs})", format_type='log')
@@ -457,7 +487,7 @@ class Model:
             else:
                 compartment.V = d.FunctionSpace(self.child_meshes[compartment.name].dolfin_mesh, 'P', 1)
 
-        self.V = [compartment.V for compartment in self._sorted_compartments]
+        self.V = [compartment.V for compartment in self._active_compartments]
         # Make the MixedFunctionSpace
         self.W = d.MixedFunctionSpace(*self.V)
 
@@ -511,7 +541,7 @@ class Model:
         self.v      = d.TestFunctions(self.W) # list of TestFunctions
 
         # Create references in compartments to the subfunctions
-        for compartment in self._sorted_compartments:
+        for compartment in self._active_compartments:
             # alias
             cidx = compartment.dof_index
 
@@ -533,7 +563,7 @@ class Model:
             
     def _init_4_4_get_species_u_v_V_dofmaps(self):
         fancy_print(f"Extracting subfunctions/function spaces/dofmap for each species", format_type='log')
-        for compartment in self._sorted_compartments:
+        for compartment in self._active_compartments:
             # loop through species and add the name/index
             for species in compartment.species.values():
                 species.V = sub(compartment.V, species.dof_index)
@@ -547,7 +577,7 @@ class Model:
                     
     def _init_4_5_name_functions(self):
         fancy_print(f"Naming functions and subfunctions", format_type='log')
-        for compartment in self._sorted_compartments:
+        for compartment in self._active_compartments:
             # name of the compartment function
             for key in self.u.keys():
                 compartment.u[key].rename(f"{compartment.name}_{key}", "")
@@ -561,10 +591,11 @@ class Model:
         "Sanity check... If an error occurs here it is likely an internal bug..."
         fancy_print(f"Checking that dolfin functions were created correctly", format_type='log')
         # sanity check
-        for compartment in self._sorted_compartments:#self.cc:
+        for compartment in self._active_compartments:#self.cc:
             idx = compartment.dof_index
             # function size == dofs
-            assert compartment.u['u'].vector().size() == compartment.num_dofs
+            if self.mpi_size == 1:
+                assert compartment.u['u'].vector().size() == compartment.num_dofs
 
             # number of sub spaces == number of species
             if compartment.num_species == 1:
@@ -614,6 +645,7 @@ class Model:
             v  = species.v
             D  = species.D
             dx = species.compartment.mesh.dx
+            # diffusion term
             Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
             self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', True))
             # mass (time derivative) terms
@@ -622,30 +654,30 @@ class Model:
             Munform = (-un)/self.dT * v * dx
             self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', True))
 
-    def _init_5_3_create_variational_problem(self):
+    def _init_5_3_setup_variational_problem_and_solver(self):
         fancy_print("Formulating problem as F(u;v) == 0 for newton iterations", format_type='log')
         # self.all_forms = sum([f.form for f in self.forms])
         # self.problem = d.NonlinearVariationalProblem(self.all_forms, self.u['u'], bcs=None)
         # Aliases
-        Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
+        self.Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
         u = self.u['u']._functions
-        self.Flist, self.Jlist = self.get_block_system(Fsum, u)
+        self.Fblocks, self.Jblocks = self.get_block_system(self.Fsum, u)
 
-        self.u_compartments = [u[i]._cpp_object for i in range(len(u))] 
-        self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(self.Flist, self.u_compartments, [], self.Jlist)
-        #self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)
+        # if use snes
+        if self.config.solver['use_snes']:
+            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks)
+            self.problem.initialize_petsc_matnest()
+            self.problem.initialize_petsc_vecnest()
+            self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
 
-        self.solver = d.MixedNonlinearVariationalSolver(self.problem)
-
-
-            # problem = d.NonlinearVariationalProblem(self.F[compartment.name], compartment.u['u'], [], J)
-            # self.nonlinear_solver[compartment.name] = d.NonlinearVariationalSolver(problem)
-            # p = self.nonlinear_solver[compartment.name].parameters
-            # p['nonlinear_solver'] = 'newton'
-            # p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
-            # p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
-            # p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
+            self.solver = PETSc.SNES().create(self.mpi_comm_world)
+            self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
+            self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
+        else:
+            self._ubackend = [u[i]._cpp_object for i in range(len(u))] 
+            self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(self.Fblocks, self._ubackend, [], self.Jblocks)
+            #self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)
+            self.solver = d.MixedNonlinearVariationalSolver(self.problem)
     
     @staticmethod
     def get_block_system(Fsum, u):
@@ -727,76 +759,68 @@ class Model:
                 Jlist.append(Js)
 
         return Flist, Jlist
-        #fancy_print(f"[problem] create list of jacobian forms OK, Jlist size = {len(Jlist)}", format_type='log')
-
-        # M01 = d.assemble_mixed(J_list[0][1])
-        # d.PETScNestMatrix (demo_matnest.py)
-        # it is possible to use petsc4py directly  e.g.
-        # M = PETSc.Mat().createNest([[M00,M01], [M10,M11]], comm=MPI.COMM_WORLD)
-        # d.as_backend_type(M00).mat()
-    
-
-
-#                 problem = d.NonlinearVariationalProblem(self.F[comp.name], self.u[comp.name]['u'], [], J)
-
-#                 self.nonlinear_solver[comp.name] = d.NonlinearVariationalSolver(problem)
-#                 p = self.nonlinear_solver[comp.name].parameters
-#                 p['nonlinear_solver'] = 'newton'
-#                 p['newton_solver'].update(self.solver_system.nonlinear_dolfin_solver_settings)
-#                 p['newton_solver']['krylov_solver'].update(self.solver_system.linear_dolfin_solver_settings)
-#                 p['newton_solver']['krylov_solver'].update({'nonzero_initial_guess': True}) # important for time dependent problems
-
+  
     #===============================================================================
     # Model - Solving
+    # Hierarchy:
+    # 
+    # solve():
+    #   - highest level solve. solves over all timesteps
+    # solve_single_timestep()
+    #   - recommended level to solve at. time-loop must be in driver script but this allows explicit pre/post processing
+    # monolithic_solve(), iterative_mpsolve()
+    #   - multiphysics level (for now, we are only considering monolithic formulation)
+    # newton_solve(), picard_solve()
+    #   - nonlinear level. Only relevant for iterative_mpsolve(). 
+    # linear solve
+    #   - For any kind of non-linear problem these should simply be parameters passed to the non-linear solver
+    #     (we don't want nonlinear solve implemented at the python level)
     #=============================================================================== 
-    def solve_single_timestep(self, plot_period=1):
-        # Solve using specified multiphysics scheme 
-        # (just monolithic for now)
-        self.monolithic_solve()
-        # if self.solver_system.multiphysics_solver.method == "iterative":
-        #     self.iterative_mpsolve()
-        # else:
-        #     raise Exception("I don't know what operator splitting scheme to use")
-
-        # post processing
-        self.post_process()
-        if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
-            self.plot_solution()
-
-        # if we've reached final time
-        end_simulation = self.t >= self.final_t
-
-        return end_simulation
-
     def solve(self, plot_period=1):
         # Initialize
         #self.init_solutions_and_plots()
-
-        self.stopwatch("Total simulation")
         # Time loop
         while True:
             end_simulation = self.solve_single_timestep(plot_period)
-
             if end_simulation:
                 break
 
-        self.stopwatch("Total simulation", stop=True)
-        Print("Solver finished with %d total time steps." % self.idx)
+    def solve_single_timestep(self, plot_period=1):
+        if self.idx == 0:
+            self.stopwatch("Total simulation")
+        # Solve using specified multiphysics scheme (just monolithic for now)
+        self.monolithic_solve()
 
-    def set_time(self, t, dt=None):
-        if dt is None:
-            dt = self.dt
-        else:
-            fancy_print(f"dt changed from {self.dt} to {dt}", format_type='log')
-            self.dt = dt
-            self.dT.assign(dt)
+        # # post processing
+        # self.post_process()
+        # if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
+        #     self.plot_solution()
 
+        # if we've reached final time
+        end_simulation = self.t >= self.final_t
+        if end_simulation:
+            self.stopwatch("Total simulation", stop=True)
+            fancy_print(f"Model \'{self.name}\' finished simulating (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
+
+        return end_simulation
+    #===============================================================================
+    # Model - Solving (time related functions)
+    #===============================================================================
+    def set_time(self, t):
+        "Explicitly change time"
         if t != self.t:
             fancy_print(f"Time changed from {self.t} to {t}", format_type='log')
             self.t = t
             self.T.assign(t)
 
-    def check_dt_resets(self):
+    def set_dt(self, dt):
+        "Explicitly change time-step"
+        if dt != self.dt:
+            fancy_print(f"dt changed from {self.dt} to {dt}", format_type='log')
+            self.dt = dt
+            self.dT.assign(dt)
+
+    def check_dt_adjust(self):
         """
         Checks to see if the size of a full-time step would pass a "reset dt"
         checkpoint. At these checkpoints dt is reset to some value
@@ -805,62 +829,52 @@ class Model:
         # check that there are reset times specified
         if self.config.solver['adjust_dt'] is None or len(self.config.solver['adjust_dt']) == 0:
             return
+        # Aliases
+        # check if we pass a reset dt checkpoint
+        tnow  = self.t # time right now
+        dtnow = self.dt
+        tnext = tnow + dtnow # the final time if dt is not reset
+        tadjust, dtadjust = self.config.solver['adjust_dt'][0] # next time to adjust dt, and the value of dt to adjust to
 
         # if last time-step we passed a reset dt checkpoint then reset it now
         if self.reset_dt:
-            new_dt = self.config.solver['adjust_dt'][0][1]
-            fancy_print(f"(!!!) Adjusting time-step (dt = {self.dt} -> {new_dt}) to match config specified value", format_type='log')
-            self.set_time(self.t, dt = new_dt)
+            fancy_print(f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {dtadjust}) to match config specified value", format_type='log')
+            self.set_dt(dtadjust)
             del(self.config.solver['adjust_dt'][0])
             self.reset_dt = False
             return
+        if tadjust < tnow:
+            raise AssertionError("tadjust (Next time to adjust dt) is smaller than current time.")
+            
+        # If true, this means taking a full time-step with current values of t and dt would pass a checkpoint to adjust dt
+        if tnow < tadjust <= tnext: 
+            # Safeguard against taking ridiculously small time-steps which may cause convergence issues 
+            # (e.g. current time is tnow=0.999999999, tadjust=1.0, dtadjust=0.01, instead of changing current dt to tadjust-tnow, we change it to dtadjust)
+            new_dt = max([tadjust - tnow, dtadjust]) # this is needed otherwise very small time-steps might be taken which wont converge
+            fancy_print(f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {new_dt}) to avoid passing reset dt checkpoint", format_type='log_important')
+            self.set_dt(new_dt)
 
-        # check if we pass a reset dt checkpoint
-        t0 = self.t # original time
-        potential_t = t0 + self.dt # the final time if dt is not reset
-        next_reset_time = self.config.solver['adjust_dt'][0][0] # the next time value to reset dt at
-        next_reset_dt = self.config.solver['adjust_dt'][0][1] # the next value of dt to reset to
-        if next_reset_time<t0:
-            raise Exception("Next reset time is less than time at beginning of time-step.")
-        if t0 < next_reset_time <= potential_t: # check if the full time-step would pass a reset dt checkpoint
-            new_dt = max([next_reset_time - t0, next_reset_dt]) # this is needed otherwise very small time-steps might be taken which wont converge
-            fancy_print(f"(!!!) Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing reset dt checkpoint", format_type='log_important')
-            self.set_time(self.t, dt=new_dt)
             # set a flag to change dt to the config specified value
             self.reset_dt = True
-
+    
     def check_dt_pass_tfinal(self):
         """
-        Check that t+dt is not > t_final
+        Check if current value of t and dt would cause t+dt > t_final
         """
-        potential_t = self.t + self.dt
-        if potential_t > self.final_t:
+        tnext = self.t + self.dt
+        if tnext > self.final_t:
             new_dt = self.final_t - self.t 
-            fancy_print("(!!!) Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
-            self.set_time(self.t, dt=new_dt)
+            fancy_print("[{self.idx}, t={tnow}] Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
+            self.set_dt(new_dt)
 
     def forward_time_step(self, dt_factor=1):
+        "Take a step forward in time and upate time-dependent parameters"
 
         self.dT.assign(float(self.dt*dt_factor))
         self.t = float(self.t+self.dt*dt_factor)
         self.T.assign(self.t)
         self.update_time_dependent_parameters(dt=self.dt*dt_factor)
         fancy_print(f"t: {self.t} , dt: {self.dt*dt_factor}", format_type='log')
-
-    def stopwatch(self, key, stop=False, color='cyan'):
-        if key not in self.timers.keys():
-            self.timers[key] = d.Timer()
-        if not stop:
-            self.timers[key].start()
-        else:
-            elapsed_time = self.timers[key].elapsed()[0]
-            time_str = str(elapsed_time)[0:8]
-            if color:
-                time_str = colored(time_str, color)
-            Print("%s finished in %s seconds" % (key,time_str))
-            self.timers[key].stop()
-            self.timings[key].append(elapsed_time)
-            return elapsed_time
 
     def update_time_dependent_parameters(self, t=None, t0=None, dt=None):
         """ Updates all time dependent parameters. Time-dependent parameters are 
@@ -952,12 +966,26 @@ class Model:
             param.dolfin_constant.assign(newValue)
             self.params[param_name].append((t,newValue))
 
+    def stopwatch(self, key, stop=False):
+        "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
+        if key not in self.timers.keys():
+            self.timers[key] = d.Timer()
+        if not stop:
+            self.timers[key].start()
+        else:
+            elapsed_time = self.timers[key].elapsed()[0]
+            time_str = str(elapsed_time)[0:8]
+            fancy_print(f"{key} finished in {time_str} seconds", format_type='log')
+            self.timers[key].stop()
+            self.timings[key].append(elapsed_time)
+            return elapsed_time
 
-    def reset_timestep(self, comp_list=[]):
+    def _reset_timestep(self, comp_list=[]):
         """
         Resets the time back to what it was before the time-step. Optionally, input a list of compartments
         to have their function values reset (['n'] value will be assigned to ['u'] function).
         """
+        raise NotImplementedError("Need to check this code")
         self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_dt_factor'])
         Print("Resetting time-step and decreasing step size")
         for comp_name in comp_list:
@@ -1028,18 +1056,17 @@ class Model:
             if ukey not in self.u.keys():
                 raise ValueError(f"Key {ukey} is not in model.u.keys()")
             # for a function from a mixed function space
-            for idx in range(self.num_sorted_compartments):
+            for idx in range(self.num_active_compartments):
                 self.u[ukey].sub(idx).assign(self.u['u'].sub(idx))
-            
 
-    def adjust_dt(self):
-        # check if time step should be changed
-        if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.nl_idx.values()]):
-           self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
-           Print("Increasing step size")
-        elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.nl_idx.values()]):
-           self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
-           Print("Decreasing step size")
+    # def adjust_dt(self):
+    #     # check if time step should be changed based on number of nonlinear iterations
+    #     if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.nl_idx.values()]):
+    #        self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
+    #        Print("Increasing step size")
+    #     elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.nl_idx.values()]):
+    #        self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
+    #        Print("Decreasing step size")
 
         # check if time step should be changed based on number of multiphysics iterations
         # if self.mpidx <= self.solver_system.multiphysics_solver.min_multiphysics:
@@ -1049,55 +1076,66 @@ class Model:
         #     self.set_time(self.t, dt=self.dt*self.solver_system.multiphysics_solver.dt_decrease_factor)
         #     Print("Decreasing step size")
 
-    def compute_stopping_conditions(self, norm_type=np.inf):
-
-        for comp_name in self.u.keys():
-            # dolfin norm() is not really robust so we get vectors and use numpy.linalg.norm
-            #Fabs = d.norm(d.assemble(self.F[comp_name]), norm_type)
-            #udiff = self.u[comp_name]['u'] - self.u[comp_name]['k']
-            #udiff_abs = d.norm(udiff, norm_type)
-            #udiff_rel = udiff_abs/d.norm(self.u[comp_name]['u'], norm_type)
-
-            Fvec = d.assemble(self.F[comp_name]).get_local()
-
-            Fabs = np.linalg.norm(Fvec, ord=norm_type)
-
-            self.stopping_conditions['F_abs'].update({comp_name: Fabs})
-
-        for sp_name, sp in self.sc.items:
-            uvec = self.dolfin_get_function_values(sp, ukey='u')
-            ukvec = self.dolfin_get_function_values(sp, ukey='k')
-            udiff = uvec - ukvec
-
-            udiff_abs = np.linalg.norm(udiff, ord=norm_type)
-            udiff_rel = udiff_abs/np.linalg.norm(uvec, ord=norm_type)
-
-            self.stopping_conditions['udiff_abs'].update({sp_name: udiff_abs})
-            self.stopping_conditions['udiff_rel'].update({sp_name: udiff_rel})
-        
         
     def monolithic_solve(self, bcs=[]):
-        fancy_print('\n\n', format_type='log')
+        fancy_print("\n\n", format_type='log')
         self.idx += 1
-        self.check_dt_resets()      # check if there is a manually prescribed time-step size
+        self.check_dt_adjust()      # check if there is a manually prescribed time-step size
         self.check_dt_pass_tfinal() # check that we don't pass tfinal
         fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', format_type='timestep')
-
         self.stopwatch("Total time step") # start a timer for the total time step
 
         self.forward_time_step() # march forward in time and update time-dependent parameters
 
-        self.mpidx = 0
-        self.solver.solve()
-        nl_idx, success = self.nonlinear_solver[comp_name].solve()
-        self.data['nl_idx'].append(nl_idx)
-        self.data['success'].append(success)
-        self.data['tvec'].update(self.t)
-        self.data['dtvec'].update(self.dt)
+        if self.config.solver['use_snes']:
+            fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
+            self.solver.solve(None, self._ubackend)
+            self.idx_nl = self.solver.its
+            max_idx_nl = self.solver.max_it
+            fancy_print(f'SNES took {self.idx_nl} iterations (maximum is {max_idx_nl})', format_type='log')
+        else:
+            fancy_print(f'Solving using dolfin.MixedNonlinearVariationalSolver()', format_type='log')
+            self.solver.solve()
+
+        #self.data['nl_idx'].append(nl_idx)
+        #self.data['success'].append(success)
+        # self.data['tvec'].update(self.t)
+        # self.data['dtvec'].update(self.dt)
 
         self.update_solution() # assign most recently computed solution to "previous solution"
-        self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
-        self.stopwatch("Total time step", stop=True, color='cyan')
+        #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
+        self.stopwatch("Total time step", stop=True)
+
+    #===============================================================================
+    # Model - Solving (iterative multiphysics solver) 
+    #===============================================================================
+    # def compute_stopping_conditions(self, norm_type=np.inf):
+    #     # Mostly related to iterative_mpsolve()
+    #     raise AssertionError("Needs to be revisited")
+
+    #     for comp_name in self.u.keys():
+    #         # dolfin norm() is not really robust so we get vectors and use numpy.linalg.norm
+    #         #Fabs = d.norm(d.assemble(self.F[comp_name]), norm_type)
+    #         #udiff = self.u[comp_name]['u'] - self.u[comp_name]['k']
+    #         #udiff_abs = d.norm(udiff, norm_type)
+    #         #udiff_rel = udiff_abs/d.norm(self.u[comp_name]['u'], norm_type)
+
+    #         Fvec = d.assemble(self.F[comp_name]).get_local()
+
+    #         Fabs = np.linalg.norm(Fvec, ord=norm_type)
+
+    #         self.stopping_conditions['F_abs'].update({comp_name: Fabs})
+
+    #     for sp_name, sp in self.sc.items:
+    #         uvec = self.dolfin_get_function_values(sp, ukey='u')
+    #         ukvec = self.dolfin_get_function_values(sp, ukey='k')
+    #         udiff = uvec - ukvec
+
+    #         udiff_abs = np.linalg.norm(udiff, ord=norm_type)
+    #         udiff_rel = udiff_abs/np.linalg.norm(uvec, ord=norm_type)
+
+    #         self.stopping_conditions['udiff_abs'].update({sp_name: udiff_abs})
+    #         self.stopping_conditions['udiff_rel'].update({sp_name: udiff_rel})
 
     # def iterative_mpsolve(self, bcs=[]):
     #     """
@@ -1106,7 +1144,7 @@ class Model:
     #     raise AssertionError(f"Currently focusing on just monolithic - haven't updated.")
     #     Print('\n\n\n')
     #     self.idx += 1
-    #     self.check_dt_resets()      # check if there is a manually prescribed time-step size
+    #     self.check_dt_adjust()      # check if there is a manually prescribed time-step size
     #     self.check_dt_pass_tfinal() # check that we don't pass tfinal
     #     fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', format_type='timestep')
 
@@ -1176,64 +1214,59 @@ class Model:
     #     self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
     #     self.stopwatch("Total time step", stop=True, color='cyan')
 
+    #===============================================================================
+    # Nonlinear solvers:
+    #  - Timestep
+    #  - Update time dependent parameters
+    #  - Solve
+    #  - Assign new solution to old solution unless otherwise stated
+    #===============================================================================
 
-#===============================================================================
-#===============================================================================
-# Nonlinear solvers:
-#  - Timestep
-#  - Update time dependent parameters
-#  - Solve
-#  - Assign new solution to old solution unless otherwise stated
-#===============================================================================
-#===============================================================================
+    #     def picard_loop(self, comp_name, dt_factor=1, bcs=[]):
+    #         """
+    #         Continue picard iterations until a specified tolerance or count is
+    #         reached.
+    #         """
+    #         self.stopwatch("Picard loop [%s]" % comp_name)
+    #         t0 = self.t
+    #         self.forward_time_step(dt_factor=dt_factor) # increment time afterwards
+    #         self.pidx = 0 # count the number of picard iterations
+    #         success = True
 
+    #         # main loop
+    #         while True:
+    #             self.pidx += 1
+    #             #linear_solver_settings = self.config.dolfin_krylov_solver
 
+    #             # solve
+    #             self.linear_solver[comp_name].solve()
+    #             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
 
-#     def picard_loop(self, comp_name, dt_factor=1, bcs=[]):
-#         """
-#         Continue picard iterations until a specified tolerance or count is
-#         reached.
-#         """
-#         self.stopwatch("Picard loop [%s]" % comp_name)
-#         t0 = self.t
-#         self.forward_time_step(dt_factor=dt_factor) # increment time afterwards
-#         self.pidx = 0 # count the number of picard iterations
-#         success = True
+    #             # update temporary value of u
+    #             self.data.compute_error(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
+    #             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
 
-#         # main loop
-#         while True:
-#             self.pidx += 1
-#             #linear_solver_settings = self.config.dolfin_krylov_solver
+    #             # Exit if error tolerance or max iterations is reached
+    #             Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+    #             if self.data.errors[comp_name]['Linf']['abs'][-1] < self.solver_system.nonlinear_solver.absolute_tolerance:
+    #                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
+    #                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
+    #                 break
+    # #            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
+    # #                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
+    # #                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
+    # #                break
 
-#             # solve
-#             self.linear_solver[comp_name].solve()
-#             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
+    #             if self.pidx >= self.solver_system.nonlinear_solver.maximum_iterations:
+    #                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
+    #                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
+    #                 success = False
+    #                 break
 
-#             # update temporary value of u
-#             self.data.compute_error(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
-#             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
+    #         self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
 
-#             # Exit if error tolerance or max iterations is reached
-#             Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-#             if self.data.errors[comp_name]['Linf']['abs'][-1] < self.solver_system.nonlinear_solver.absolute_tolerance:
-#                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
-#                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
-#                 break
-# #            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
-# #                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
-# #                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
-# #                break
-
-#             if self.pidx >= self.solver_system.nonlinear_solver.maximum_iterations:
-#                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
-#                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-#                 success = False
-#                 break
-
-#         self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
-
-#         Print("%d Picard iterations required for convergence." % self.pidx)
-#         return self.pidx, success
+    #         Print("%d Picard iterations required for convergence." % self.pidx)
+    #         return self.pidx, success
 
 
     #===============================================================================
@@ -1257,7 +1290,6 @@ class Model:
         self.data.plot_solutions(self.config, self.sc)
         self.data.plot_fluxes(self.config)
         self.data.plot_solver_status(self.config)
-
 
     #===============================================================================
     # Model - Data manipulation
@@ -1362,7 +1394,21 @@ class Model:
     
     @property
     def num_active_compartments(self):
-        return len(self._sorted_compartments)
+        return len(self._active_compartments)
+    
+    def get_mass(self, species, ukey='u', sub_domain=None):
+        if sub_domain is not None:
+            assert isinstance(sub_domain, int)
+            return d.assemble_mixed(species.u['u'] * species.compartment.mesh.dx_uncombined[sub_domain])
+        else:
+            return d.assemble_mixed(species.u['u'] * species.compartment.mesh.dx)
+        
+    def get_compartment_residual(self, compartment, norm='l1'):
+        return sum([d.assemble_mixed(form) for form in self.Fblocks[compartment.dof_index]]).norm(norm)
+    
+    def get_total_residual(self, norm='l1'):
+        return sum([d.assemble_mixed(form) for form in itertools.chain.from_iterable(self.Fblocks)]).norm(norm)
+    
 
     # def assign_initial_conditions(self):
     #     ukeys = ['k', 'n', 'u']
