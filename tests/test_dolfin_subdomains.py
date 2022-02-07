@@ -26,6 +26,28 @@ def test_dolfin_meshview(dolfin_mesh):
     assert submesh_12.num_cells() == len(mf_3.where_equal(12))
     assert submesh_11.num_cells() + submesh_12.num_cells() == dolfin_mesh.num_cells()
 
+# write a test for this method:
+"""
+def find_surface_to_volume_mesh_intersections(self, sibling_volume_mesh):
+    assert self.dimensionality == sibling_volume_mesh.dimensionality - 1
+
+    # map from our cells to sibling facets 
+    # intersection_map is 1 where this mesh intersects with the boundary of its sibling
+    self.intersection_map[sibling_volume_mesh.id] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+    bool_array = np.array(self.mesh_view[sibling_volume_mesh.id].cell_map()) # map from our (n-1)-cells to sibling's n-cells
+    bool_array[bool_array!=0] = 1
+    self.intersection_map[sibling_volume_mesh.id].set_values(bool_array)
+"""
+        
+@pytest.mark.dolfin
+def test_find_surface_to_volume_mesh_intersections(dolfin_mesh):
+    
+
+    
+
+# @pytest.mark.dolfin
+# def test_dolfin_intersections(dolfin_mesh)
+
 # @pytest.mark.dolfin
 # def test_multidim_function_space(dolfin_mesh):
 #     """

@@ -307,36 +307,41 @@ class Parameter(ObjectInstance):
     unit: pint.Unit
     group: str=''
     notes: str=''
+    use_preintegration: bool=False
 
     @classmethod
-    def from_file(cls, name, sampling_file, unit, group='', notes=''):
+    def from_file(cls, name, sampling_file, unit, group='', notes='', use_preintegration=False):
         "Load in a purely time-dependent scalar function from data"
         # load in sampling data file
         sampling_data = np.genfromtxt(sampling_file, dtype='float', delimiter=',')
         fancy_print(f"Loading in data for parameter {name}", format_type='log')
+
+        # Only t0=0.0
         if sampling_data[0,0] != 0.0 or sampling_data.shape[1] != 2:
             raise NotImplementedError
         value = sampling_data[0,1] # initial value
 
         # Print("Creating dolfin object for time-dependent parameter %s" % self.name)
+        parameter = cls(name, value, unit, group=group, notes=notes, use_preintegration=use_preintegration)
 
-        # preintegrate sampling data
-        int_data = cumtrapz(sampling_data[:,1], x=sampling_data[:,0], initial=0)
-        # concatenate time vector
-        preint_sampling_data = common.np_smart_hstack(sampling_data[:,0], int_data)
+        if use_preintegration:
+            # preintegrate sampling data
+            int_data = cumtrapz(sampling_data[:,1], x=sampling_data[:,0], initial=0)
+            # concatenate time vector
+            preint_sampling_data = common.np_smart_hstack(sampling_data[:,0], int_data)
+            parameter.preint_sampling_data  = preint_sampling_data
 
         # initialize instance
-        parameter = cls(name, value, unit, group=group, notes=notes)
         parameter.sampling_data         = sampling_data
-        parameter.preint_sampling_data  = preint_sampling_data
         parameter.is_time_dependent     = True
         parameter.is_space_dependent    = False # not supported yet
+        parameter.type = 'from_file'
         fancy_print(f"Time-dependent parameter {name} loaded from file.", format_type='log')
 
         return parameter
     
     @classmethod
-    def from_expression(cls, name, sym_expr, unit, preint_sym_expr=None, group='', notes=''):
+    def from_expression(cls, name, sym_expr, unit, preint_sym_expr=None, group='', notes='', use_preintegration=False):
         # Parse the given string to create a sympy expression
         sym_expr = parse_expr(sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
         
@@ -346,28 +351,32 @@ class Parameter(ObjectInstance):
         is_space_dependent = not {'x[0]','x[1]','x[2]'}.isdisjoint(set(free_symbols))
         if is_space_dependent:
             raise NotImplementedError
+        # For now, parameters can only be defined in terms of time/space
         if not {'x[0]', 'x[1]', 'x[2]', 't'}.issuperset(free_symbols):
             raise NotImplementedError
         
-        # fix this when implementing space dependent parameters
+        # TODO: fix this when implementing space dependent parameters
         if is_time_dependent:
             value = sym_expr.subs({'t': 0.0}).evalf()
 
-        if preint_sym_expr:
-            preint_sym_expr = parse_expr(preint_sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
-        elif is_time_dependent:
-            # try to integrate
-            t = Symbol('t')
-            preint_sym_expr = integrate(sym_expr, t)
+        parameter = cls(name, value, unit, group=group, notes=notes, use_preintegration=use_preintegration)
 
-        parameter = cls(name, value, unit, group=group, notes=notes)
+        if use_preintegration:
+            if preint_sym_expr:
+                preint_sym_expr = parse_expr(preint_sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
+            else:
+                # try to integrate
+                t = Symbol('t')
+                preint_sym_expr = integrate(sym_expr, t)
+            parameter.preint_sym_expr       = preint_sym_expr
+
         parameter.free_symbols          = free_symbols
         parameter.sym_expr              = sym_expr
-        parameter.preint_sym_expr       = preint_sym_expr
         parameter.is_time_dependent     = is_time_dependent
         parameter.is_space_dependent    = is_space_dependent
 
-        parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+        # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+        parameter.type == 'expression'
         fancy_print(f"Time-dependent parameter {name} evaluated from expression.", format_type='log')
 
         return parameter
@@ -377,13 +386,17 @@ class Parameter(ObjectInstance):
             self.is_time_dependent     = False
         if not hasattr(self, 'is_space_dependent'):
             self.is_space_dependent    = False
+
+        if self.use_preintegration:
+            fancy_print(f"Warning! Pre-integrating parameter {self.name}. Make sure that expressions {self.name} appears in have no other time-dependent variables.", format_type='warning')
         
-        attributes = ['sym_expr', 'preint_sym_expr', 'sampling_data', 'preint_sampling_data', 'dolfin_expression']
+        attributes = ['sym_expr', 'preint_sym_expr', 'sampling_data', 'preint_sampling_data']
         for attribute in attributes:
             if not hasattr(self, attribute):
                 setattr(self, attribute, None)
-
-        self.t = 0.0
+        
+        if not hasattr(self, 'type'):
+            self.type = 'constant'
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -392,14 +405,14 @@ class Parameter(ObjectInstance):
 
         #self.dolfin_constant = d.Constant(self.value)
         #self.value_unit = self.value*self.unit
-    
-    @property
-    def dolfin_constant(self):
-        return d.Constant(self.value)
+
 
     @property
     def dolfin_quantity(self):
-        return self.dolfin_constant * self.unit
+        if hasattr(self, 'dolfin_expression'):
+            return self.dolfin_expression * self.unit
+        else:
+            return self.dolfin_constant * self.unit
     
     @property
     def quantity(self):
@@ -542,7 +555,7 @@ class Species(ObjectInstance):
             if not {'x[0]', 'x[1]', 'x[2]'}.issuperset(free_symbols):
                 raise NotImplementedError
             fancy_print(f"Creating dolfin object for space-dependent initial condition {self.name}", format_type='log')
-            self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
+            self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), degree=1)
         else:
             raise TypeError(f"initial_condition must be a float or string.")
         
@@ -576,10 +589,11 @@ class CompartmentContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Compartment)
 
-        self.properties_to_print = ['dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_cells', 'cell_marker', '_nvolume']
+        self.properties_to_print = ['_mesh_id', 'dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_cells', 'cell_marker', '_nvolume']
     
-    def print(self, tablefmt='fancy_grid', properties_to_print=None):
+    def print(self, tablefmt='fancy_grid'):
         for c in self:
+            c.mesh_id
             c.nvolume
             c.num_vertices
             c.num_dofs
@@ -618,6 +632,11 @@ class Compartment(ObjectInstance):
         # checking units
         if not self.compartment_units.check('[length]'):
             raise ValueError(f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length].")
+    
+    @property
+    def mesh_id(self):
+        self._mesh_id = self.mesh.id
+        return self._mesh_id
 
     @property
     def dolfin_mesh(self):
@@ -746,6 +765,9 @@ class Flux(ObjectInstance):
         # for nice printing
         self._species_name = self.destination_species.name
 
+        self.surface_id = set()
+        self.volume_ids = set()
+
         self._check_input_type_validity()
         self.check_validity()
 
@@ -792,7 +814,7 @@ class Flux(ObjectInstance):
         [3d] volume-volume_to_surface:  PDE of v ()
         """
         # 1 compartment flux
-        if self.reaction.topology in ['volume', 'surface']:
+        if self.reaction.topology in ['surface', 'volume']:
             self.topology = self.reaction.topology
             source_compartments = {self.destination_compartment.name}
         # 2 or 3 compartment flux
@@ -800,20 +822,31 @@ class Flux(ObjectInstance):
             source_compartments = set(self.compartments.keys()).difference({self.destination_compartment.name})
             
             if self.reaction.topology == 'volume_surface':
-                if self.destination_compartment.is_volume_mesh:
+                assert len(source_compartments) == 1
+                if self.destination_compartment.is_volume:
                     self.topology = 'surface_to_volume'
                 else:
                     self.topology = 'volume_to_surface'
 
             elif self.reaction.topology == 'volume_surface_volume':
-                if self.destination_compartment.is_volume_mesh:
+                assert len(source_compartments) == 2
+                if self.destination_compartment.is_volume:
                     self.topology = 'volume-surface_to_volume'
                 else:
                     self.topology = 'volume-volume_to_surface'
+
         else:
             raise AssertionError()
             
         self.source_compartments = {name: self.reaction.compartments[name] for name in source_compartments}
+        self.surface = [c for c in self.compartments.values() if c.mesh.is_surface]
+        if len(self.surface) == 1:
+            self.surface = self.surface[0]
+        else:
+            self.surface = None
+        self.volumes = [c for c in self.compartments.values() if c.mesh.is_volume]
+        self.surface_id = frozenset([c.mesh.id for c in self.compartments.values() if c.mesh.is_surface])
+        self.volume_ids = frozenset([c.mesh.id for c in self.compartments.values() if c.mesh.is_volume])
 
         # Based on topology we know if it is a boundary condition or RHS term
         if self.topology in ['volume', 'surface', 'volume_to_surface', 'volume-volume_to_surface']:
@@ -861,34 +894,26 @@ class Flux(ObjectInstance):
             assert self.equation_units == self._flux_units
 
     def _post_init_get_integration_measure(self):
-        if not self.is_boundary_condition:
+        """
+        Flux topologys:
+        [1d] volume:                    PDE of u
+        [1d] surface:                   PDE of v
+        [2d] volume_to_surface:         PDE of v            
+        [2d] surface_to_volume:         BC of u
+        [3d] volume-surface_to_volume:  BC of u ()
+        [3d] volume-volume_to_surface:  PDE of v ()
+    
+        1d means no other compartment are involved, so the integration measure is the volume of the compartment
+        2d/3d means two/three compartments are involved, so the integration measure is the intersection between all compartments
+        """
+        #if not self.is_boundary_condition:
+        if self.topology in ['volume', 'surface']:
             self.measure       = self.destination_compartment.mesh.dx
-        elif self.topology == 'surface_to_volume':
-            assert len(self.source_compartments) == 1
-            self._source_surface     = list(self.source_compartments.values())[0]
-            # intersection of this surface with boundary of destination volume
-            self.measure       = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
-        elif self.topology == 'volume-surface_to_volume':
-            assert len(self.source_compartments) == 2
-            assert sum([c.is_volume_mesh for c in self.source_compartments.values()]) == 1
-            for c in self.source_compartments.values():
-                if not c.is_volume_mesh:
-                    self._source_surface = c 
-                else:
-                    self._source_volume  = c
-            # check that there is at least one intersecting face between the two volumes
-            mf_map_1 = self._source_surface.mesh.mf_map[self.destination_compartment.mesh.id]
-            mf_map_2 = self._source_surface.mesh.mf_map[self._source_volume.mesh.id]
-            # this is not entirely correct
-            # replace this with more robust intersection of meshes
-            if not (1 in mf_map_1 and 1 in mf_map_2):
-                raise Error(f"Flux {self.name} has two volumes and a surface which do not connect with each other.")
-            if np.all(mf_map_1.array() != mf_map_2.array()):
-                raise NotImplementedError(f"The surface between two volumes in a reaction must be completely specified.")
-
-            self.measure = self._source_surface.mesh.dx_map[self.destination_compartment.mesh.id](1)
-        else:
-            raise AssertionError()
+        elif self.topology in ['volume_to_surface', 'surface_to_volume', 'volume-volume_to_surface', 'volume-surface_to_volume']:
+            # intersection of this surface with boundary of source volume(s)
+            assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
+            #assert self.has_intersection[self.volume_ids] 
+            self.measure = self.surface.mesh.dx_map[self.volume_ids](1)
 
     @property
     def equation_variables(self):
@@ -911,7 +936,7 @@ class Flux(ObjectInstance):
     def form(self):
         "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
         self.evaluate_equation()
-        form_result = -1 * self.equation_value * self.destination_species.v * self.measure
+        form_result = d.Constant(-1) * self.equation_value * self.destination_species.v * self.measure
         self._form = form_result
         return form_result
 
@@ -984,11 +1009,11 @@ class Form(ObjectInstance):
         if self.is_lhs:
             return self.form
         else:
-            return -1 * self.form
+            return d.Constant(-1) * self.form
     @property
     def rhs(self):
         if self.is_lhs:
-            return -1 * self.form
+            return d.Constant(-1) * self.form
         else:
             return self.form
 

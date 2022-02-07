@@ -10,15 +10,6 @@ import itertools
 unit = stubs.unit # unit registry
 
 # ===================
-# logging
-# ===================
-d.set_log_level(10) # highest logging
-# set for others
-logging.getLogger('UFL').setLevel('DEBUG')
-logging.getLogger('FFC').setLevel('DEBUG')
-logging.getLogger('dijitso').setLevel('DEBUG')
-
-# ===================
 # MPI
 # ===================
 rank = d.MPI.comm_world.rank
@@ -35,12 +26,21 @@ sec      = unit.s
 
 import stubs_model 
 
-model = stubs_model.make_model(refined_mesh=True)
+model = stubs_model.make_model('adjacent_cubes_from_dolfin_20_lessPM.h5')
 
-model.parent_mesh = stubs.mesh.ParentMesh(str(stubs.common.data_path() / 'adjacent_cubes_from_dolfin_40.h5'), 'hdf5')
+# ===================
+# logging
+# ===================
+# set for others
+loglevel = 'INFO'
+model.config.loglevel = {'FFC': loglevel,
+                         'UFL': loglevel,
+                         'dijitso': loglevel,
+                         'dolfin': loglevel}
+model.config.set_logger_levels()
 
+# model.parent_mesh = stubs.mesh.ParentMesh(str(stubs.common.data_path() / 'adjacent_cubes_from_dolfin_40.h5'), 'hdf5')
 print(model.parent_mesh.num_vertices)
-
 
 
 use_snes = True

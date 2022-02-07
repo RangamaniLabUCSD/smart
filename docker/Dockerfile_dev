@@ -12,14 +12,34 @@
 # Base fenics dev image
 FROM quay.io/fenicsproject/dev
 
+
+# ======================================================
+# pull and build our forked version of dolfin 
+#RUN export PYTHONPATH=/usr/local/lib/python3.6/site-packages:${PYTHONPATH}
+RUN echo "Downloading forked version of dolfin"
+#RUN cd /tmp/src && \
+RUN export FENICS_SRC_DIR=/usr/local/src && \
+    cd /usr/local/src && \
+    export GIT_LFS_SKIP_SMUDGE=1 && \
+    git clone https://github.com/justinlaughlin/dolfinstubs.git && \
+    cd dolfinstubs && \
+    git checkout my_fixes && \
+    git pull && \
+    bash -c "PIP_NO_CACHE_DIR=off \
+                /home/fenics/bin/fenics-build dolfinstubs && \
+                ldconfig"
+# ======================================================
+
+
+
 # Install desired packages using apt-get
+# apt-get update and install needs to be in the same line
 # libgl for visualization with vedo
-RUN apt-get -qq update && \
-    apt-get -qq -y install \
+#libgl1-mesa-glx && \
+RUN apt-get update && apt-get install -y \
     curl \
     vim \
     htop && \
-    libgl1-mesa-glx && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -40,10 +60,12 @@ RUN python3 -m pip install vedo
 # this is to install just the dependencies so that we can use the local version of stubs
 RUN python3 -m pip install fenics-stubs
 RUN python3 -m pip uninstall --yes fenics-stubs
-# now we add the pythonpath to the local repository
+# now we add the local repo to the pythonpath 
 ENV PYTHONPATH "${PYTHONPATH}:$FENICS_HOME/shared/gitrepos/stubs"
 
+
 # bashrc settings (this appends to the top of the file)
+# colored terminal and disable ctrl+S freezing screen
 RUN printf \
 "# colored terminal output\n\
 export TERM=xterm-256color\n" | cat - $FENICS_HOME/.bashrc > temp && \
@@ -62,6 +84,7 @@ alias sourceme='source ~/.bashrc'\n\
 alias vimbash='vim ~/.bashrc'\n\
 alias vimalias='vim ~/.bash_aliases'\n\
 alias cdstubs='cd ~/shared/gitrepos/stubs'\n\
+alias debug='cd ~/shared/gitrepos/stubs/debug; bpython -i debug_stubs.py'\n\
 alias vimrc='vim ~/.vimrc'" >> $FENICS_HOME/.bash_aliases
 
 # vimrc settings
@@ -85,14 +108,18 @@ set number\n\
 set colorcolumn=120\n\
 highlight ColorColumn ctermbg=7" >> $FENICS_HOME/.vimrc
 
-
 # source bashrc
 RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]
 
-# my gitconfig
+#RUN cd $FENICS_SRC_DIR/dolfin
+#build cmake
+#build pybind11 cd $FENICS_SRC_DIR/dolfin
+
+
+
+
 # dont want my email floating around on the internet 
 RUN email_name="justinglaughlin"
 RUN git config --global user.email "$email_name@gmail.com"
 RUN git config --global user.name "justinlaughlin"
-
 

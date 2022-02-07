@@ -117,7 +117,6 @@ class stubsSNESProblem():
         self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
         self.Jpetsc_nest.assemble() 
         #return Jpetsc_nest
-
  
     def initialize_petsc_vecnest(self):
         dim = self.dim
@@ -128,7 +127,7 @@ class stubsSNESProblem():
             for k in range(1,len(self.Fforms[j])):
                 Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k]))#, tensor=Fdpetsc[j])
 
-            Fsum.vec().assemble()
+            # Fsum.vec().assemble()
             Fpetsc.append(Fsum.vec())
         
         self.Fpetsc_nest = PETSc.Vec().createNest(Fpetsc)
@@ -157,7 +156,7 @@ class stubsSNESProblem():
 
                 if num_subforms==1:
                     d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
-                    #Jij_petsc.assemble()
+                    # Jij_petsc.assemble()
                     continue
                 else:
                     #Jmats.append([])
@@ -177,7 +176,7 @@ class stubsSNESProblem():
                         # structure options: SAME_NONZERO_PATTERN, DIFFERENT_NONZERO_PATTERN, SUBSET_NONZERO_PATTERN, UNKNOWN_NONZERO_PATTERN 
                         Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
                     #     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
-                    # assemble petsc
+                    # assemble petsc (seems like its only needed at th end?)
                     #Jij_petsc.assemble()    
         # assemble petsc
         Jnest.assemble()
@@ -196,13 +195,13 @@ class stubsSNESProblem():
                 Fi_petsc[j].axpy(1, Fvecs[j][k].vec())
         
         # assemble petsc
-        for j in range(dim):
-            Fi_petsc[j].assemble()
+        # for j in range(dim):
+        #     Fi_petsc[j].assemble()
         Fnest.assemble()
             
     def copy_u(self, unest):
         uvecs = unest.getNestSubVecs()
-        duvecs = [None]*self.dim
+        #duvecs = [None]*self.dim
         for idx, uvec in enumerate(uvecs):
             uvec.copy(self.u.sub(idx).vector().vec())
             self.u.sub(idx).vector().apply("")

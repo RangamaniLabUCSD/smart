@@ -36,8 +36,12 @@ class _Mesh:
     def id(self):
         return self.dolfin_mesh.id()
     @property
-    def is_volume_mesh(self):
+    def is_volume(self):
         return self.dimensionality == self.parent_mesh.dimensionality
+
+    @property
+    def is_surface(self):
+        return self.dimensionality < self.parent_mesh.max_dim
 
     # Number of entities
     def get_num_entities(self, dimension):
@@ -112,7 +116,7 @@ class _Mesh:
     def get_integration_measures(self):
         # Aliases
         mesh = self.dolfin_mesh
-        # if self.is_volume_mesh:
+        # if self.is_volume:
             #self.ds = d.Measure('ds', domain=mesh, subdomain_data=self.mf['facets'])
             # if 'facets_uncombined' in self.mf:
             #     self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=self.mf['facets_uncombined'])
@@ -127,10 +131,10 @@ class _Mesh:
         if 'cells_uncombined' in self.mf:
             self.dx_uncombined = d.Measure('dx', domain=mesh, subdomain_data=self.mf['cells_uncombined'])
         
-        # mf maps
+        # intersection  maps
         if isinstance(self, ChildMesh):
-            for id, mf_map in self.mf_map.items():
-                self.dx_map[id] = d.Measure('dx', domain=mesh, subdomain_data=mf_map)
+            for id_set, intersection_map in self.intersection_map.items():
+                self.dx_map[id_set] = d.Measure('dx', domain=mesh, subdomain_data=intersection_map)
         
 class ParentMesh(_Mesh):
     """
@@ -199,24 +203,31 @@ class ParentMesh(_Mesh):
             self.mf['facets'] = self._read_parent_mesh_function_from_file(surface_dim)
             
         # If any cell markers are given as a list we also create mesh functions to store the uncombined markers
-        if any([(cm.marker_list is not None and not cm.is_surface) for cm in self.child_meshes.values()]):
+        if any([(child_mesh.marker_list is not None and not child_mesh.is_surface) for child_mesh in self.child_meshes.values()]):
             self.mf['cells_uncombined'] = self._read_parent_mesh_function_from_file(volume_dim)
-        if any([(cm.marker_list is not None and cm.is_surface) for cm in self.child_meshes.values()]):
+        if any([(child_mesh.marker_list is not None and child_mesh.is_surface) for child_mesh in self.child_meshes.values()]):
             self.mf['facets_uncombined'] = self._read_parent_mesh_function_from_file(surface_dim)
 
         # Combine markers in a list 
-        for cm in self.child_meshes.values(): 
-            if cm.marker_list is None:
+        for child_mesh in self.child_meshes.values(): 
+            if child_mesh.marker_list is None:
                 continue
-            for marker in cm.marker_list:
-                if not cm.is_surface:
-                    self.mf['cells'].array()[self.mf['cells_uncombined'].array() == marker] = cm.primary_marker
-                if cm.is_surface:
-                    self.mf['facets'].array()[self.mf['facets_uncombined'].array() == marker] = cm.primary_marker
+            for marker in child_mesh.marker_list:
+                if not child_mesh.is_surface:
+                    self.mf['cells'].array()[self.mf['cells_uncombined'].array() == marker] = child_mesh.primary_marker
+                if child_mesh.is_surface:
+                    self.mf['facets'].array()[self.mf['facets_uncombined'].array() == marker] = child_mesh.primary_marker
 
     @property
     def has_surface(self):
         return self.min_dim < self.max_dim
+    
+    @property
+    def child_surface_meshes(self):
+        return [cm for cm in self.child_meshes.values() if cm.is_surface]
+    @property
+    def child_volume_meshes(self):
+        return [cm for cm in self.child_meshes.values() if cm.is_volume]
 
 class ChildMesh(_Mesh):
     """
@@ -245,14 +256,11 @@ class ChildMesh(_Mesh):
 
         # mapping (0 or 1) of intersection with sibling mesh
         self.dx_map = dict()
-        self.mf_map = dict()
-    
-    @property
-    def is_surface(self):
-        return self.dimensionality < self.parent_mesh.max_dim
+        self.intersection_map = dict()
+        self.has_intersection = dict()
 
     def nvolume_sibling_union(self, sibling_mesh):
-        return d.assemble(1*self.dx_map[sibling_mesh.id](1))
+        return d.assemble(1*self.dx_map[{sibling_mesh.id}](1))
     
     @cached_property
     def map_cell_to_parent_entity(self):
@@ -296,10 +304,10 @@ class ChildMesh(_Mesh):
     def map_vertex_to_parent_vertex(self):
         return np.array(self.mesh_view[self.parent_mesh.id].vertex_map())
 
-    def get_mesh_function_cell_to_sibling_facet(self, sibling_mesh):
+    def find_surface_to_volume_mesh_intersection(self, sibling_volume_mesh):
         """
         Create a mesh function over this mesh's cells with value 0 if it does not coincide
-        with a facet from sibling_mesh, and value 1 if it does.
+        with a facet from sibling_volume_mesh, and value 1 if it does.
 
         Example: 
         * child_mesh_0 is a 2d submesh adjacent to child_mesh_1 with 6 cells (e.g. triangles).
@@ -307,26 +315,53 @@ class ChildMesh(_Mesh):
 
         * child_mesh_1 (dolfin id = 38) is a 3d submesh with 6 cells. cells [0, 1, 4] have facets on 
 
-        child_mesh_0.mf_map[38] =  [1,1,0,0,1,0]
+        child_mesh_0.intersection_map[{38}] =  [1,1,0,0,1,0]
         """
-        assert self.dimensionality == sibling_mesh.dimensionality - 1
+        assert self.dimensionality == sibling_volume_mesh.dimensionality - 1
+        # This is the value we set for non-intersecting cells
+        not_intersecting_value = 18446744073709551615 # 2^64 - 1
+        mesh_id_set = frozenset({sibling_volume_mesh.id})
 
-        import sys
-        # with open(f"output{rank}.out", 'w') as f:
-        #     sys.stdout = f
+        # map from our cells to sibling facets 
+        # intersection_map is 1 where this mesh intersects with the boundary of its sibling
+        self.intersection_map[mesh_id_set] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+        bool_array = np.array(self.mesh_view[sibling_volume_mesh.id].cell_map()) # map from our (n-1)-cells to sibling's n-cells
+        bool_array[bool_array!=not_intersecting_value] = 1
+        bool_array[bool_array==not_intersecting_value] = 0
+        self.intersection_map[mesh_id_set].set_values(bool_array.astype(np.int))
 
-        # not creating maps with build_mapping() will lead to a segfault when trying to assemble
-        # we also suppress the c++ output because it prints a lot of 'errors' 
-        # even though the mapping was successfully built (when (surface intersect volume) != surface)
-       # with common._stdout_redirected():
-        self.dolfin_mesh.build_mapping(sibling_mesh.dolfin_mesh)
+        # Check if the intersection is empty
+        self.has_intersection[mesh_id_set] = self.intersection_map[mesh_id_set].array().any()
+    
+    def find_surface_to_2volumes_mesh_intersection(self, sibling_volume_mesh_1, sibling_volume_mesh_2):
+        """
+        Create a mesh function over this mesh's cells with value 0 if it does not coincide
+        with a facet from both sibling_volume_mesh_1, and sibling_volume_mesh_2, and value 1 if it does.
+        """
+        # can combine this with function above
+        assert self.dimensionality == sibling_volume_mesh_1.dimensionality - 1
+        assert self.dimensionality == sibling_volume_mesh_2.dimensionality - 1
+        # This is the value we set for non-intersecting cells
+        not_intersecting_value = 18446744073709551615
 
-        # map from our cells to sibling facets
-        self.mf_map[sibling_mesh.id] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+        # find the intersection between this child mesh, sibling_volume_mesh_1, and sibling_volume_mesh_2
+        mesh_id_set = frozenset({sibling_volume_mesh_1.id, sibling_volume_mesh_2.id})
 
-        bool_array = np.array(self.mesh_view[sibling_mesh.id].cell_map())
-        bool_array[bool_array!=0] = 1
-        self.mf_map[sibling_mesh.id].set_values(bool_array)
+        self.intersection_map[mesh_id_set] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
+        cell_map_1 = np.array(self.mesh_view[list(mesh_id_set)[0]].cell_map()) # map from our (n-1)-cells to sibling's n-cells
+        # bool_array_1[bool_array_1!=not_intersecting_value] = 1
+        # bool_array_1[bool_array_1==not_intersecting_value] = 0
+        cell_map_2 = np.array(self.mesh_view[list(mesh_id_set)[1]].cell_map()) # repeat for sibling_mesh_2
+
+        # Fill bool_array_total with 1 where cell_map_1 and cell_map_2 are not equal to not_intersectin_value
+        bool_array_total = np.logical_and(cell_map_1!=not_intersecting_value, cell_map_2!=not_intersecting_value)
+
+        self.intersection_map[mesh_id_set].set_values(bool_array_total.astype(np.int))
+
+        # Check if the intersection is empty
+        self.has_intersection[mesh_id_set] = self.intersection_map[mesh_id_set].array().any()
+
+        
 
     def set_parent_mesh(self, parent_mesh):
         # remove existing parent mesh if not None
@@ -339,7 +374,7 @@ class ChildMesh(_Mesh):
             self.parent_mesh.child_meshes.update({self.name: self})
 
     def extract_submesh(self):
-        mf_type = 'cells' if self.is_volume_mesh else 'facets'
+        mf_type = 'cells' if self.is_volume else 'facets'
         self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
         self.dolfin_mesh.init()
 
@@ -354,7 +389,7 @@ class ChildMesh(_Mesh):
 
         # # Easiest case, just directly transfer from parent_mesh mesh function
         # # local cell index = local cell index -> parent cell index -> parent mesh function value
-        # if self.is_volume_mesh:
+        # if self.is_volume:
         #     self.mf['cells'].array()[:]  = pmf['cells'].array()[self.map_cell_to_parent_entity]
         #     # Use the mapping from local facet to parent entity
         #     # self.mf['facets'] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality-1, value=0)

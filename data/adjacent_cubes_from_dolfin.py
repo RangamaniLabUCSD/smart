@@ -8,10 +8,11 @@ def make_adjacent_cubes_mesh(N, hdf5_filename):
 
     mf2 = d.MeshFunction('size_t', mesh, 2, value=0)
     mf3 = d.MeshFunction('size_t', mesh, 3, value=0)
-    d.CompiledSubDomain('on_boundary').mark(mf2, 2)
+    d.CompiledSubDomain('on_boundary').mark(mf2, 2)    
+    d.CompiledSubDomain('on_boundary && near(x[2], 2)').mark(mf2, 0)     # mark some facets near er_vol as 0 
     d.CompiledSubDomain('near(x[2], 0)').mark(mf2, 4)
-    d.CompiledSubDomain('x[2] < 0').mark(mf3, 12)
-    d.CompiledSubDomain('x[2] > 0').mark(mf3, 11)
+    d.CompiledSubDomain('x[2] <= 0').mark(mf3, 12)
+    d.CompiledSubDomain('x[2] >= 0').mark(mf3, 11)
 
     # write out
     hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, 'w')
@@ -21,7 +22,9 @@ def make_adjacent_cubes_mesh(N, hdf5_filename):
     hdf5.write(mf3, f"/mf3")
     hdf5.close()
 
-make_adjacent_cubes_mesh(20, 'adjacent_cubes_from_dolfin_20.h5')
-make_adjacent_cubes_mesh(40, 'adjacent_cubes_from_dolfin_40.h5')
-make_adjacent_cubes_mesh(60, 'adjacent_cubes_from_dolfin_60.h5')
-make_adjacent_cubes_mesh(100, 'adjacent_cubes_from_dolfin_100.h5')
+# make_adjacent_cubes_mesh(20, 'adjacent_cubes_from_dolfin_10.h5')
+make_adjacent_cubes_mesh(20, 'adjacent_cubes_from_dolfin_20_lessPM.h5')
+# make_adjacent_cubes_mesh(20, 'adjacent_cubes_from_dolfin_30.h5')
+# make_adjacent_cubes_mesh(40, 'adjacent_cubes_from_dolfin_40.h5')
+# make_adjacent_cubes_mesh(60, 'adjacent_cubes_from_dolfin_60.h5')
+# make_adjacent_cubes_mesh(100, 'adjacent_cubes_from_dolfin_100.h5')

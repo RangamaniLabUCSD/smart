@@ -15,7 +15,7 @@ um       = unit.um
 molecule = unit.molecule
 sec      = unit.s
 
-def make_model(refined_mesh=True):
+def make_model(mesh_name):
 
     #====================
     # define the model
@@ -26,7 +26,7 @@ def make_model(refined_mesh=True):
         Parameter('kf'      , 5.0, meter/sec, 'forward rate'),
         # # volume-to-volume [m/s]
         # Parameter('testing', 5, 1/sec),
-        Parameter.from_expression('gating_f' , '5.0+t', um/sec),
+        Parameter.from_expression('gating_f' , '5.0+t', um/sec, use_preintegration=False),
         Parameter('gating_r'      , 1.0, um/sec),#um/sec, 'reverse rate'),
         # volume mass-action 2 to 1
         Parameter('kf', 13.0, 1/(uM*sec), 'volume mass-action forward A+A2 -> A3'),
@@ -52,8 +52,8 @@ def make_model(refined_mesh=True):
         Species('A2'   , '5+z', uM            , 100, um**2/sec, 'cytosol'),
         Species('A3'   , '7+z'    , uM            , 100, um**2/sec, 'cytosol'),
         Species('B' , 3    , uM            , 100, um**2/sec, 'er_vol'),
-        # Species('X' , '100+z'  , molecule/um**2, 10 , um**2/sec, 'pm'),
-        # Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
+        Species('X' , '100+z'  , molecule/um**2, 10 , um**2/sec, 'pm'),
+        Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
         # Species('Y', 60  , molecule/um**2, 10 , um**2/sec, 'er_mem'),
     ])
 
@@ -71,7 +71,7 @@ def make_model(refined_mesh=True):
         Reaction('A <-> B'      , ['A']     , ['B'] , {'on': 'gating_f', 'off': 'gating_r'} , explicit_restriction_to_domain='er_mem'), # [volume_to_volume] 
         Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                                ), # [volume] volume mass action (2 to 1)
         # Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'    ), # [volume] degradation
-        # Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                          ), # [volume_to_surface] [surface_to_volume]
+        Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                          ), # [volume_to_surface] [surface_to_volume]
         # Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
         # Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
         # Reaction('A + Y <-> B'  , ['A','Y'] , ['B'] , {'on': 'kf_AY_B'}                     , reaction_type='mass_action_forward'    ), # [volume-surface_to_volume]
@@ -92,12 +92,10 @@ def make_model(refined_mesh=True):
     # solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01, multiphysics_solver=mps, nonlinear_solver=nls, linear_solver=ls)
     # mesh
     path = stubs.common.data_path()
-    if refined_mesh:
-        #stubs_mesh = stubs.mesh.ParentMesh(mesh_filename=str(path / 'adjacent_cubes_refined.xml'))
-        stubs_mesh = stubs.mesh.ParentMesh(str(path / 'adjacent_cubes_refined.h5'), 'hdf5')
+    
+    if mesh_name[-2:] == 'h5':
+        stubs_mesh = stubs.mesh.ParentMesh(str(path / mesh_name), 'hdf5')
     else:
-        #stubs_mesh = stubs.mesh.ParentMesh(mesh_filename=str(path / 'adjacent_cubes.xml'))
-        stubs_mesh = stubs.mesh.ParentMesh(str(path / 'adjacent_cubes.h5'), 'hdf5')
-    #stubs_mesh.dolfin_mesh = d.refine(stubs_mesh.dolfin_mesh)
+        stubs_mesh = stubs.mesh.ParentMesh(str(path / mesh_name), 'xml')
 
     return stubs.model.Model(pc, sc, cc, rc, stubs_config, stubs_mesh)

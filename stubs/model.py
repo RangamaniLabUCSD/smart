@@ -5,7 +5,7 @@ from collections import defaultdict as ddict
 from dataclasses import dataclass
 from stat import UF_COMPRESSED
 from cached_property import cached_property
-import itertools
+from itertools import chain, combinations
 
 import dolfin as d
 import ufl
@@ -18,7 +18,7 @@ Print = PETSc.Sys.Print
 import operator
 
 import numpy as np
-import sympy
+import sympy as sym
 from sympy.parsing.sympy_parser import parse_expr
 from scipy.integrate import solve_ivp
 from termcolor import colored
@@ -52,7 +52,7 @@ class Model:
         # self.solver_system.check_solver_system_validity()
         # self.solver_system.make_dolfin_parameter_dict()
 
-        self.params = ddict(list)
+        #self.params = ddict(list)
 
         # FunctionSpaces, Functions, etc
         self.V = dict()
@@ -62,7 +62,7 @@ class Model:
 
         # Solver related parameters
         self.idx = 0
-        self.idx_nl = None
+        self.idx_nl = list()
         # self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         # self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
         self.data = {'newton_iter': list(),
@@ -166,12 +166,14 @@ class Model:
         self._init_3_1_define_child_meshes()
         self._init_3_2_read_parent_mesh_functions_from_file()
         self._init_3_3_extract_submeshes()
-        self._init_3_4_get_child_mesh_functions()
-        self._init_3_5_get_integration_measures()
+        self._init_3_4_build_mappings()
+        self._init_3_5_get_child_mesh_functions()
+        self._init_3_6_get_integration_measures()
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
     def _init_4(self):
         "Dolfin function initializations"
         fancy_print(f"Dolfin Initializations (step 4 of ZZ)", format_type='title')
+        self._init_4_0_initialize_dolfin_parameters()
         self._init_4_1_get_active_compartments()
         self._init_4_2_define_dolfin_function_spaces()
         self._init_4_3_define_dolfin_functions()
@@ -179,6 +181,13 @@ class Model:
         self._init_4_5_name_functions()
         self._init_4_6_check_dolfin_function_validity()
         self._init_4_7_set_initial_conditions()
+    def _init_5(self):
+        "Dolfin solvers"
+        fancy_print(f"Dolfin Solvers (step 5 of ZZ)", format_type='title')
+        self._init_5_1_reactions_to_fluxes()
+        self._init_5_2_create_variational_forms()
+        self._init_5_3_setup_variational_problem_and_solver()
+
         
 
     # Step 1 - Checking model validity
@@ -194,7 +203,7 @@ class Model:
                             +f" is not the same as the maximum compartment dimension: {self.max_dim}.", format_type='warning')
 
         for compartment in self.cc:
-            compartment.is_volume_mesh = compartment.dimensionality == self.max_dim
+            compartment.is_volume = compartment.dimensionality == self.max_dim
 
     def _init_1_2_check_namespace_conflicts(self):
         fancy_print(f"Checking for namespace conflicts", format_type='log')
@@ -303,25 +312,25 @@ class Model:
             reaction.num_species      = len(reaction.species)
             reaction.num_compartments = len(reaction.compartments)
 
-            is_volume_mesh = [c.is_volume_mesh for c in reaction.compartments.values()]
-            if len(is_volume_mesh) == 1:
-                if is_volume_mesh[0]:
+            is_volume = [c.is_volume for c in reaction.compartments.values()]
+            if len(is_volume) == 1:
+                if is_volume[0]:
                     reaction.topology = 'volume'
                 else:
                     reaction.topology = 'surface'
-            elif len(is_volume_mesh) == 2:
-                if all(is_volume_mesh):
+            elif len(is_volume) == 2:
+                if all(is_volume):
                     raise NotImplementedError(f"Reaction {reaction.name} has two volumes - the adjoining surface must be specified "
                                               f"using reaction.explicit_restriction_to_domain")
                     #reaction.topology = 'volume_volume'
-                elif not any(is_volume_mesh):
+                elif not any(is_volume):
                     raise Exception(f"Reaction {reaction.name} involves two surfaces. This is not supported.")
                 else:
                     reaction.topology = 'volume_surface'
-            elif len(is_volume_mesh) == 3:
-                if sum(is_volume_mesh) == 3:
+            elif len(is_volume) == 3:
+                if sum(is_volume) == 3:
                     raise Exception(f"Reaction {reaction.name} involves three volumes. This is not supported.")
-                elif sum(is_volume_mesh) < 2:
+                elif sum(is_volume) < 2:
                     raise Exception(f"Reaction {reaction.name} involves two or more surfaces. This is not supported.")
                 else:
                     reaction.topology = 'volume_surface_volume'
@@ -331,9 +340,9 @@ class Model:
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
         fancy_print(f"Checking for unused parameters, species, or compartments", format_type='log')
 
-        all_parameters   = set(itertools.chain.from_iterable([r.parameters for r in self.rc]))
-        all_species      = set(itertools.chain.from_iterable([r.species for r in self.rc]))
-        all_compartments = set(itertools.chain.from_iterable([r.compartments for r in self.rc]))
+        all_parameters   = set(chain.from_iterable([r.parameters for r in self.rc]))
+        all_species      = set(chain.from_iterable([r.species for r in self.rc]))
+        all_compartments = set(chain.from_iterable([r.compartments for r in self.rc]))
         if all_parameters != set(self.pc.keys):
             print_str = f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions."
             if self.config.flags['allow_unused_components']:
@@ -411,42 +420,69 @@ class Model:
         """ Use dolfin.MeshView.create() to extract submeshes """
         fancy_print(f"Extracting submeshes", format_type='log')
         # Loop through child meshes and extract submeshes
-        for cm in self.child_meshes.values():
-            cm.extract_submesh()
+        for child_mesh in self.child_meshes.values():
+            child_mesh.extract_submesh()
+    
+    def _init_3_4_build_mappings(self):
+        fancy_print(f"Building MeshView mappings between all child mesh pairs", format_type='log')
+        #import sys
+        # with open(f"output{rank}.out", 'w') as f:
+        #     sys.stdout = f
 
-    def _init_3_4_get_child_mesh_functions(self):
+        # not creating maps with build_mapping() will lead to a segfault when trying to assemble
+        # we also suppress the c++ output because it prints a lot of 'errors' 
+        # even though the mapping was successfully built (when (surface intersect volume) != surface)
+        # with common._stdout_redirected():
+        for child_mesh in self.parent_mesh.child_surface_meshes:
+            for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
+                child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
+
+    def _init_3_5_get_child_mesh_functions(self):
         """
         Parent mesh functions are used to create submeshes, which then define measures.
         There are two reasons we would need a child mesh function:
         1) Holding values from a list of marker values (for post-processing)
-        2) "mf_map", a MeshFunction defining a mapping between child mesh cells of n-1 <-> topological dimension. 
+        2) "intersection_map", a MeshFunction defining a mapping between child mesh cells of n-1 <-> topological dimension. 
         This is required for volume-surface-volume flux types, where it may be required to restrict a surface's
         integration measure for proper construction of the flux
-        
-        This function also calls dolfin's build_mapping(), which is required to assemble forms
-        containing other domains without segfaulting
         
         Gets mappings between sibling meshes of different dimensions (n cell <-> n-1 cell)
         """
         fancy_print(f"Defining child mesh functions", format_type='log')
-        # Aliases
-        child_meshes = self.parent_mesh.child_meshes.values()
 
-        for mesh in child_meshes:
+        for child_mesh in self.parent_mesh.child_meshes.values():
             # 1) If child mesh has a list of markers, create a mesh function so it can be used for post-processing
-            if mesh.marker_list is not None:
-                mesh.init_marker_list_mesh_function()
-            # 2) get mappings to siblings of higher dimension
-            if not mesh.is_volume_mesh:
-                for sibling_mesh in child_meshes:
-                    if mesh.dimensionality == sibling_mesh.dimensionality-1:
-                        # Also calls build_mapping()
-                        mesh.get_mesh_function_cell_to_sibling_facet(sibling_mesh)
+            if child_mesh.marker_list is not None:
+                child_mesh.init_marker_list_mesh_function()
+        # 2) get intersections with siblings of higher dimension
+        for child_mesh in self.parent_mesh.child_surface_meshes:
+            # intersection with a single volume mesh
+            for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
+                child_mesh.find_surface_to_volume_mesh_intersection(sibling_volume_mesh)
+            # intersection with a pair of volume meshes
+            sibling_volume_mesh_pairs = combinations(self.parent_mesh.child_volume_meshes, 2)
+            for sibling_volume_mesh_pair in sibling_volume_mesh_pairs:
+                child_mesh.find_surface_to_2volumes_mesh_intersection(sibling_volume_mesh_pair[0], sibling_volume_mesh_pair[1])
 
-    def _init_3_5_get_integration_measures(self):
+    def _init_3_6_get_integration_measures(self):
         fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')
         for mesh in self.parent_mesh.all_meshes.values():
             mesh.get_integration_measures()
+
+
+    def _init_4_0_initialize_dolfin_parameters(self):
+        """
+        Create dolfin objects for each parameter
+        """
+        # Create a dolfin.Constant() for constant parameters
+        for parameter in self.pc.values:
+            if parameter.type == 'constant':
+                parameter.dolfin_constant = d.Constant(parameter.value)
+            elif parameter.type == 'expression':
+                parameter.dolfin_expression = d.Expression(sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1)
+            elif parameter.type == 'from_file':
+                parameter.dolfin_constant = d.Constant(parameter.value)
+
 
     def _init_4_1_get_active_compartments(self):
         """
@@ -875,96 +911,100 @@ class Model:
         self.T.assign(self.t)
         self.update_time_dependent_parameters(dt=self.dt*dt_factor)
         fancy_print(f"t: {self.t} , dt: {self.dt*dt_factor}", format_type='log')
+        
+    def monolithic_solve(self, bcs=[]):
+        self.idx += 1
+        self.stopwatch("Total time step") # start a timer for the total time step
+        # Adjust dt if necessary
+        self.check_dt_adjust()      # check if there is a manually prescribed time-step size
+        self.check_dt_pass_tfinal() # adjust dt so that it doesn't pass tfinal
 
-    def update_time_dependent_parameters(self, t=None, t0=None, dt=None):
+        # Take a step forward in time and update time-dependent parameters
+        self.dT.assign(float(self.dt))
+        self.tn = float(self.t) # save the previous time
+        self.t = float(self.t+self.dt)
+        self.T.assign(self.t)
+        # update time-dependent parameters
+        #self.forward_time_step() # march forward in time and update time-dependent parameters
+
+        fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', new_lines=[1,0],format_type='timestep')
+        if self.config.solver['use_snes']:
+            fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
+            self.solver.solve(None, self._ubackend)
+            self.idx_nl.append(self.solver.its)
+            max_idx_nl = self.solver.max_it
+            if self.idx_nl[-1] > max_idx_nl:
+                raise AssertionError()
+            fancy_print(f'SNES took {self.idx_nl[-1]} iterations (maximum is {max_idx_nl})', format_type='log')
+        else:
+            fancy_print(f'Solving using dolfin.MixedNonlinearVariationalSolver()', format_type='log')
+            self.solver.solve()
+
+        #self.data['nl_idx'].append(nl_idx)
+        #self.data['success'].append(success)
+        # self.data['tvec'].update(self.t)
+        # self.data['dtvec'].update(self.dt)
+
+        self.update_solution() # assign most recently computed solution to "previous solution"
+        #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
+        self.stopwatch("Total time step", stop=True)
+
+    def update_time_dependent_parameters(self):
         """ Updates all time dependent parameters. Time-dependent parameters are 
         either defined either symbolically or through a data file, and each of 
         these can either be defined as a direct function of t, p(t), or a 
-        "pre-integrated expression", \int_{0}^{t} P(x) dx, which allows for 
-        exact integration when the expression the parameter appears in is purely
-        time-dependent.
-        
-        Args:
-            t (float, optional): Current time in the simulation to update parameters to 
-            t0 (float, optional): Previous time value (i.e. t0 == t-dt)
-            dt (float, optional): Time step
-        
-        Raises:
-            Exception: Description
+        "pre-integrated expression", \int_{t_n}^{t_{n+1}} P(tau) dtau, which allows for 
+        exact integration when the expression the parameter appears in doesn't rely 
+        on any other time-dependet variables. This may be useful for guaranteeing 
+        a certain amount of flux independent of time-stepping. 
+
+        Backward Euler is essentially making the approximation:
+        du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \int_{t_n}^{t_{n+1}} f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
+        If some portion of f is only dependent on t, e.g. f=f_1+f_2+...+f_n, f_i=f_i(t),
+        we can use the exact expression where F_i(t) is the anti-derivative of f_i(t).
+        \int_{t_n}^{t_{n+1}} f_i(t_{n+1}) -> (F_i(t_{n+1}) - F_i(t_n))
+
+        Therefore,
+        f(t_{n+1}) = (F_i(t_{n+1}) - F_i(t_n))/dt
         """
-        if t is None:
-            t = self.t
-        if t0 is not None and dt is not None:
-            raise Exception("Specify either t0 or dt, not both.")
-        elif t0 is not None:
-            dt = t-t0
-        elif dt is not None:
-            t0 = t-dt
-        if t0 is not None:
-            if t0<0 or dt<=0:
-                raise Exception("Either t0<0 or dt<=0, is this the desired behavior?")
+        # Aliases
+        t = self.t
+        dt = self.dt
+        tn = self.tn
 
         # Update time dependent parameters
-        for param_name, param in self.pc.items:
-            # check to make sure a parameter wasn't assigned a new value more than once
-            value_assigned = 0
-            if not param.is_time_dependent:
+        for parameter_name, parameter in self.pc.items:
+            if not parameter.is_time_dependent:
                 continue
-            # use value by evaluating symbolic expression
-            if param.sym_expr and not param.preint_sym_expr:
-                newValue = float(param.sym_expr.subs({'t': t}).evalf())
-                value_assigned += 1
-                print(f"Parameter {param_name} assigned by symbolic expression")
+            if not parameter.use_preintegration:
+                # Parameters that are defined as dolfin expressions will automatically be updated by model.T.assign(t)
+                if parameter.type == 'expression':
+                    parameter.value = parameter.sym_expr.subs({'t': t}).evalf()
+                    continue
+                # Parameters from a data file need to have their dolfin constant updated
+                if parameter.type == 'from_data':
+                    # We never want time to extrapolate beyond the provided data.
+                    if t<data[0,0] or t>data[-1,0]:
+                        raise Exception("Parameter cannot be extrapolated beyond provided data.")
+                    # Just in case... return a nan if value is outside of bounds
+                    new_value = float(np.interp(t, data[:,0], data[:,1], left=np.nan, right=np.nan))
+                    fancy_print(f"Time-dependent parameter {parameter_name} updated by data. New value is {new_value}", format_type='log')
+            if parameter.use_preintegration:
+                if parameter.type == 'expression':
+                    a = parameter.preint_sym_expr.subs({'t': tn}).evalf()
+                    b = parameter.preint_sym_expr.subs({'t': t}).evalf()
+                    new_value = float((b-a)/dt)
+                    fancy_print(f"Time-dependent parameter {parameter_name} updated by pre-integrated expression. New value is {new_value}", format_type='log')
+                if parameter.type == 'from_data':
+                    int_data = parameter.preint_sampling_data
+                    a = np.interp(tn, int_data[:,0], int_data[:,1], left=np.nan, right=np.nan)
+                    b = np.interp(t, int_data[:,0], int_data[:,1], left=np.nan, right=np.nan)
+                    new_value = float((b-a)/dt)  
+                    fancy_print(f"Time-dependent parameter {parameter_name} updated by pre-integrated data. New value is {new_value}", format_type='log')
 
-            # calculate a preintegrated expression by subtracting previous value
-            # and dividing by time-step
-            if param.sym_expr and param.preint_sym_expr:
-                if t0 is None:
-                    raise Exception("Must provide a time interval for"\
-                                    "pre-integrated variables.")
-                a = param.preint_sym_expr.subs({'t': t0}).evalf()
-                b = param.preint_sym_expr.subs({'t': t}).evalf()
-                newValue = float((b-a)/dt)
-                value_assigned += 1
-                print(f"Parameter {param_name} assigned by preintegrated symbolic expression")
-
-            # if parameter is given by data
-            if param.sampling_data is not None and param.preint_sampling_data is None:
-                data = param.sampling_data
-                # We never want time to extrapolate beyond the provided data.
-                if t<data[0,0] or t>data[-1,0]:
-                    raise Exception("Parameter cannot be extrapolated beyond"\
-                                    "provided data.")
-                # Just in case... return a nan if value is outside of bounds
-                newValue = float(np.interp(t, data[:,0], data[:,1],
-                                     left=np.nan, right=np.nan))
-                value_assigned += 1
-                print(f"Parameter {param_name} assigned by sampling data")
-
-            # if parameter is given by data and it has been pre-integrated
-            if param.sampling_data is not None and param.preint_sampling_data is not None:
-                int_data = param.preint_sampling_data
-                a = np.interp(t0, int_data[:,0], int_data[:,1],
-                                     left=np.nan, right=np.nan)
-                b = np.interp(t, int_data[:,0], int_data[:,1],
-                                     left=np.nan, right=np.nan)
-                newValue = float((b-a)/dt)
-                value_assigned += 1
-                print(f"Parameter {param_name} assigned by preintegrated sampling data")
-
-            if value_assigned != 1:
-                raise Exception("Either a value was not assigned or more than"\
-                                "one value was assigned to parameter %s" % param.name)
-
-            Print('%f assigned to time-dependent parameter %s'
-                  % (newValue, param.name))
-
-            if np.isnan(newValue):
-                raise ValueError(f"Warning! Parameter {param_name} is a NaN.")
-
-            param.value = newValue
-            param.dolfin_constant.assign(newValue)
-            self.params[param_name].append((t,newValue))
+            assert not np.isnan(new_value)
+            parameter.value = new_value
+            parameter.dolfin_constant.assign(new_value)
 
     def stopwatch(self, key, stop=False):
         "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
@@ -1076,35 +1116,7 @@ class Model:
         #     self.set_time(self.t, dt=self.dt*self.solver_system.multiphysics_solver.dt_decrease_factor)
         #     Print("Decreasing step size")
 
-        
-    def monolithic_solve(self, bcs=[]):
-        fancy_print("\n\n", format_type='log')
-        self.idx += 1
-        self.check_dt_adjust()      # check if there is a manually prescribed time-step size
-        self.check_dt_pass_tfinal() # check that we don't pass tfinal
-        fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', format_type='timestep')
-        self.stopwatch("Total time step") # start a timer for the total time step
 
-        self.forward_time_step() # march forward in time and update time-dependent parameters
-
-        if self.config.solver['use_snes']:
-            fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
-            self.solver.solve(None, self._ubackend)
-            self.idx_nl = self.solver.its
-            max_idx_nl = self.solver.max_it
-            fancy_print(f'SNES took {self.idx_nl} iterations (maximum is {max_idx_nl})', format_type='log')
-        else:
-            fancy_print(f'Solving using dolfin.MixedNonlinearVariationalSolver()', format_type='log')
-            self.solver.solve()
-
-        #self.data['nl_idx'].append(nl_idx)
-        #self.data['success'].append(success)
-        # self.data['tvec'].update(self.t)
-        # self.data['dtvec'].update(self.dt)
-
-        self.update_solution() # assign most recently computed solution to "previous solution"
-        #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
-        self.stopwatch("Total time step", stop=True)
 
     #===============================================================================
     # Model - Solving (iterative multiphysics solver) 
@@ -1411,7 +1423,7 @@ class Model:
             return np.linalg.norm(res_vec, norm)
     
     def get_total_residual(self, norm=None):
-        res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in itertools.chain.from_iterable(self.Fblocks)])
+        res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in chain.from_iterable(self.Fblocks)])
         assert len(res_vec.shape) == 1
         if norm is None:
             return res_vec
