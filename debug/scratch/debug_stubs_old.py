@@ -283,8 +283,8 @@ problem = d.MixedNonlinearVariationalProblem(eq_lhs_forms, u._functions, bcs, Js
 # d.assemble((A.u['u'] - B.u['u']) * merm.dx)
 
 # surf to vol
-#print(d.assemble((A.u['u'] * X_pm.u['u']) * mpm.dx_map[mcyto.id](1))) 
-# print(d.assemble((A.u['u']) * mpm.dx_map[mcyto.id](1))) 
+#print(d.assemble((A.u['u'] * X_pm.u['u']) * mpm.intersection_dx[mcyto.id](1))) 
+# print(d.assemble((A.u['u']) * mpm.intersection_dx[mcyto.id](1))) 
 # print(f"expected value: 24")
 
 #d.assemble((A.u['u'] * X_pm.u['u']) * mcyto.ds(2)) # not implemented yet

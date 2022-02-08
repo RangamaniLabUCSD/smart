@@ -39,8 +39,8 @@ def find_surface_to_volume_mesh_intersections(self, sibling_volume_mesh):
     self.intersection_map[sibling_volume_mesh.id].set_values(bool_array)
 """
         
-@pytest.mark.dolfin
-def test_find_surface_to_volume_mesh_intersections(dolfin_mesh):
+# @pytest.mark.dolfin
+# def test_find_surface_to_volume_mesh_intersections(dolfin_mesh):
     
 
     

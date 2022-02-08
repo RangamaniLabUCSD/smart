@@ -1,7 +1,8 @@
-# Using PETSc to solve monolithic problem
+# # Using PETSc to solve monolithic problem
 import dolfin as d
 import petsc4py.PETSc as PETSc
 import ufl
+
 
 class stubsSNESProblem():
     """To interface with PETSc SNES solver
@@ -78,7 +79,7 @@ class stubsSNESProblem():
     """
 
 
-    def __init__(self, u, Fforms, Jforms):
+    def __init__(self, u, Fforms, Jforms, block_sizes, mpi_comm_world):
         self.u = u
         self.Fforms = Fforms
         self.Jforms = Jforms
@@ -94,8 +95,23 @@ class stubsSNESProblem():
         self.dim = len(Fforms)
         assert len(Jforms) == self.dim**2
 
+        self.mpi_comm_world = mpi_comm_world
+
         # save sparsity patterns of block matrices
         self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms]
+        # Initialize a petsc nest matrix for each block with sizes of block matrices
+        #Mzero_blocks = [PETSc.Mat().create for Jij_list in self.Jforms]
+        #Mnest = PETSc.Mat().createNest([len(Jij_list) for Jij_list in self.Jforms], block_sizes)
+        #Mnest = PETSc.Mat().createNest([len(Jij_list) for Jij_list in model.Jblocks], model.block_sizes)
+
+        # Create a dolfin Matrix of size N x N with all zeros
+        #N = 50
+        #M = d.Matrix()
+        #M.s
+
+
+        # Need block sizes because some forms may be empty
+        self.block_sizes = block_sizes
 
     def initialize_petsc_matnest(self):
         dim = self.dim
@@ -106,26 +122,59 @@ class stubsSNESProblem():
             for j in range(dim):
                 ij = i*dim + j
                 #Jdpetsc[i][j] = d.PETScMatrix()
-                Jsum = []
-                Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
-                for k in range(1,len(self.Jforms[ij])):
-                    Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
+                # Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
+                # for k in range(1,len(self.Jforms[ij])):
+                #     Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
+                Jsum = None
+                for k in range(len(self.Jforms[ij])):
+                    if self.Jforms[ij][k].function_space(0) is None:
+                        print(f"Jforms[{ij}][{k}] has no function space")
+                        continue
+
+                    # # initialize the tensor
+                    # if self.tensors[ij][k] is None:
+                    #     self.tensors[ij][k] = d.PETScMatrix()
+                    if Jsum is None:
+                        Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=d.PETScMatrix()))# tensor=self.tensors[ij][k]))
+                    else:
+                        Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=d.PETScMatrix()))#tensor=self.tensors[ij][k]))
+
+                    print(f"init: ij={ij}, k={k}, tensor size = {Jsum.size(0), Jsum.size(1)}")
+                if Jsum is None:
+                    print(f"Jforms[{ij}] is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}")
+                    Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
+                    #raise AssertionError()
+                    # initialize an empty d.PETScMatrix() with size of Jsum
+                    # tensor = d.PETScMatrix(Jsum.size(0))
 
                 #Jsum.mat().assemble() 
                 Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
 
         self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
         self.Jpetsc_nest.assemble() 
-        #return Jpetsc_nest
- 
+        # debugging
+        self.Jpetsc_init = Jpetsc
+        # return Jpetsc
+
     def initialize_petsc_vecnest(self):
         dim = self.dim
 
         Fpetsc = []
         for j in range(dim):
-            Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][0]))#, tensor=Fdpetsc[j])
+            # Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][0]))#, tensor=Fdpetsc[j])
+            # for k in range(1,len(self.Fforms[j])):
+            #     Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k]))#, tensor=Fdpetsc[j])
+
+            Fsum = None
             for k in range(1,len(self.Fforms[j])):
-                Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k]))#, tensor=Fdpetsc[j])
+                if self.Fforms[j][k].function_space(0) is None:
+                    continue
+                if Fsum is None:
+                    Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
+                else:
+                    Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
+            if Fsum is None:
+                raise AssertionError()
 
             # Fsum.vec().assemble()
             Fpetsc.append(Fsum.vec())
@@ -151,33 +200,47 @@ class stubsSNESProblem():
         for i in range(dim):
             for j in range(dim):
                 ij = i*dim+j
-                Jij_petsc = Jnest.getNestSubMatrix(i,j)
                 num_subforms = len(self.Jforms[ij])
+                
+                # Extract petsc submatrix
+                Jij_petsc = Jnest.getNestSubMatrix(i,j)
 
+                # Assemble the form
                 if num_subforms==1:
-                    d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
-                    # Jij_petsc.assemble()
+                    # Check for empty form
+                    if self.Jforms[ij][0].function_space(0) is not None:
+                        print(f"jnest: ij={ij}, 1 subform, nnz={Jij_petsc.getInfo()['nz_used']}")
+                        print(f"{Jij_petsc.getInfo()}")
+                        tensor = d.PETScMatrix(Jij_petsc)
+                        print(tensor.nnz())
+                        test = d.assemble_mixed(self.Jforms[ij][0])
+                        print(test.nnz())
+                        d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
+                        #continue
+                    else:
+                        print(f"jnest: ij={ij}, 1 subform (empty!)")
                     continue
                 else:
-                    #Jmats.append([])
                     Jmats=[]
                     # Jijk == dFi/duj(Omega_k)
-                    for k, Jijk_form in enumerate(self.Jforms[ij]):
+                    for k in range(num_subforms):
+                        # Check for empty form
+                        if self.Jforms[ij][k].function_space(0) is None:
+                            continue
                         # if we have the sparsity pattern re-use it, if not save it for next time
                         if self.tensors[ij][k] is None:
                             self.tensors[ij][k] = d.PETScMatrix()
-                        Jmats.append(d.assemble_mixed(Jijk_form, tensor=self.tensors[ij][k]))
-                        #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_dolfin))
-                        #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_petsc)
+                        print(f"jnest: ij={ij}, k={k}, tensor size = {self.tensors[ij][k].size(0)}")
+                        Jmats.append(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
 
-                    # sum the matrices
-                    Jij_petsc.zeroEntries() # this maintains sparse structure
-                    for Jmat in Jmats:
-                        # structure options: SAME_NONZERO_PATTERN, DIFFERENT_NONZERO_PATTERN, SUBSET_NONZERO_PATTERN, UNKNOWN_NONZERO_PATTERN 
-                        Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
-                    #     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
-                    # assemble petsc (seems like its only needed at th end?)
-                    #Jij_petsc.assemble()    
+                # Sum the assembled forms
+                Jij_petsc.zeroEntries() # this maintains sparse structure
+                for Jmat in Jmats:
+                    # structure options: SAME_NONZERO_PATTERN, DIFFERENT_NONZERO_PATTERN, SUBSET_NONZERO_PATTERN, UNKNOWN_NONZERO_PATTERN 
+                    Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
+                #     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
+                #Jij_petsc.assemble()    
+
         # assemble petsc
         Jnest.assemble()
 
@@ -217,7 +280,22 @@ class stubsSNESProblem():
         self.copy_u(u)
         self.assemble_Jnest(Jnest)
 
+    def init_zero_petsc_matrix(self, dim0, dim1):
+        """Initialize a dolfin wrapped PETSc matrix with all zeros
 
+        Parameters
+        ----------
+        dim : int
+            Size of matrix
+        """
+        # M = PETSc.Mat().create()
+        # M.setSizes([dim, dim])
+        # M.setType("aij")
+        # M.setUp()
+        M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
+        M.assemble()
+        return d.PETScMatrix(M)
+        #M.assemble() #?
 
 
 
@@ -438,3 +516,142 @@ class stubsSNESProblem():
 #                                      'preconditioner': self.linear_solver.preconditioner}}
 #         linear_solver_keys = ['maximum_iterations', 'error_on_nonconvergence', 'nonzero_initial_guess', 'absolute_tolerance', 'relative_tolerance']
 #         self.linear_dolfin_solver_settings = {**{k:v for k,v in self.linear_solver.__dict__.items() if k in linear_solver_keys}}
+
+# # old version
+# class stubsSNESProblem():
+#     def __init__(self, u, Fforms, Jforms, block_size, mpi_comm_world):
+#         self.u = u
+#         self.Fforms = Fforms
+#         self.Jforms = Jforms
+
+#         # List of lists (lists partitioned by integration domains)
+#         assert isinstance(Fforms, list)
+#         assert isinstance(Fforms[0], list)
+#         assert isinstance(Jforms, list)
+#         assert isinstance(Jforms[0], list)
+#         assert isinstance(self.Jforms[0][0], (ufl.Form, d.Form))
+#         assert isinstance(self.Fforms[0][0], (ufl.Form,d.Form))
+
+#         self.dim = len(Fforms)
+#         assert len(Jforms) == self.dim**2
+
+#         # save sparsity patterns of block matrices
+#         self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms]
+
+#     def initialize_petsc_matnest(self):
+#         dim = self.dim
+
+#         #Jdpetsc = [[None]*dim]*dim
+#         Jpetsc = []
+#         for i in range(dim):
+#             for j in range(dim):
+#                 ij = i*dim + j
+#                 #Jdpetsc[i][j] = d.PETScMatrix()
+#                 Jsum = []
+#                 Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
+#                 for k in range(1,len(self.Jforms[ij])):
+#                     Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=d.PETScMatrix()))#, tensor=Jdpetsc[i][j])
+
+#                 #Jsum.mat().assemble() 
+#                 Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
+
+#         self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
+#         self.Jpetsc_nest.assemble() 
+#         #return Jpetsc_nest
+ 
+#     def initialize_petsc_vecnest(self):
+#         dim = self.dim
+
+#         Fpetsc = []
+#         for j in range(dim):
+#             Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][0]))#, tensor=Fdpetsc[j])
+#             for k in range(1,len(self.Fforms[j])):
+#                 Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k]))#, tensor=Fdpetsc[j])
+
+#             # Fsum.vec().assemble()
+#             Fpetsc.append(Fsum.vec())
+        
+#         self.Fpetsc_nest = PETSc.Vec().createNest(Fpetsc)
+#         self.Fpetsc_nest.assemble()
+#         #return Fpetsc_nest
+
+#     def assemble_Jnest(self, Jnest):
+#         """Assemble Jacobian nest matrix
+#         Parameters
+#         ----------
+#         Jnest : petsc4py.Mat
+#             PETSc nest matrix representing the Jacobian
+#         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
+#         """
+#         dim = self.dim
+#         #Jmats = []
+#         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using dolfin wrapper as tensor
+#         #for ij, Jij_forms in enumerate(self.Jforms):
+#         for i in range(dim):
+#             for j in range(dim):
+#                 ij = i*dim+j
+#                 Jij_petsc = Jnest.getNestSubMatrix(i,j)
+#                 num_subforms = len(self.Jforms[ij])
+
+#                 if num_subforms==1:
+#                     d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
+#                     # Jij_petsc.assemble()
+#                     continue
+#                 else:
+#                     #Jmats.append([])
+#                     Jmats=[]
+#                     # Jijk == dFi/duj(Omega_k)
+#                     for k, Jijk_form in enumerate(self.Jforms[ij]):
+#                         # if we have the sparsity pattern re-use it, if not save it for next time
+#                         if self.tensors[ij][k] is None:
+#                             self.tensors[ij][k] = d.PETScMatrix()
+#                         Jmats.append(d.assemble_mixed(Jijk_form, tensor=self.tensors[ij][k]))
+#                         #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_dolfin))
+#                         #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=Jij_petsc)
+
+#                     # sum the matrices
+#                     Jij_petsc.zeroEntries() # this maintains sparse structure
+#                     for Jmat in Jmats:
+#                         # structure options: SAME_NONZERO_PATTERN, DIFFERENT_NONZERO_PATTERN, SUBSET_NONZERO_PATTERN, UNKNOWN_NONZERO_PATTERN 
+#                         Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
+#                     #     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
+#                     # assemble petsc (seems like its only needed at th end?)
+#                     #Jij_petsc.assemble()    
+#         # assemble petsc
+#         Jnest.assemble()
+
+#     def assemble_Fnest(self, Fnest):
+#         dim = self.dim
+#         Fi_petsc = Fnest.getNestSubVecs()
+#         Fvecs = []
+#         for j in range(dim):
+#             Fvecs.append([])
+#             for k in range(len(self.Fforms[j])):
+#                 Fvecs[j].append(d.as_backend_type(d.assemble_mixed(self.Fforms[j][k])))#, tensor=d.PETScVector(Fvecs[idx]))
+#             # sum the vectors
+#             Fi_petsc[j].zeroEntries()
+#             for k in range(len(self.Fforms[j])):
+#                 Fi_petsc[j].axpy(1, Fvecs[j][k].vec())
+        
+#         # assemble petsc
+#         # for j in range(dim):
+#         #     Fi_petsc[j].assemble()
+#         Fnest.assemble()
+            
+#     def copy_u(self, unest):
+#         uvecs = unest.getNestSubVecs()
+#         #duvecs = [None]*self.dim
+#         for idx, uvec in enumerate(uvecs):
+#             uvec.copy(self.u.sub(idx).vector().vec())
+#             self.u.sub(idx).vector().apply("")
+#             # duvecs[idx] = d.PETScVector(uvec)   # convert petsc.Vec -> d.PETScVector
+#             # duvecs[idx].vec().copy(self.u.sub(idx).vector().vec())
+#             # self.u.sub(idx).vector().apply("")      
+
+#     def F(self, snes, u, Fnest):
+#         self.copy_u(u)
+#         self.assemble_Fnest(Fnest)
+
+#     def J(self, snes, u, Jnest, P):
+#         self.copy_u(u)
+#         self.assemble_Jnest(Jnest)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from stat import UF_COMPRESSED
 from cached_property import cached_property
 from itertools import chain, combinations
+from collections import OrderedDict as odict
 
 import dolfin as d
 import ufl
@@ -23,6 +24,8 @@ from sympy.parsing.sympy_parser import parse_expr
 from scipy.integrate import solve_ivp
 from termcolor import colored
 import pint
+import pandas
+from tabulate import tabulate
 
 import stubs
 import stubs.common as common
@@ -108,6 +111,9 @@ class Model:
                         format_type='log_urgent')
  
     @property
+    def mpi_am_i_root(self):
+        return self.mpi_rank == self.mpi_root
+    @property
     def child_meshes(self):
         return self.parent_mesh.child_meshes
     @cached_property
@@ -166,9 +172,10 @@ class Model:
         self._init_3_1_define_child_meshes()
         self._init_3_2_read_parent_mesh_functions_from_file()
         self._init_3_3_extract_submeshes()
-        self._init_3_4_build_mappings()
-        self._init_3_5_get_child_mesh_functions()
-        self._init_3_6_get_integration_measures()
+        self._init_3_4_build_submesh_mappings()
+        self._init_3_5_get_child_mesh_intersections()
+        self._init_3_6_get_intersection_submeshes()
+        self._init_3_7_get_integration_measures()
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
     def _init_4(self):
         "Dolfin function initializations"
@@ -418,12 +425,12 @@ class Model:
 
     def _init_3_3_extract_submeshes(self):
         """ Use dolfin.MeshView.create() to extract submeshes """
-        fancy_print(f"Extracting submeshes", format_type='log')
+        fancy_print(f"Extracting submeshes using MeshView", format_type='log')
         # Loop through child meshes and extract submeshes
         for child_mesh in self.child_meshes.values():
             child_mesh.extract_submesh()
     
-    def _init_3_4_build_mappings(self):
+    def _init_3_4_build_submesh_mappings(self):
         fancy_print(f"Building MeshView mappings between all child mesh pairs", format_type='log')
         #import sys
         # with open(f"output{rank}.out", 'w') as f:
@@ -437,7 +444,7 @@ class Model:
             for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
 
-    def _init_3_5_get_child_mesh_functions(self):
+    def _init_3_5_get_child_mesh_intersections(self):
         """
         Parent mesh functions are used to create submeshes, which then define measures.
         There are two reasons we would need a child mesh function:
@@ -458,13 +465,26 @@ class Model:
         for child_mesh in self.parent_mesh.child_surface_meshes:
             # intersection with a single volume mesh
             for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
-                child_mesh.find_surface_to_volume_mesh_intersection(sibling_volume_mesh)
+                child_mesh.find_surface_to_volumes_mesh_intersection([sibling_volume_mesh])
             # intersection with a pair of volume meshes
             sibling_volume_mesh_pairs = combinations(self.parent_mesh.child_volume_meshes, 2)
             for sibling_volume_mesh_pair in sibling_volume_mesh_pairs:
-                child_mesh.find_surface_to_2volumes_mesh_intersection(sibling_volume_mesh_pair[0], sibling_volume_mesh_pair[1])
+                child_mesh.find_surface_to_volumes_mesh_intersection(list(sibling_volume_mesh_pair))
+    
+    def _init_3_6_get_intersection_submeshes(self):
+        """ Use dolfin.MeshView.create() to extract submeshes of child mesh intersections"""
+        fancy_print(f"Creating submeshes for child mesh intersections using MeshView", format_type='log')
+        for child_mesh in self.parent_mesh.child_surface_meshes:
+            for mesh_id_set in child_mesh.intersection_map.keys():
+                child_mesh.get_intersection_submesh(mesh_id_set)
 
-    def _init_3_6_get_integration_measures(self):
+        # build mappings
+        for child_mesh in self.parent_mesh.child_surface_meshes:
+            for mesh_id_set in child_mesh.intersection_map.keys():
+                for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
+                    child_mesh.intersection_submesh[mesh_id_set].build_mapping(sibling_volume_mesh.dolfin_mesh)
+
+    def _init_3_7_get_integration_measures(self):
         fancy_print(f"Getting integration measures for parent mesh and child meshes", format_type='log')
         for mesh in self.parent_mesh.all_meshes.values():
             mesh.get_integration_measures()
@@ -596,6 +616,9 @@ class Model:
             # syntax even if there is just one compartment
             compartment.ut = sub(self.ut, cidx)#self.ut[cidx]
             compartment.v  = sub(self.v, cidx)#self.v[cidx]
+        
+        # save these in model
+        self._usplit = [c._usplit['u'] for c in self._active_compartments]
             
     def _init_4_4_get_species_u_v_V_dofmaps(self):
         fancy_print(f"Extracting subfunctions/function spaces/dofmap for each species", format_type='log')
@@ -697,11 +720,11 @@ class Model:
         # Aliases
         self.Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
         u = self.u['u']._functions
-        self.Fblocks, self.Jblocks = self.get_block_system(self.Fsum, u)
+        self.Fblocks, self.Jblocks, self.block_sizes = self.get_block_system(self.Fsum, u)
 
         # if use snes
         if self.config.solver['use_snes']:
-            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks)
+            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks, self.block_sizes, self.mpi_comm_world)
             self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
             self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
@@ -772,11 +795,13 @@ class Model:
         Flist = list()
         for Fi in Fblock:
             if Fi is None or Fi.empty():
+                print("Fi empty")
                 Flist.append([d.cpp.fem.Form(1, 0)])
             else:
                 Fs = []
                 for Fsub in sub_forms_by_domain(Fi):
                     if Fsub is None or Fsub.empty():
+                        print("Fsub empty")
                         Fs.append(d.cpp.fem.Form(1, 0))
                     else:
                         Fs.append(d.Form(Fsub))
@@ -787,14 +812,18 @@ class Model:
         Jlist = list()
         for Ji in J:
             if Ji is None or Ji.empty():
+                print("Ji empty")
                 Jlist.append([d.cpp.fem.Form(2, 0)])
             else:
                 Js = []
                 for Jsub in sub_forms_by_domain(Ji):
                     Js.append(d.Form(Jsub))
                 Jlist.append(Js)
+        
+        block_sizes = [uj.function_space().dim() for uj in u]
 
-        return Flist, Jlist
+        #return Flist, Jlist
+        return Flist, Jlist, block_sizes
   
     #===============================================================================
     # Model - Solving
@@ -1467,3 +1496,80 @@ class Model:
     #             return closestPoint, min_dist_global
     #     else:
     #         return closestPoint, minDist
+
+    # ==============================================================================
+    # Model - Printing
+    # ==============================================================================
+    def print_meshes(self, tablefmt='fancy_grid'):
+        if self.mpi_am_i_root:
+            properties_to_print = ['name', 'id', 'dimensionality', 'num_cells', 'num_facets', 'num_vertices']#, 'cell_marker', '_nvolume']
+            df = pandas.DataFrame()
+
+            # parent mesh
+            tempdict = odict()
+            for key in properties_to_print:
+                tempdict[key] = getattr(self.parent_mesh, key)
+            #tempdict = odict({key: getattr(self.parent_mesh, key) for key in properties_to_print})
+            tempseries = pandas.Series(tempdict, name=self.parent_mesh.name)
+            df = df.append(tempseries, ignore_index=True)
+            # child meshes
+            for child_mesh in self.child_meshes.values():
+                tempdict = odict()
+                for key in properties_to_print:
+                    tempdict[key] = getattr(child_mesh, key)
+                tempseries = pandas.Series(tempdict, name=child_mesh.name)
+                df = df.append(tempseries, ignore_index=True)
+            # intersection meshes
+            for child_mesh in self.parent_mesh.child_surface_meshes:
+                for mesh_id_pair in child_mesh.intersection_map.keys():
+                    tempdict = odict()
+                    if len(mesh_id_pair) == 1:
+                        mesh_str = self.parent_mesh.get_mesh_from_id(list(mesh_id_pair)[0]).name
+                    else:
+                        mesh_str = self.parent_mesh.get_mesh_from_id(list(mesh_id_pair)[0]).name + '_' \
+                                 + self.parent_mesh.get_mesh_from_id(list(mesh_id_pair)[1]).name
+                        
+                    intersection_mesh_name = f"{child_mesh.name}_intersect_{mesh_str}"
+                    tempdict['name'] = intersection_mesh_name
+                    tempdict['id'] = int(child_mesh.intersection_submesh[mesh_id_pair].id())
+                    tempdict['dimensionality'] = child_mesh.dimensionality
+                    tempdict['num_cells'] = child_mesh.intersection_submesh[mesh_id_pair].num_cells()
+                    tempdict['num_facets'] = child_mesh.intersection_submesh[mesh_id_pair].num_facets()
+                    tempdict['num_vertices'] = child_mesh.intersection_submesh[mesh_id_pair].num_vertices()
+                    tempseries = pandas.Series(tempdict, name=intersection_mesh_name)
+                    df = df.append(tempseries, ignore_index=True)
+
+            
+            print(tabulate(df, headers='keys', tablefmt=tablefmt))
+
+        #     df = self.get_pandas_dataframe(properties_to_print=properties_to_print)
+        #     if properties_to_print:
+        #         df = df[properties_to_print]
+
+        #     print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
+        #            #headers='keys', tablefmt=tablefmt), width=120)
+        # else:
+        #     pass
+        # df = pandas.DataFrame()
+        # if include_idx:
+        #     if properties_to_print and 'idx' not in properties_to_print:
+        #         properties_to_print.insert(0, 'idx')
+        #     for idx, (name, instance) in enumerate(self.items):
+        #         df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx))
+        # else:
+        #     for idx, (name, instance) in enumerate(self.items):
+        #         df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print))
+        # # # sometimes types are recast. change entries into their original types
+        # # for dtypeName, dtype in self.dtypes.items():
+        # #     if dtypeName in df.columns:
+        # #         df = df.astype({dtypeName: dtype})
+
+        # return df
+
+        
+        # if properties_to_print:
+        #     dict_to_convert = odict({'idx': idx})
+        #     dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in properties_to_print]))
+        # else:
+        #     dict_to_convert = self.__dict__
+        # return pandas.Series(dict_to_convert, name=self.name)

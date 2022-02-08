@@ -63,6 +63,66 @@ A2 = model.sc['A2']
 A3 = model.sc['A3']
 B = model.sc['B']
 
+print(d.assemble_mixed(model.Fblocks[0][0]).get_local().mean())
+print(d.assemble_mixed(model.Fblocks[0][1]).get_local().mean())
+# 0.013009917771822541
+# 0.4652419890515132
+# 0.012918298632584353
+# 0.4652419890515132
+#====================== 02/07/2022
+# from ufl.algorithms.ad import expand_derivatives
+# from ufl.form import sub_forms_by_domain
+
+# ermem = model.child_meshes['er_mem']
+
+# dx = ermem.dx
+# f = (A.u['u'] - B.u['u']) * model.v[0][0] * dx
+# F = d.assemble_mixed(f)
+# dfdu = sub_forms_by_domain(expand_derivatives(d.derivative(f, model.u['u'].sub(1))))
+# M = d.assemble_mixed(dfdu[0])
+
+# dxnew = ermem.intersection_dx[frozenset({17, 23})]
+# fnew = (A.u['u'] - B.u['u']) * model.v[0][0] * dxnew
+# Fnew = d.assemble_mixed(fnew)
+# dfnewdu = sub_forms_by_domain(expand_derivatives(d.derivative(fnew, model.u['u'].sub(1))))
+# Mnew = d.assemble_mixed(dfnewdu[0])
+
+# np.all(F.get_local() == Fnew.get_local())
+
+# # M.nnz()
+# # Mnew.nnz()
+# # M.array().mean()
+# # Mnew.array().mean()
+# np.all(M.array() == Mnew.array())
+
+# M_ = d.assemble_mixed(model.Jblocks[1][0])
+# np.all(M.array() == M_.array())
+
+#Fblock, Jblock, _ = model.get_block_system(f, model.u['u']._functions)
+
+
+
+#d.derivative(model.Fsum, model.u['u'].sub(1))
+# J = model.problem.Jpetsc_nest.getNestSubMatrix(0,1)
+# M = d.assemble_mixed(model.Jblocks[1][0])
+
+# # compare nonzeros
+# print(M.nnz())
+# print(J.getInfo()['nz_used'])
+# # compare size
+# print((M.size(0), M.size(1)))
+# print(J.size)
+
+# M2 = d.as_backend_type(d.assemble_mixed(model.Jblocks[1][0], tensor=d.PETScMatrix())).mat()
+# Jpetsc = []
+# Jsum=None
+# Jsum = d.as_backend_type(d.assemble_mixed(model.Jblocks[1][0], tensor=d.PETScMatrix()))
+# Jpetsc.append(Jsum)
+
+#Jblocks[1][0] is dFcyto / duervol
+
+
+
 print(model.u['u'].sub(0).compute_vertex_values().min())
 print(model.u['u'].sub(0).compute_vertex_values().max())
 
@@ -90,9 +150,118 @@ print(model.u['u'].sub(0).compute_vertex_values().max())
 
 print(model.get_mass(A))
 
-print(f"sum of residuals {sum(model.get_total_residual())}")
-# 743.7527142501965
-# 1e-6
+
+
+# pre:
+# species A : ((10.0, 12.0)), mass=88.00000000000874
+# species A2 : ((5.0, 7.0)), mass=47.99999999999816
+# species A3 : ((7.0, 9.0)), mass=63.99999999999438
+# species B : ((3.0, 3.0)), mass=24.00000000000639
+# species X : ((98.0, 102.0)), mass=3592.000000000033
+# species X2 : ((40.0, 40.0)), mass=1440.000000000049
+
+# solve finished in 3.975677 seconds ...................................................................................
+# post:
+# species A : ((7.481665301596026, 8.096608205553615)), mass=62.769263576269694
+# species A2 : ((2.9123836951791344, 3.2444901947820486)), mass=24.61705431501025
+# species A3 : ((10.603370173101725, 11.239755936937092)), mass=87.38294568498942
+# species B : ((3.0933085739651727, 3.3565925682036064)), mass=25.370635544103223
+# species X : ((83.23650610051348, 98.64883200350206)), mass=3301.858132382143
+# species X2 : ((40.002242679047306, 58.3385855739414)), mass=1730.141867617874
+# 2.9123836951791344
+# 11.239755936937092
+# 62.769263576269694
+
+
+
+
+# print(f"sum of residuals {sum(model.get_total_residual())}")
+# # 743.7527142501965
+# # 1e-6
+
+# # ===================
+# pm = model.child_meshes['pm']
+# pm_cyto = pm.intersection_submesh[frozenset({18})]
+# model.Jblocks[5][0] # ervol -> pm # 
+
+# model.Jblocks[0][0] # d(Fcyto)/d(ucyto) (domain=pm_intersect_cytosol) -> pm #  Mesh entity index -1 out of range [0, 49600] for entity of dimension 2.
+# # A ucyto * X upm (domain = pm_intersect_cytosol)
+# form = model.u['u'].sub(0).sub(0) * model.u['u'].sub(2).sub(0) * model.v[0][0] * pm.intersection_dx[frozenset({18})]
+# F = d.assemble_mixed(form)
+# dFdu = d.derivative(form, model.u['u'].sub(0).sub(0))
+#  #5 │                2 │   54 │ pm_intersect_cytosol            │        1600 │         2480 │            880
+# # M = d.assemble(model.Jblocks[0][0])
+# # M.array()[0:10,0:10].sum()  # old dolfin = 0.1466, stubs dolfin = 0.1745
+# # M.nnz()                     # old dolfin = 113877, stubs dolfin = 113814
+# # #M.size(0) = 14553
+
+# # import petsc4py.PETSc as petsc
+# # # create a petsc.Mat of zeros with size (10,10)
+# # # M = petsc.Mat().create(petsc.COMM_WORLD)
+# # # M.setSizes((10,10))
+
+
+# flatten = stubs.model_assembly.flatten
+# jblocks = flatten(model.Jblocks)
+# idx = 0
+# for j in jblocks:
+#     print(f"{idx}: {j.num_coefficients()}")
+#     print(type(j.function_space(0)))
+#     d.assemble_mixed(j)
+#     idx +=1
+
+#     # try to get the mesh from j (type dolfin.cpp.fem.Form)
+# try:
+#     mesh = j0.mesh()
+# except:
+#     pass
+
+# # f = d.cpp.fem.Form(2,0)
+# #f.set_mesh
+# # d.assemble_mixed(f)
+
+
+# # new meshview
+# pm_to_parent = pm.mesh_view[pm.parent_mesh.id].cell_map()
+# pm_ervol_intersecting = pm.intersection_map[frozenset({24})]
+# # get indices of pm_ervol_intersecting where equal to 1
+# indices = np.where(pm_ervol_intersecting.array() == 1)[0]
+# parent_indices = np.array(pm_to_parent)[indices]
+# # new mesh function
+# mf2 = d.MeshFunction('size_t', pm.parent_mesh.dolfin_mesh, 2, value=0)
+# mf2.array()[parent_indices] = 1
+
+# pm_ervol_mesh = d.MeshView.create(mf2, 1)
+# dx = d.Measure('dx', pm_ervol_mesh)
+
+
+# # test
+# form = model.u['u'].sub(1) * model.u['u'].sub(2).sub(0) * model.v[1] * pm.dx_map[frozenset({24})](1)
+# form = model.u['u'].sub(1) * model.u['u'].sub(2).sub(0) * model.v[1] * pm.intersection_dx[frozenset({24})]
+# F2 = d.assemble_mixed(form)
+# M2 = d.assemble_mixed(d.derivative(form, model.u['u'].sub(1)))
+# M2.array().max() # old dolfin = 223.233, stubs dolfin = 0.998
+# F2.max()         # old dolfin = 1380.41, stubs dolfin = 11.988
+
+# # integrate B*X2 over region where pm intersects with ervol [meshid=24] (area= 20) (total pm area=36)
+# form = model.u['u'].sub(1) * model.u['u'].sub(2).sub(1) * pm.dx_map[frozenset({24})](1)
+# form = model.u['u'].sub(1) * model.u['u'].sub(2).sub(1) * pm.intersection_dx[frozenset({24})]
+# # B*X  -> old dolfin = 9493.56, stubs dolfin = 5928.0
+# # B*X2 -> old dolfin = 6250.87, stubs dolfin = 2400, analytic = 3 * 40 * 16 = 2400
+# d.assemble_mixed(form) 
+
+# # newform = model.u['u'].sub(1) * model.u['u'].sub(2).sub(0) * model.v[1] * dx
+# # newF = d.assemble_mixed(newform)
+# # d.assemble_mixed(d.derivative(newform, model.u['u'].sub(1)))
+
+
+# # compare
+# print(F.get_local().mean())
+# print(newF.get_local().mean())
+# print(F.get_local().var())
+# print(newF.get_local().var())
+
+
 
 
 #66.0937846550966

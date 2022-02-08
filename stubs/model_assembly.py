@@ -664,7 +664,12 @@ class Compartment(ObjectInstance):
     @property
     def num_dofs(self):
         "Number of degrees of freedom for this compartment"
-        self._num_dofs = self.num_species * self.num_vertices
+        # self._num_dofs = self.num_species * self.num_vertices
+        # return self._num_dofs
+        if self.V is None:
+            self._num_dofs = 0
+        else:
+            self._num_dofs = self.V.dim()
         return self._num_dofs
 
 
@@ -843,7 +848,7 @@ class Flux(ObjectInstance):
         if len(self.surface) == 1:
             self.surface = self.surface[0]
         else:
-            self.surface = None
+            self.surface = None 
         self.volumes = [c for c in self.compartments.values() if c.mesh.is_volume]
         self.surface_id = frozenset([c.mesh.id for c in self.compartments.values() if c.mesh.is_surface])
         self.volume_ids = frozenset([c.mesh.id for c in self.compartments.values() if c.mesh.is_volume])
@@ -912,8 +917,9 @@ class Flux(ObjectInstance):
         elif self.topology in ['volume_to_surface', 'surface_to_volume', 'volume-volume_to_surface', 'volume-surface_to_volume']:
             # intersection of this surface with boundary of source volume(s)
             assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
-            #assert self.has_intersection[self.volume_ids] 
-            self.measure = self.surface.mesh.dx_map[self.volume_ids](1)
+            self.measure = self.surface.mesh.intersection_dx[self.volume_ids]
+            #print("DEBUGGING")
+            # self.measure = self.surface.mesh.dx
 
     @property
     def equation_variables(self):
