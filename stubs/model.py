@@ -132,12 +132,8 @@ class Model:
     # Model - Initialization
     # ==============================================================================
 
-    # def initialize(self):
 
-    #     self.init_solutions_and_plots()
-
-
-    def initialize_refactor(self):
+    def initialize(self):
         """
         Notes:
         * Now works with sub-volumes
@@ -147,6 +143,7 @@ class Model:
         self._init_2()
         self._init_3()
         self._init_4()
+        self._init_5()
 
     def _init_1(self):
         "Checking validity of model"
@@ -724,6 +721,7 @@ class Model:
 
         # if use snes
         if self.config.solver['use_snes']:
+            fancy_print(f"Using SNES solver", format_type='log')
             self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks, self.block_sizes, self.mpi_comm_world)
             self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
@@ -733,6 +731,7 @@ class Model:
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
         else:
+            fancy_print(f"Using dolfin MixedNonlinearVariationalSolver", format_type='log')
             self._ubackend = [u[i]._cpp_object for i in range(len(u))] 
             self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(self.Fblocks, self._ubackend, [], self.Jblocks)
             #self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)

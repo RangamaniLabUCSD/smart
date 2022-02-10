@@ -357,7 +357,7 @@ class Parameter(ObjectInstance):
         
         # TODO: fix this when implementing space dependent parameters
         if is_time_dependent:
-            value = sym_expr.subs({'t': 0.0}).evalf()
+            value = float(sym_expr.subs({'t': 0.0}))
 
         parameter = cls(name, value, unit, group=group, notes=notes, use_preintegration=use_preintegration)
 
@@ -544,7 +544,9 @@ class Species(ObjectInstance):
         self.v       = None
         #self.t       = 0.0
 
-        if isinstance(self.initial_condition, int):
+        if isinstance(self.initial_condition, float):
+            pass
+        elif isinstance(self.initial_condition, int):
             self.initial_condition = float(self.initial_condition)
         elif isinstance(self.initial_condition, str):
             # Parse the given string to create a sympy expression
@@ -692,6 +694,7 @@ class Reaction(ObjectInstance):
     track_value: bool=False
     eqn_f_str: str=''
     eqn_r_str: str=''
+    group: str=''
 
     def __post_init__(self):
         self._check_input_type_validity()

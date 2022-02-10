@@ -34,12 +34,12 @@ RUN export FENICS_SRC_DIR=/usr/local/src && \
 
 # Install desired packages using apt-get
 # apt-get update and install needs to be in the same line
-# libgl for visualization with vedo
-#libgl1-mesa-glx && \
+# libgl for visualization with vedo, pygmsh, etc.
 RUN apt-get update && apt-get install -y \
     curl \
     vim \
     htop && \
+    libgl1-mesa-glx && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y \
 # *not sure why, but when run in a single line the dependencies for stubs aren't installed
 # (e.g. upgrade numpy from version 13.x to 16.x)
 RUN python3 -m pip install meshio
+RUN python3 -m pip install pygmsh
 RUN python3 -m pip install bpython
 RUN python3 -m pip install gmsh
 RUN python3 -m pip install vedo
@@ -84,6 +85,7 @@ alias sourceme='source ~/.bashrc'\n\
 alias vimbash='vim ~/.bashrc'\n\
 alias vimalias='vim ~/.bash_aliases'\n\
 alias cdstubs='cd ~/shared/gitrepos/stubs'\n\
+alias cdpurk='cd ~/shared/gitrepos/purkinje-model'\n\
 alias debug='cd ~/shared/gitrepos/stubs/debug; bpython -i debug_stubs.py'\n\
 alias vimrc='vim ~/.vimrc'" >> $FENICS_HOME/.bash_aliases
 
