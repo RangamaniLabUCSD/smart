@@ -238,12 +238,12 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
 # fancy printing
 # ====================================================
 def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_char='=',
-                             num_banners=0, newlines=[0,0], left_justify=False,
+                             num_banners=0, new_lines=[0,0], left_justify=False,
                              format_type=None):
     "Formatted text to stand out."
     # some default options
     if format_type == 'title':
-        text_color = 'magenta'; num_banners = 1; newlines = [1,0]
+        text_color = 'magenta'; num_banners = 1; new_lines = [1,0]
     elif format_type == 'subtitle':
         text_color = 'green'; filler_char = '.'; left_justify=True
     elif format_type == 'log':
@@ -253,11 +253,11 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     elif format_type == 'log_urgent':
         buffer_color='white'; text_color = 'red'; filler_char = '.'
     elif format_type == 'warning':
-        buffer_color='orange'; text_color = 'red'; filler_char = '!'; num_banners=2; newlines=[1,1]
+        buffer_color='magenta'; text_color = 'red'; filler_char = '!'; num_banners=2; new_lines=[1,1]
     elif format_type == 'timestep':
-        text_color = 'magenta'; num_banners = 2; filler_char = '.'; newlines=[1,1]
+        text_color = 'magenta'; num_banners = 2; filler_char = '.'; new_lines=[1,1]
     elif format_type == 'solverstep':
-        text_color = 'magenta'; num_banners = 1; filler_char = '.'; newlines=[1,1]
+        text_color = 'magenta'; num_banners = 1; filler_char = '.'; new_lines=[1,1]
     elif format_type is not None:
         raise ValueError("Unknown formatting_type.")
     
@@ -282,7 +282,7 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     banner = colored(filler_char*(title_str_len+parity), buffer_color)
 
     # initial spacing
-    if newlines[0] > 0: print('\n'*(newlines[0]-1))
+    if new_lines[0] > 0: print('\n'*(new_lines[0]-1))
     # print first banner
     for _ in range(num_banners):
         print(f"{banner}")
@@ -292,7 +292,7 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     for _ in range(num_banners):
         print(f"{banner}")
     # end spacing
-    if newlines[1] > 0: print('\n'*(newlines[1]-1))
+    if new_lines[1] > 0: print('\n'*(new_lines[1]-1))
 
 # demonstrate built in options
 def _fancy_print_options():

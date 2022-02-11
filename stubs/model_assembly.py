@@ -715,7 +715,7 @@ class Reaction(ObjectInstance):
         if not all([type(k)==str and type(v)==str for (k,v) in self.param_map.items()]):
             raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for param_map.")
         if self.species_map:
-            if not all([k==str and v==str for (k,v) in self.species_map.items()]):
+            if not all([isinstance(k,str) and isinstance(v,str) for (k,v) in self.species_map.items()]):
                 raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for species_map.")
             
     def _parse_custom_reaction(self, reaction_eqn_str):

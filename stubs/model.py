@@ -933,12 +933,14 @@ class Model:
 
     def forward_time_step(self, dt_factor=1):
         "Take a step forward in time and upate time-dependent parameters"
-
-        self.dT.assign(float(self.dt*dt_factor))
-        self.t = float(self.t+self.dt*dt_factor)
+        self.dt = float(self.dt*dt_factor)
+        self.t = float(self.t+self.dt)
+        self.tn = float(self.t) # save the previous time
+        self.dT.assign(self.dt)
         self.T.assign(self.t)
-        self.update_time_dependent_parameters(dt=self.dt*dt_factor)
-        fancy_print(f"t: {self.t} , dt: {self.dt*dt_factor}", format_type='log')
+
+        self.update_time_dependent_parameters()
+        fancy_print(f"t: {self.t} , dt: {self.dt}", format_type='log')
         
     def monolithic_solve(self, bcs=[]):
         self.idx += 1
@@ -948,12 +950,8 @@ class Model:
         self.check_dt_pass_tfinal() # adjust dt so that it doesn't pass tfinal
 
         # Take a step forward in time and update time-dependent parameters
-        self.dT.assign(float(self.dt))
-        self.tn = float(self.t) # save the previous time
-        self.t = float(self.t+self.dt)
-        self.T.assign(self.t)
         # update time-dependent parameters
-        #self.forward_time_step() # march forward in time and update time-dependent parameters
+        self.forward_time_step(dt_factor=1) # march forward in time and update time-dependent parameters
 
         fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', new_lines=[1,0],format_type='timestep')
         if self.config.solver['use_snes']:
@@ -1112,7 +1110,7 @@ class Model:
     #     else:
     #         raise ValueError("Unknown nonlinear solver method")
 
-    def update_solution(self, ukeys=None):
+    def update_solution(self, ukeys=['n']):
         """
         After finishing a time step, assign all the most recently computed solutions as 
         the solutions for the previous time step.

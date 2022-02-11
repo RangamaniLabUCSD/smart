@@ -174,7 +174,9 @@ class stubsSNESProblem():
                 else:
                     Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
             if Fsum is None:
-                raise AssertionError()
+                print(f"Fforms[{j}] is empty - initializing as empty PETSc Vector with size {self.block_sizes[j]}")
+                Fsum = self.init_zero_petsc_vector(self.block_sizes[j])
+                #raise AssertionError()
 
             # Fsum.vec().assemble()
             Fpetsc.append(Fsum.vec())
@@ -295,8 +297,23 @@ class stubsSNESProblem():
         M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
         M.assemble()
         return d.PETScMatrix(M)
-        #M.assemble() #?
 
+    def init_zero_petsc_vector(self, dim0):
+        """Initialize a dolfin wrapped PETSc vector with all zeros
+
+        Parameters
+        ----------
+        dim0 : int
+            Size of vector
+        """
+
+        V = PETSc.Vec().createSeq(dim0, comm=self.mpi_comm_world)
+        V.assemble()
+        return d.PETScVector(V)
+        # M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
+        # M.assemble()
+        # return d.PETScMatrix(M)
+        #M.assemble() #?
 
 
 # """
