@@ -26,13 +26,14 @@ sec      = unit.s
 
 import stubs_model 
 
-model = stubs_model.make_model('adjacent_cubes_from_dolfin_20_lessPM.h5')
+#model = stubs_model.make_model('adjacent_cubes_from_dolfin_20_lessPM.h5')
+model = stubs_model.make_model('3_50_50_0.h5')
 
 # ===================
 # logging
 # ===================
 # set for others
-loglevel = 'INFO'
+loglevel = 'WARNING'
 model.config.loglevel = {'FFC': loglevel,
                          'UFL': loglevel,
                          'dijitso': loglevel,
@@ -43,28 +44,87 @@ model.config.set_logger_levels()
 print(model.parent_mesh.num_vertices)
 
 
-use_snes = True
-model.config.solver['use_snes'] = use_snes
+snes = True
+model.config.solver['use_snes'] = snes
 
 # #====================
 # # init model
 # # ===================
 # #import cProfile
 #cProfile.run("model._init_3()")                 
-model._init_1()
-model._init_2()
-model._init_3()
-model._init_4()                 
-model._init_5_1_reactions_to_fluxes()
-model._init_5_2_create_variational_forms()
-model._init_5_3_setup_variational_problem_and_solver()
-A = model.sc['A']
-A2 = model.sc['A2']
-A3 = model.sc['A3']
-B = model.sc['B']
+model.initialize()
+# A = model.sc['A']
+# A2 = model.sc['A2']
+# A3 = model.sc['A3']
+# B = model.sc['B']
 
-print(d.assemble_mixed(model.Fblocks[0][0]).get_local().mean())
-print(d.assemble_mixed(model.Fblocks[0][1]).get_local().mean())
+
+# while True:
+#     end_simulation = model.solve_single_timestep()
+#     print(f"Maximum A = {model.sc['A'].u['u'].vector().get_local().max()}")
+#     if end_simulation:
+#         break
+
+print(model.dolfin_get_function_values(model.sc['A']).min())
+print(model.dolfin_get_function_values(model.sc['A']).max())
+if snes:
+    model.solver.solve(None, model._ubackend)
+else:
+    model.solver.solve()
+print(model.dolfin_get_function_values(model.sc['A']).max())
+print(model.dolfin_get_function_values(model.sc['A']).min())
+
+
+with d.XDMFFile(model.mpi_comm_world, '021122_output/A.xdmf') as xdmf:
+    xdmf.write(model.sc['A'].u['u'], model.t)
+with d.XDMFFile(model.mpi_comm_world, '021122_output/A3.xdmf') as xdmf:
+    xdmf.write(model.sc['A3'].u['u'], model.t)
+with d.XDMFFile(model.mpi_comm_world, '021122_output/X.xdmf') as xdmf:
+    xdmf.write(model.sc['X'].u['u'], model.t)
+with d.XDMFFile(model.mpi_comm_world, '021122_output/B.xdmf') as xdmf:
+    xdmf.write(model.sc['B'].u['u'], model.t)
+
+if snes:
+    print(f"solver converged? {model.solver.converged}")
+    print(f"solver iterations: {model.solver.its}")
+print(f"total residual: {model.get_total_residual(norm=2)}")
+
+# print(d.assemble_mixed(model.Fblocks[0][0]).get_local().mean())
+# print(d.assemble_mixed(model.Fblocks[0][1]).get_local().mean())
+
+# print(model.u['u'].sub(0).compute_vertex_values().min())
+# print(model.u['u'].sub(0).compute_vertex_values().max())
+
+# print('pre: ')
+# for species in model.sc.values:
+#     umin = model.dolfin_get_function_values(species).min()
+#     umax = model.dolfin_get_function_values(species).max()
+#     mass = model.get_mass(species)
+#     print(f"species {species.name} : ({umin, umax}), mass={mass}")
+# model.stopwatch('solve')
+# if use_snes:
+#     model.solver.solve(None, model._ubackend)
+# else:
+#     model.solver.solve()
+# model.stopwatch('solve', stop=True)
+# print('post: ')
+# for species in model.sc.values:
+#     umin = model.dolfin_get_function_values(species).min()
+#     umax = model.dolfin_get_function_values(species).max()
+#     mass = model.get_mass(species)
+#     print(f"species {species.name} : ({umin, umax}), mass={mass}")
+
+# print(model.u['u'].sub(0).compute_vertex_values().min())
+# print(model.u['u'].sub(0).compute_vertex_values().max())
+
+# print(model.get_mass(A
+
+
+
+
+
+
+
 # 0.013009917771822541
 # 0.4652419890515132
 # 0.012918298632584353
@@ -120,35 +180,6 @@ print(d.assemble_mixed(model.Fblocks[0][1]).get_local().mean())
 # Jpetsc.append(Jsum)
 
 #Jblocks[1][0] is dFcyto / duervol
-
-
-
-print(model.u['u'].sub(0).compute_vertex_values().min())
-print(model.u['u'].sub(0).compute_vertex_values().max())
-
-print('pre: ')
-for species in model.sc.values:
-    umin = model.dolfin_get_function_values(species).min()
-    umax = model.dolfin_get_function_values(species).max()
-    mass = model.get_mass(species)
-    print(f"species {species.name} : ({umin, umax}), mass={mass}")
-model.stopwatch('solve')
-if use_snes:
-    model.solver.solve(None, model._ubackend)
-else:
-    model.solver.solve()
-model.stopwatch('solve', stop=True)
-print('post: ')
-for species in model.sc.values:
-    umin = model.dolfin_get_function_values(species).min()
-    umax = model.dolfin_get_function_values(species).max()
-    mass = model.get_mass(species)
-    print(f"species {species.name} : ({umin, umax}), mass={mass}")
-
-print(model.u['u'].sub(0).compute_vertex_values().min())
-print(model.u['u'].sub(0).compute_vertex_values().max())
-
-print(model.get_mass(A))
 
 
 

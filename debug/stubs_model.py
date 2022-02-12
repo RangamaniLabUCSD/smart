@@ -17,13 +17,13 @@ sec      = unit.s
 
 def make_model(mesh_name):
 
-    #====================
-    # define the model
-    # ===================
+    # #====================
+    # # define the model
+    # # ===================
     pc, sc, cc, rc = common.empty_sbmodel()
-    # parameters
+   # parameters
     pc.add([    
-        Parameter('kf'      , 5.0, meter/sec, 'forward rate'),
+        #Parameter('kf'      , 5.0, um/sec, 'forward rate'),
         # # volume-to-volume [m/s]
         # Parameter('testing', 5, 1/sec),
         Parameter.from_expression('gating_f' , '5.0+t', um/sec, use_preintegration=False),
@@ -32,7 +32,7 @@ def make_model(mesh_name):
         Parameter('kf', 13.0, 1/(uM*sec), 'volume mass-action forward A+A2 -> A3'),
         Parameter('kr', 2.0, 1/(sec), 'volume mass-action reverse A3 -> A+A2'),
         # # volume to surface / surface to volume
-        Parameter('kf_AX_X2', 3.0, 1/(uM*sec), 'A+X -> X2'),
+        Parameter('kf_AX_X2', 30.0, 1/(uM*sec), 'A+X -> X2'),
         Parameter('kr_AX_X2', 3.0, 1/(sec), 'X2 -> A+X'),
         # # volume-surface to volume 
         Parameter('kf_AY_B', 3.0, 1/(uM*sec), 'A+Y -> B'),
@@ -46,37 +46,39 @@ def make_model(mesh_name):
 
     # species
     sc.add([
-        Species('A'   , '10+z' , uM            , 100, um**2/sec, 'cytosol'),
+        Species('A'   , 10 , uM            , 100, um**2/sec, 'cytosol'),
         # Species('A'    , 'z'  , uM            , 100, um**2/sec, 'cytosol'),
         #Species('A2'   , '3+z', uM            , 100, um**2/sec, 'cytosol'),
-        Species('A2'   , '5+z', uM            , 100, um**2/sec, 'cytosol'),
-        Species('A3'   , '7+z'    , uM            , 100, um**2/sec, 'cytosol'),
+        Species('A2'   , 5, uM            , 100, um**2/sec, 'cytosol'),
+        Species('A3'   , 7    , uM            , 100, um**2/sec, 'cytosol'),
         Species('B' , 3    , uM            , 100, um**2/sec, 'er_vol'),
-        Species('X' , '100+z'  , molecule/um**2, 10 , um**2/sec, 'pm'),
+        Species('X' , 100  , molecule/um**2, 10 , um**2/sec, 'pm'),
         Species('X2' , 40  , molecule/um**2, 10 , um**2/sec, 'pm'),
         # Species('Y', 60  , molecule/um**2, 10 , um**2/sec, 'er_mem'),
     ])
 
     # compartments
     cc.add([
-        Compartment('cytosol', 3, um, 11),
-        Compartment('er_vol' , 3, um, 12),
-        #Compartment('test_vol' , 3, um, [3,5]),
+        Compartment('cytosol', 3, um, 1), # 11
+        Compartment('er_vol' , 3, um, 3), # 12
         Compartment('pm'     , 2, um, 2),
         Compartment('er_mem' , 2, um, 4),
+        #Compartment('test_vol' , 3, um, [3,5]),
     ])
 
     # flux topologies are commented
     rc.add([
         Reaction('A <-> B'      , ['A']     , ['B'] , {'on': 'gating_f', 'off': 'gating_r'} , explicit_restriction_to_domain='er_mem'), # [volume_to_volume] 
         Reaction('A + A2 <-> A3', ['A','A2'], ['A3'], {'on': 'kf',       'off': 'kr'}                                                ), # [volume] volume mass action (2 to 1)
-        # Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'    ), # [volume] degradation
+        Reaction('B -> 0'       , ['B']     , []    , {'on': 'kdeg_B'}                      , reaction_type='mass_action_forward'    ), # [volume] degradation
         Reaction('A + X <-> X2' , ['A','X'] , ['X2'], {'on': 'kf_AX_X2', 'off': 'kr_AX_X2'}                                          ), # [volume_to_surface] [surface_to_volume]
         # Reaction('X -> 0'       , ['X']     , []    , {'on': 'kdeg_X'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
         # Reaction('Y -> 0'       , ['Y']     , []    , {'on': 'kdeg_Y'}                      , reaction_type='mass_action_forward'    ), # [surface] degradation
         # Reaction('A + Y <-> B'  , ['A','Y'] , ['B'] , {'on': 'kf_AY_B'}                     , reaction_type='mass_action_forward'    ), # [volume-surface_to_volume]
         # Reaction('A + B <-> Y'  , ['A','B'] , ['Y'] , {'on': 'kf_AB_Y'}                     , reaction_type='mass_action_forward'    ), # [volume-volume_to_surface]
     ])
+
+
 
     # config
     stubs_config = stubs.config.Config()

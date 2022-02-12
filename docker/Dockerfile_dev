@@ -15,19 +15,17 @@ FROM quay.io/fenicsproject/dev
 
 # ======================================================
 # pull and build our forked version of dolfin 
-#RUN export PYTHONPATH=/usr/local/lib/python3.6/site-packages:${PYTHONPATH}
-RUN echo "Downloading forked version of dolfin"
-#RUN cd /tmp/src && \
-RUN export FENICS_SRC_DIR=/usr/local/src && \
-    cd /usr/local/src && \
-    export GIT_LFS_SKIP_SMUDGE=1 && \
-    git clone https://github.com/justinlaughlin/dolfinstubs.git && \
-    cd dolfinstubs && \
-    git checkout my_fixes && \
-    git pull && \
-    bash -c "PIP_NO_CACHE_DIR=off \
-                /home/fenics/bin/fenics-build dolfinstubs && \
-                ldconfig"
+#RUN echo "Downloading forked version of dolfin"
+#RUN export FENICS_SRC_DIR=/usr/local/src && \
+#    cd /usr/local/src && \
+#    export GIT_LFS_SKIP_SMUDGE=1 && \
+#    git clone https://github.com/justinlaughlin/dolfinstubs.git && \
+#    cd dolfinstubs && \
+#    git checkout my_fixes && \
+#    git pull && \
+#    bash -c "PIP_NO_CACHE_DIR=off \
+#                /home/fenics/bin/fenics-build dolfinstubs && \
+#                ldconfig"
 # ======================================================
 
 

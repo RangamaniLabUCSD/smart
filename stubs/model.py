@@ -170,8 +170,9 @@ class Model:
         self._init_3_2_read_parent_mesh_functions_from_file()
         self._init_3_3_extract_submeshes()
         self._init_3_4_build_submesh_mappings()
-        self._init_3_5_get_child_mesh_intersections()
-        self._init_3_6_get_intersection_submeshes()
+        fancy_print(f"DEBUGGING 3_5, 3_6 (mesh intersections)", format_type='log_important')
+        # self._init_3_5_get_child_mesh_intersections()
+        # self._init_3_6_get_intersection_submeshes()
         self._init_3_7_get_integration_measures()
         fancy_print(f"Step 3 of initialization completed successfully!", format_type='log_important')
     def _init_4(self):
@@ -956,6 +957,8 @@ class Model:
         fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', new_lines=[1,0],format_type='timestep')
         if self.config.solver['use_snes']:
             fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
+            self.solver.ksp.pc.setType('fieldsplit')
+            self.solver.ksp.setType('bicg')
             self.solver.solve(None, self._ubackend)
             self.idx_nl.append(self.solver.its)
             max_idx_nl = self.solver.max_it
@@ -1000,6 +1003,7 @@ class Model:
 
         # Update time dependent parameters
         for parameter_name, parameter in self.pc.items:
+            new_value = None
             if not parameter.is_time_dependent:
                 continue
             if not parameter.use_preintegration:
@@ -1015,6 +1019,7 @@ class Model:
                     # Just in case... return a nan if value is outside of bounds
                     new_value = float(np.interp(t, data[:,0], data[:,1], left=np.nan, right=np.nan))
                     fancy_print(f"Time-dependent parameter {parameter_name} updated by data. New value is {new_value}", format_type='log')
+                
             if parameter.use_preintegration:
                 if parameter.type == 'expression':
                     a = parameter.preint_sym_expr.subs({'t': tn}).evalf()
@@ -1028,9 +1033,10 @@ class Model:
                     new_value = float((b-a)/dt)  
                     fancy_print(f"Time-dependent parameter {parameter_name} updated by pre-integrated data. New value is {new_value}", format_type='log')
 
-            assert not np.isnan(new_value)
-            parameter.value = new_value
-            parameter.dolfin_constant.assign(new_value)
+            if new_value is not None:
+                assert not np.isnan(new_value)
+                parameter.value = new_value
+                parameter.dolfin_constant.assign(new_value)
 
     def stopwatch(self, key, stop=False):
         "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"

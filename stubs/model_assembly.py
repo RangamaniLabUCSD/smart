@@ -917,12 +917,14 @@ class Flux(ObjectInstance):
         #if not self.is_boundary_condition:
         if self.topology in ['volume', 'surface']:
             self.measure       = self.destination_compartment.mesh.dx
+            self.measure_units = self.destination_compartment.compartment_units**self.destination_compartment.dimensionality
         elif self.topology in ['volume_to_surface', 'surface_to_volume', 'volume-volume_to_surface', 'volume-surface_to_volume']:
             # intersection of this surface with boundary of source volume(s)
-            assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
-            self.measure = self.surface.mesh.intersection_dx[self.volume_ids]
-            #print("DEBUGGING")
-            # self.measure = self.surface.mesh.dx
+            # assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
+            # self.measure = self.surface.mesh.intersection_dx[self.volume_ids]
+            print("DEBUGGING INTEGRATION MEASURE")
+            self.measure = self.surface.mesh.dx
+            self.measure_units = self.surface.compartment_units**self.surface.dimensionality
 
     @property
     def equation_variables(self):
@@ -948,6 +950,10 @@ class Flux(ObjectInstance):
         form_result = d.Constant(-1) * self.equation_value * self.destination_species.v * self.measure
         self._form = form_result
         return form_result
+    
+    @property
+    def molecules_per_second(self):
+        return (d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
 
     # def get_is_linear(self):
     #     """
