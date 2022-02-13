@@ -246,8 +246,14 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
         text_color = 'magenta'; num_banners = 1; new_lines = [1,0]
     elif format_type == 'subtitle':
         text_color = 'green'; filler_char = '.'; left_justify=True
+    elif format_type == 'data':
+        buffer_color='white'; text_color = 'white'; filler_char = ''; left_justify=True
+    elif format_type == 'data_important':
+        buffer_color='white'; text_color = 'red'; filler_char = ''; left_justify=True
     elif format_type == 'log':
-        buffer_color='white'; text_color = 'green'; filler_char = '.'; left_justify=True
+        buffer_color='white'; text_color = 'green'; filler_char = ''; left_justify=True
+    elif format_type == 'logred':
+        buffer_color='white'; text_color = 'green'; filler_char = ''; left_justify=True
     elif format_type == 'log_important':
         buffer_color='white'; text_color = 'magenta'; filler_char = '.'
     elif format_type == 'log_urgent':
@@ -255,9 +261,13 @@ def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_cha
     elif format_type == 'warning':
         buffer_color='magenta'; text_color = 'red'; filler_char = '!'; num_banners=2; new_lines=[1,1]
     elif format_type == 'timestep':
-        text_color = 'magenta'; num_banners = 2; filler_char = '.'; new_lines=[1,1]
+        text_color = 'red'; num_banners = 2; filler_char = '.'; new_lines=[1,1]
     elif format_type == 'solverstep':
-        text_color = 'magenta'; num_banners = 1; filler_char = '.'; new_lines=[1,1]
+        text_color = 'red'; num_banners = 1; filler_char = '.'; new_lines=[1,1]
+    elif format_type == 'assembly':
+        text_color = 'magenta'; num_banners = 0; filler_char = '.'; new_lines=[1,0]
+    elif format_type == 'assembly_sub':
+        text_color = 'magenta'; num_banners = 0; filler_char = ''; new_lines=[0,0]; left_justify=True
     elif format_type is not None:
         raise ValueError("Unknown formatting_type.")
     

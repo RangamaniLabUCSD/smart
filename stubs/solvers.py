@@ -2,6 +2,7 @@
 import dolfin as d
 import petsc4py.PETSc as PETSc
 import ufl
+from stubs.common import _fancy_print as fancy_print
 
 
 class stubsSNESProblem():
@@ -79,7 +80,7 @@ class stubsSNESProblem():
     """
 
 
-    def __init__(self, u, Fforms, Jforms, block_sizes, mpi_comm_world):
+    def __init__(self, u, Fforms, Jforms, compartments, mpi_comm_world):
         self.u = u
         self.Fforms = Fforms
         self.Jforms = Jforms
@@ -101,10 +102,13 @@ class stubsSNESProblem():
         self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms]
 
         # Need block sizes because some forms may be empty
-        self.block_sizes = block_sizes
+        self.block_sizes = [c._num_dofs for c in compartments]
+
+        self.compartment_names = [c.name for c in compartments]
 
     def initialize_petsc_matnest(self):
         dim = self.dim
+        fancy_print(f"Initializing block Jacobian", format_type='assembly')
 
         #Jdpetsc = [[None]*dim]*dim
         Jpetsc = []
@@ -114,8 +118,9 @@ class stubsSNESProblem():
 
                 Jsum = None
                 for k in range(len(self.Jforms[ij])):
+                    # compartment names for indices
                     if self.Jforms[ij][k].function_space(0) is None:
-                        print(f"Jforms[{ij}][{k}] has no function space")
+                        fancy_print(f"{self.Jijk_name(i,j,k)} has no function space", format_type='log')
                         continue
 
                     # initialize the tensor
@@ -126,9 +131,9 @@ class stubsSNESProblem():
                     else:
                         Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
 
-                    print(f"init: ij={ij}, k={k}, tensor size = {Jsum.size(0), Jsum.size(1)}")
+                    fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
                 if Jsum is None:
-                    print(f"Jforms[{ij}] is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}")
+                    fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
                     Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
                     #raise AssertionError()
                     # tensor = d.PETScMatrix(Jsum.size(0))
@@ -144,6 +149,7 @@ class stubsSNESProblem():
 
     def initialize_petsc_vecnest(self):
         dim = self.dim
+        fancy_print(f"Initializing block residual vector", format_type='assembly')
 
         Fpetsc = []
         for j in range(dim):
@@ -154,14 +160,14 @@ class stubsSNESProblem():
             Fsum = None
             for k in range(len(self.Fforms[j])):
                 if self.Fforms[j][k].function_space(0) is None:
-                    print(f"Fforms[{j}][{k}] has no function space")
+                    fancy_print(f"{self.Fjk_name(j,k)}] has no function space", format_type='log')
                     continue
                 if Fsum is None:
                     Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
                 else:
                     Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
             if Fsum is None:
-                print(f"Fforms[{j}] is empty - initializing as empty PETSc Vector with size {self.block_sizes[j]}")
+                fancy_print(f"{self.Fjk_name(j)} is empty - initializing as empty PETSc Vector with size {self.block_sizes[j]}")
                 Fsum = self.init_zero_petsc_vector(self.block_sizes[j])
                 #raise AssertionError()
 
@@ -182,43 +188,61 @@ class stubsSNESProblem():
 
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
+        fancy_print(f"Assembling block Jacobian", format_type='assembly')
         dim = self.dim
-        #Jmats = []
+
+        # Check for empty forms
+        empty_forms = []
+        for i in range(dim):
+            for j in range(dim):
+                ij = i*dim+j
+                if all(self.Jforms[ij][k].function_space(0) is None for k in range(len(self.Jforms[ij]))):
+                    empty_forms.append((i,j))
+        if len(empty_forms) > 0:
+            fancy_print(f"Forms {empty_forms} are empty. Skipping assembly.", format_type='data')
+
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using dolfin wrapper as tensor
         #for ij, Jij_forms in enumerate(self.Jforms):
         for i in range(dim):
             for j in range(dim):
+                if (i,j) in empty_forms:
+                    continue
                 ij = i*dim+j
                 num_subforms = len(self.Jforms[ij])
                 
                 # Extract petsc submatrix
                 Jij_petsc = Jnest.getNestSubMatrix(i,j)
 
-                print(f"Beginning assembly of J[{i}][{j}] (with {num_subforms} subforms). PETSc Matrix info: {Jij_petsc.getInfo()}\n")
+                if num_subforms==1 and self.Jforms[ij][0].function_space(0) is None:
+                    continue
+                fancy_print(f"Assembling {self.Jijk_name(i,j)}:", format_type='assembly_sub')
 
                 # Assemble the form
                 if num_subforms==1:
                     # Check for empty form
                     if self.Jforms[ij][0].function_space(0) is not None:
                         d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
+                        self.print_Jijk_info(i,j,k=None,tensor=Jij_petsc)
+                        continue
                     else:
-                        print(f"J[{i}][{j}] only has empty subforms. Skipping assembly.")
-                    continue
+                        raise AssertionError()
                 else:
                     Jmats=[]
                     # Jijk == dFi/duj(Omega_k)
                     for k in range(num_subforms):
                         # Check for empty form
                         if self.Jforms[ij][k].function_space(0) is None:
-                            print(f"J[{i}][{j}] (subform {k}) is empty. Skipping assembly.")
+                            fancy_print(f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.", format_type='data')
                             continue
                         # if we have the sparsity pattern re-use it, if not save it for next time
                         if self.tensors[ij][k] is None:
                             self.tensors[ij][k] = d.PETScMatrix()
                         else:
-                            print(f"Reusing tensor for J[{i}][{j}] (subform {k}), tensor size = "\
-                                  f"{self.tensors[ij][k].size(0)}, {self.tensors[ij][k].size(1)}")
+                            fancy_print(f"Reusing tensor for {self.Jijk_name(i,j,k)}", format_type='data')
+                        # Assemble and append to the list of subforms
                         Jmats.append(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
+                        # Print some useful info on assembled Jijk
+                        self.print_Jijk_info(i,j,k,tensor=self.tensors[ij][k].mat())
 
                 # Sum the assembled forms
                 Jij_petsc.zeroEntries() # this maintains sparse structure
@@ -227,11 +251,14 @@ class stubsSNESProblem():
                     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
                 #Jij_petsc.assemble()    
 
+                self.print_Jijk_info(i,j,k=None,tensor=Jij_petsc)
+
         # assemble petsc
         Jnest.assemble()
 
     def assemble_Fnest(self, Fnest):
         dim = self.dim
+        fancy_print(f"Assembling block residual vector", format_type='assembly')
         Fj_petsc = Fnest.getNestSubVecs()
         Fvecs = []
         for j in range(dim):
@@ -298,6 +325,32 @@ class stubsSNESProblem():
         # M.assemble()
         # return d.PETScMatrix(M)
         #M.assemble() #?
+    
+    def Jijk_name(self, i, j, k=None):
+        if k is None:
+            return f"J{i}{j} = dF[{self.compartment_names[i]}]/du[{self.compartment_names[j]}]"
+        else:
+            return f"J{i}{j}{k} = dF[{self.compartment_names[i]}]/du[{self.compartment_names[j]}] (domain={self.compartment_names[k]})"
+    def Fjk_name(self, j, k=None):
+        if k is None:
+            return f"F{j} = F[{self.compartment_names[j]}]"
+        else:
+            return f"F{j} = F[{self.compartment_names[j]}] (domain={self.compartment_names[k]})"
+            
+    def print_Jijk_info(self, i, j, k=None, tensor=None):
+        if tensor is None:
+            return
+        # Print some useful info on Jijk
+        info = tensor.getInfo()
+        # , block_size={int(info['block_size'])}
+        info_str = f"size={str(tensor.size)[1:-1]: <18}, nnz={int(info['nz_allocated']): <8}, memory[MB]={int(1e-6*info['memory']): <6}, "\
+                    f"assemblies={int(info['assemblies']): <4}, mallocs={int(info['mallocs']): <4}\n"
+        if k is None:
+            fancy_print(f"Assembled form {self.Jijk_name(i,j,k)}:\n{info_str}", format_type='data')
+        else:
+            fancy_print(f"Assembled subform {self.Jijk_name(i,j,k)}:\n{info_str}", format_type='data')
+        if info['nz_unneeded'] > 0:
+            fancy_print(f"WARNING: {info['nz_unneeded']} nonzero entries are unneeded", format_type='warning')
 
 
 # """

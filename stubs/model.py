@@ -66,13 +66,16 @@ class Model:
         # Solver related parameters
         self.idx = 0
         self.idx_nl = list()
+        self.idx_l = list()
         # self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
         # self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
-        self.data = {'newton_iter': list(),
-                     'tvec': list(),
-                     'dtvec': list(),}
+        # self.data = {'newton_iter': list(),
+        #              'tvec': list(),
+        #              'dtvec': list(),}
         self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
         self.t = 0.0
+        self.tvec = list()
+        self.dtvec = list()
         self.dt = self.config.solver['initial_dt']
         self.T = d.Constant(self.t)
         self.dT = d.Constant(self.dt)
@@ -170,7 +173,7 @@ class Model:
         self._init_3_2_read_parent_mesh_functions_from_file()
         self._init_3_3_extract_submeshes()
         self._init_3_4_build_submesh_mappings()
-        fancy_print(f"DEBUGGING 3_5, 3_6 (mesh intersections)", format_type='log_important')
+        fancy_print(f"DEBUGGING 3_5, 3_6 (mesh intersections)", format_type='warning')
         # self._init_3_5_get_child_mesh_intersections()
         # self._init_3_6_get_intersection_submeshes()
         self._init_3_7_get_integration_measures()
@@ -723,12 +726,16 @@ class Model:
         # if use snes
         if self.config.solver['use_snes']:
             fancy_print(f"Using SNES solver", format_type='log')
-            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks, self.block_sizes, self.mpi_comm_world)
+            compartment_names = [c.name for c in self._active_compartments]
+            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks, self._active_compartments, self.mpi_comm_world)
             self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
             self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
 
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
+            # These are some reasonable preconditioner/linear solver settings for block systems
+            self.solver.ksp.pc.setType('fieldsplit')
+            self.solver.ksp.setType('bicg') # bcgs may be appropriate if convergence is difficult
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
         else:
@@ -738,8 +745,8 @@ class Model:
             #self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)
             self.solver = d.MixedNonlinearVariationalSolver(self.problem)
     
-    @staticmethod
-    def get_block_system(Fsum, u):
+    #@staticmethod
+    def get_block_system(self, Fsum, u):
         """
         The high level dolfin.solve(F==0, u) eventually calls cpp.fem.MixedNonlinearVariationalSolver,
         but first modifies F and defines J into a specific structure that is required for d.assemble_mixed()
@@ -793,15 +800,16 @@ class Model:
         # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
         # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]] If a form has integrals on multiple domains, they are split into a list
         Flist = list()
-        for Fi in Fblock:
+        for idx, Fi in enumerate(Fblock):
             if Fi is None or Fi.empty():
-                print("Fi empty")
+                fancy_print(f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty", format_type='warning')
                 Flist.append([d.cpp.fem.Form(1, 0)])
             else:
                 Fs = []
                 for Fsub in sub_forms_by_domain(Fi):
                     if Fsub is None or Fsub.empty():
-                        print("Fsub empty")
+                        domain = self.get_mesh_by_id(Fsub.mesh().id()).name
+                        fancy_print(f"F{idx} = F[{self.cc.get_index(idx).name}] is empty on integration domain {domain}", format_type='logred')
                         Fs.append(d.cpp.fem.Form(1, 0))
                     else:
                         Fs.append(d.Form(Fsub))
@@ -810,13 +818,18 @@ class Model:
 
         # Decompose J blocks into subforms based on domain of integration
         Jlist = list()
-        for Ji in J:
+        for idx, Ji in enumerate(J):
+            idx_i, idx_j = divmod(idx, len(u))
             if Ji is None or Ji.empty():
-                print("Ji empty")
+                fancy_print(f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}] is empty", format_type='logred')
                 Jlist.append([d.cpp.fem.Form(2, 0)])
             else:
                 Js = []
                 for Jsub in sub_forms_by_domain(Ji):
+                    if Jsub is None or Jsub.empty():
+                        domain = self.get_mesh_by_id(Jsub.mesh().id()).name
+                        fancy_print(f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}]"\
+                                    f"is empty on integration domain {domain}", format_type='logred')
                     Js.append(d.Form(Jsub))
                 Jlist.append(Js)
         
@@ -929,7 +942,7 @@ class Model:
         tnext = self.t + self.dt
         if tnext > self.final_t:
             new_dt = self.final_t - self.t 
-            fancy_print("[{self.idx}, t={tnow}] Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
+            fancy_print(f"[{self.idx}, t={self.t}] Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
             self.set_dt(new_dt)
 
     def forward_time_step(self, dt_factor=1):
@@ -957,14 +970,21 @@ class Model:
         fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', new_lines=[1,0],format_type='timestep')
         if self.config.solver['use_snes']:
             fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
-            self.solver.ksp.pc.setType('fieldsplit')
-            self.solver.ksp.setType('bicg')
+            self.stopwatch("SNES solver")
             self.solver.solve(None, self._ubackend)
+            self.stopwatch("SNES solver", stop=True)
+
+            # Check how solver did
             self.idx_nl.append(self.solver.its)
-            max_idx_nl = self.solver.max_it
-            if self.idx_nl[-1] > max_idx_nl:
+            self.idx_l.append(self.solver.ksp.its)
+            fancy_print(f"Non-linear solver iterations: {self.solver.its}", format_type='log')
+            fancy_print(f"Linear solver iterations: {self.solver.ksp.its}", format_type='log')
+            fancy_print(f"SNES converged reason: {self.solver.getConvergedReason()}", format_type='log')
+            fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
+            if not self.solver.converged:
+                fancy_print(f"SNES failed to converge. Reason = {self.solver.getConvergedReason()}", format_type='log')
+                fancy_print(f"(https://petsc.org/main/docs/manualpages/SNES/SNESConvergedReason.html)", format_type='log')
                 raise AssertionError()
-            fancy_print(f'SNES took {self.idx_nl[-1]} iterations (maximum is {max_idx_nl})', format_type='log')
         else:
             fancy_print(f'Solving using dolfin.MixedNonlinearVariationalSolver()', format_type='log')
             self.solver.solve()
@@ -973,6 +993,8 @@ class Model:
         #self.data['success'].append(success)
         # self.data['tvec'].update(self.t)
         # self.data['dtvec'].update(self.dt)
+        self.tvec.append(self.t)
+        self.dtvec.append(self.dt)
 
         self.update_solution() # assign most recently computed solution to "previous solution"
         #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
@@ -1462,6 +1484,12 @@ class Model:
         else:
             return np.linalg.norm(res_vec, norm)
     
+    def get_mesh_by_id(self, mesh_id):
+        for mesh in self.parent_mesh.all_meshes.values():
+            if mesh.id == mesh_id:
+                return mesh
+            else:
+                raise ValueError(f"No mesh with id {mesh_id}")
 
     # def assign_initial_conditions(self):
     #     ukeys = ['k', 'n', 'u']
