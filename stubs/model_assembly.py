@@ -787,12 +787,18 @@ class Flux(ObjectInstance):
         # Getting additional flux properties
         self._post_init_get_involved_species_parameters_compartments()
         self._post_init_get_flux_topology()
-        # Evaluate equation with no unit scale factor
-        self._post_init_get_lambda_equation()
-        self.evaluate_equation()
+        # # Get equation variables
+        # self.equation_variables = {variable.name: variable.dolfin_quantity for variable in {**self.parameters, **self.species}.values()}
+        # self.equation_variables.update({'unit_scale_factor': self.unit_scale_factor})
+        # Get equation lambda expression
+        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
+
+        # Evaluate equation lambda expression with uninitialized unit scale factor
+        #self.equation_lambda_eval()
         # Update equation with correct unit scale factor
         self._post_init_get_flux_units()
         self._post_init_get_integration_measure()
+
 
     def _post_init_get_involved_species_parameters_compartments(self):
         self.destination_compartment = self.destination_species.compartment
@@ -864,9 +870,6 @@ class Flux(ObjectInstance):
             self.is_boundary_condition = True
         else:
             raise AssertionError()
-    
-    def _post_init_get_lambda_equation(self):
-        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
 
     def _post_init_get_flux_units(self):
         concentration_units = self.destination_species.concentration_units
@@ -875,32 +878,37 @@ class Flux(ObjectInstance):
 
         # The expected units
         if self.is_boundary_condition:
-            self._flux_units = concentration_units / compartment_units * diffusion_units # ~D*du/dn
+            self._expected_flux_units = concentration_units / compartment_units * diffusion_units # ~D*du/dn
         else:
-            self._flux_units = concentration_units / unit.s # rhs term. ~du/dt
+            self._expected_flux_units = concentration_units / unit.s # rhs term. ~du/dt
+        
+        # Use the uninitialized unit_scale_factor to get the actual units
+        self.unit_scale_factor = 1.0*unit.dimensionless # this is redundant if called by __post_init__
+        initial_equation_units = self.equation_lambda_eval('units')
 
         # If unit dimensionality is not correct a parameter likely needs to be adjusted
-        if self._flux_units.dimensionality != self.equation_units.dimensionality:
-            raise ValueError(f"Flux {self.name} has wrong units "
-                                f"(expected {self._flux_units}, got {self.equation_units}.")
+        if self._expected_flux_units.dimensionality != initial_equation_units.dimensionality:
+            raise ValueError(f"Flux {self.name} has wrong units (cannot be converted)"
+                                f" - expected {self._expected_flux_units}, got {self.initial_equation_units}.")
         # Fix scaling 
         else:
-            self.unit_scale_factor = self.equation_units.to(self._flux_units)/self.equation_units
-            assert self.unit_scale_factor.dimensionless
-            assert self.equation_units*self.unit_scale_factor == self.equation_units.to(self._flux_units)
+            # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
+            self.unit_scale_factor = initial_equation_units.to(self._expected_flux_units)/initial_equation_units
+            self.equation_units = self.equation_lambda_eval('units') 
 
+            # should be redundant with previous checks, but just in case
+            assert self.unit_scale_factor.dimensionless 
+            assert self.equation_units*self.unit_scale_factor == self.equation_units.to(self._expected_flux_units)
+            assert self.equation_units == self._expected_flux_units
+
+            # If we already have the correct units, there is no need to update the equation
             if self.unit_scale_factor.magnitude == 1.0:
                 return
 
             fancy_print(f"\nFlux {self.name} scaled by {self.unit_scale_factor}", format_type='log')
             fancy_print(f"Old flux units: {self.equation_units}", format_type='log')
-            fancy_print(f"New flux units: {self._flux_units}", format_type='log')
+            fancy_print(f"New flux units: {self._expected_flux_units}", format_type='log')
             print("")
-
-            # update equation with new scale factor
-            self._post_init_get_lambda_equation()
-            self.evaluate_equation()
-            assert self.equation_units == self._flux_units
 
     def _post_init_get_integration_measure(self):
         """
@@ -923,38 +931,53 @@ class Flux(ObjectInstance):
             # intersection of this surface with boundary of source volume(s)
             # assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
             # self.measure = self.surface.mesh.intersection_dx[self.volume_ids]
-            print("DEBUGGING INTEGRATION MEASURE")
+            print("DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)")
             self.measure = self.surface.mesh.dx
             self.measure_units = self.surface.compartment_units**self.surface.dimensionality
 
+
+    # We define this as a property so that it is automatically updated
     @property
     def equation_variables(self):
         variables = {variable.name: variable.dolfin_quantity for variable in {**self.parameters, **self.species}.values()}
         variables.update({'unit_scale_factor': self.unit_scale_factor})
         return variables
     
-    @property
-    def equation_value(self):
-        return self.equation_quantity.magnitude
-    @property
-    def equation_units(self):
-        return common.pint_unit_to_quantity(self.equation_quantity.units)
+    # @property
+    # def equation_value(self):
+    #     return self.equation_quantity.magnitude
+    # @property
+    # def equation_units(self):
+    #     return common.pint_unit_to_quantity(self.equation_quantity.units)
         
-    def evaluate_equation(self):
-        "Updates equation_value and equation_units"
-        self.equation_quantity  = self.equation_lambda(**self.equation_variables)
+    def equation_lambda_eval(self, input_type='quantity'):
+        """
+        Evaluates the equation lambda function using either the quantity (value * units), the value, or the units.
+        The values and units are evaluted separately and then combined because some expressions don't work well
+        with pint quantity types.
+        """
+        if input_type=='value':
+            equation_variables_values = {varname: var.magnitude for varname, var in self.equation_variables.items()}
+            return self.equation_lambda(**equation_variables_values)
+        elif input_type=='units':
+            equation_variables_units = {varname: common.pint_unit_to_quantity(var.units) for varname, var in self.equation_variables.items()}
+            # fixes minus sign in units and changes to quantity type so we can use to() method
+            return 1*self.equation_lambda(**equation_variables_units).units 
+        elif input_type=='quantity':
+            #self.equation_quantity  = self.equation_lambda(**self.equation_variables)
+            return self.equation_lambda_eval(input_type='value') * self.equation_lambda_eval(input_type='units')
     
+
+    # Seems like setting this as a @property doesn't cause fenics to recompile
     @property
     def form(self):
         "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
-        self.evaluate_equation()
-        form_result = d.Constant(-1) * self.equation_value * self.destination_species.v * self.measure
-        self._form = form_result
-        return form_result
+        return d.Constant(-1) * self.equation_lambda_eval(input_type='value') * self.destination_species.v * self.measure
     
     @property
     def molecules_per_second(self):
-        return (d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+        "Return the sum of the assembled form * -1 in units of molecule/second"
+        return -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
 
     # def get_is_linear(self):
     #     """

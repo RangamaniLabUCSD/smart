@@ -503,6 +503,9 @@ class Model:
     def _init_4_0_initialize_dolfin_parameters(self):
         """
         Create dolfin objects for each parameter
+        Because we don't want to re-create dolfin constants each time (will cause fenics to recompile form)
+        we only define them once here. That means that once the model is initialized, changing a parameter's
+        value does not change the underlying dolfin object. Values must be assigned via paramter.dolfin_constant.assign()
         """
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:

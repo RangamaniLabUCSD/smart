@@ -492,7 +492,7 @@ def empty_sbmodel():
 def pint_unit_to_quantity(pint_unit):
     if not isinstance(pint_unit, pint.Unit):
         raise TypeError("Input must be a pint unit")
-    # returning pint.Quantity(1, pint_unit) changes the unit registry
+    # returning pint.Quantity(1, pint_unit) changes the unit registry which we do NOT want
     return 1.0*pint_unit 
 
 def pint_quantity_to_unit(pint_quantity):
