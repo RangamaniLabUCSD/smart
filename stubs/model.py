@@ -73,13 +73,6 @@ class Model:
         #              'tvec': list(),
         #              'dtvec': list(),}
         self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
-        self.t = 0.0
-        self.tvec = list()
-        self.dtvec = list()
-        self.dt = self.config.solver['initial_dt']
-        self.T = d.Constant(self.t)
-        self.dT = d.Constant(self.dt)
-        self.final_t = self.config.solver['final_t']
         self.reset_dt = False
 
         # Timers
@@ -134,19 +127,35 @@ class Model:
     # ==============================================================================
     # Model - Initialization
     # ==============================================================================
-
-
     def initialize(self):
         """
         Notes:
         * Now works with sub-volumes
         * Removed scale_factor (too ambiguous)
         """
+
+        # Solver related parameters
+        self.t = 0.0
+        self.dt = self.config.solver['initial_dt']
+        self.T = d.Constant(self.t)
+        self.dT = d.Constant(self.dt)
+        self.final_t = self.config.solver['final_t']
+        self.tvec = [self.t]
+        self.dtvec = [self.dt]
+        self.config.set_logger_levels()
+
         self._init_1()
         self._init_2()
         self._init_3()
         self._init_4()
         self._init_5()
+
+        fancy_print(f"Model finished initialization!", format_type='title')
+        self.pc.print()
+        self.sc.print()
+        self.cc.print()
+        self.print_meshes()
+        self.rc.print()
 
     def _init_1(self):
         "Checking validity of model"
@@ -948,15 +957,17 @@ class Model:
     def forward_time_step(self, dt_factor=1):
         "Take a step forward in time and upate time-dependent parameters"
         self.dt = float(self.dt*dt_factor)
-        self.t = float(self.t+self.dt)
         self.tn = float(self.t) # save the previous time
+        self.t = float(self.t+self.dt)
         self.dT.assign(self.dt)
         self.T.assign(self.t)
 
+        self.tvec.append(self.t)
+        self.dtvec.append(self.dt)
+
         self.update_time_dependent_parameters()
-        fancy_print(f"t: {self.t} , dt: {self.dt}", format_type='log')
         
-    def monolithic_solve(self, bcs=[]):
+    def monolithic_solve(self):
         self.idx += 1
         self.stopwatch("Total time step") # start a timer for the total time step
         # Adjust dt if necessary
@@ -993,9 +1004,8 @@ class Model:
         #self.data['success'].append(success)
         # self.data['tvec'].update(self.t)
         # self.data['dtvec'].update(self.dt)
-        self.tvec.append(self.t)
-        self.dtvec.append(self.dt)
 
+        
         self.update_solution() # assign most recently computed solution to "previous solution"
         #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
         self.stopwatch("Total time step", stop=True)
@@ -1032,14 +1042,17 @@ class Model:
                 # Parameters that are defined as dolfin expressions will automatically be updated by model.T.assign(t)
                 if parameter.type == 'expression':
                     parameter.value = parameter.sym_expr.subs({'t': t}).evalf()
+                    parameter.value_vector = np.vstack((parameter.value_vector, [t, parameter.value]))
                     continue
                 # Parameters from a data file need to have their dolfin constant updated
-                if parameter.type == 'from_data':
+                if parameter.type == 'from_file':
+                    t_data = parameter.sampling_data[:,0]
+                    p_data = parameter.sampling_data[:,1]
                     # We never want time to extrapolate beyond the provided data.
-                    if t<data[0,0] or t>data[-1,0]:
+                    if t<t_data[0] or t>t_data[-1]:
                         raise Exception("Parameter cannot be extrapolated beyond provided data.")
                     # Just in case... return a nan if value is outside of bounds
-                    new_value = float(np.interp(t, data[:,0], data[:,1], left=np.nan, right=np.nan))
+                    new_value = float(np.interp(t, t_data, p_data, left=np.nan, right=np.nan))
                     fancy_print(f"Time-dependent parameter {parameter_name} updated by data. New value is {new_value}", format_type='log')
                 
             if parameter.use_preintegration:
@@ -1048,7 +1061,7 @@ class Model:
                     b = parameter.preint_sym_expr.subs({'t': t}).evalf()
                     new_value = float((b-a)/dt)
                     fancy_print(f"Time-dependent parameter {parameter_name} updated by pre-integrated expression. New value is {new_value}", format_type='log')
-                if parameter.type == 'from_data':
+                if parameter.type == 'from_file':
                     int_data = parameter.preint_sampling_data
                     a = np.interp(tn, int_data[:,0], int_data[:,1], left=np.nan, right=np.nan)
                     b = np.interp(t, int_data[:,0], int_data[:,1], left=np.nan, right=np.nan)
@@ -1057,16 +1070,20 @@ class Model:
 
             if new_value is not None:
                 assert not np.isnan(new_value)
+                parameter.value_vector = np.vstack((parameter.value_vector, [t, new_value]))
                 parameter.value = new_value
                 parameter.dolfin_constant.assign(new_value)
 
-    def stopwatch(self, key, stop=False):
+    def stopwatch(self, key, stop=False, pause=False):
         "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
-        if key not in self.timers.keys():
+        if key not in self.timers.keys(): # initialize timer
             self.timers[key] = d.Timer()
+        if pause: 
+            self.timers[key].stop()
+            return
         if not stop:
             self.timers[key].start()
-        else:
+        if stop:
             elapsed_time = self.timers[key].elapsed()[0]
             time_str = str(elapsed_time)[0:8]
             fancy_print(f"{key} finished in {time_str} seconds", format_type='log')

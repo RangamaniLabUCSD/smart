@@ -405,6 +405,7 @@ class Parameter(ObjectInstance):
 
         #self.dolfin_constant = d.Constant(self.value)
         #self.value_unit = self.value*self.unit
+        self.value_vector = np.array([0,self.value])
 
 
     @property

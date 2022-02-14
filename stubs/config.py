@@ -74,3 +74,7 @@ class Config:
         other_loggers.remove('dolfin')
         for logger_name in other_loggers:
             logging.getLogger(logger_name).setLevel(self.loglevel[logger_name])
+
+    def set_all_logger_levels(self, log_level):
+        for logger_name in self.loglevel.keys():
+            logging.getLogger(logger_name).setLevel(log_level)
