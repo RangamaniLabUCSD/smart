@@ -40,8 +40,7 @@ class Config:
         self.probe_plot         = {}
 
         self.reaction_database  = {'prescribed': 'k',
-                                   'prescribed_linear': 'k*u',
-                                   'prescribed_leak': 'k*(1-u/umax)'}
+                                   'prescribed_linear': 'k*u',}
         
         self.loglevel           = {'FFC': 'DEBUG',
                                    'UFL': 'DEBUG',

@@ -586,6 +586,10 @@ class Species(ObjectInstance):
     @property
     def D_quantity(self):
         return self.D * self.diffusion_units
+    
+    @property
+    def sym(self):
+        return Symbol(self.name)
 
 
 class CompartmentContainer(ObjectContainer):
@@ -702,6 +706,9 @@ class Reaction(ObjectInstance):
         self.check_validity()
         self.fluxes = dict()
 
+        if self.eqn_f_str != '' or self.eqn_r_str != '' and self.reaction_type == 'mass_action':
+            self.reaction_type = 'custom'
+
         # Finish initializing the species map
         for species_name in set(self.lhs + self.rhs):
             if species_name not in self.species_map:
@@ -740,6 +747,25 @@ class Reaction(ObjectInstance):
                 flux_name     = self.name + f" [{species_name} (r)]"
                 eqn           = -stoich * parse_expr(self.eqn_r_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
+    
+    def get_steady_state_equation(self):
+        if len(self.fluxes) == 0:
+            raise ValueError(f"Reaction {self.name} has no fluxes (maybe run model.initialize()?)")
+        # choose the first flux of reaction, and use its destination species to find its paired flux (forward-reverse)
+        # it doesnt matter which destination species is chosen since the flux is always the same
+        r_dest_species = list(self.fluxes.items())[0][1].destination_species
+        r_fluxes = [flux for flux in self.fluxes.values() if flux.destination_species == r_dest_species]
+        assert len(r_fluxes) in [1,2]
+        total_flux_equation = 0
+        for flux in r_fluxes:
+            # substitute the parameter and unit scale factor magnitudes
+            flux_equation = flux.equation.subs({'unit_scale_factor': flux.unit_scale_factor.magnitude})
+            parameter_value_dict = {parameter.name: parameter.value for parameter in flux.parameters.values()}
+            flux_equation = flux_equation.subs(parameter_value_dict)
+
+            total_flux_equation += flux_equation
+        
+        return total_flux_equation
 
 
 class FluxContainer(ObjectContainer):
@@ -750,7 +776,12 @@ class FluxContainer(ObjectContainer):
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['_species_name', 'equation', 'topology', 'equation_quantity']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+
+    def print(self, tablefmt='fancy_grid'):
+        for f in self:
+            f.equation_lambda_eval('quantity')
+        super().print(tablefmt, self.properties_to_print)
 
 @dataclass
 class Flux(ObjectInstance):
@@ -905,9 +936,9 @@ class Flux(ObjectInstance):
             if self.unit_scale_factor.magnitude == 1.0:
                 return
 
-            fancy_print(f"\nFlux {self.name} scaled by {self.unit_scale_factor}", format_type='log')
+            fancy_print(f"Flux {self.name} scaled by {self.unit_scale_factor}", new_lines=[1,0], format_type='log')
             fancy_print(f"Old flux units: {self.equation_units}", format_type='log')
-            fancy_print(f"New flux units: {self._expected_flux_units}", format_type='log')
+            fancy_print(f"New flux units: {self._expected_flux_units}", new_lines=[0,1], format_type='log')
             print("")
 
     def _post_init_get_integration_measure(self):
@@ -958,14 +989,17 @@ class Flux(ObjectInstance):
         """
         if input_type=='value':
             equation_variables_values = {varname: var.magnitude for varname, var in self.equation_variables.items()}
-            return self.equation_lambda(**equation_variables_values)
+            self._equation_values = self.equation_lambda(**equation_variables_values)
+            return self._equation_values
         elif input_type=='units':
             equation_variables_units = {varname: common.pint_unit_to_quantity(var.units) for varname, var in self.equation_variables.items()}
             # fixes minus sign in units and changes to quantity type so we can use to() method
-            return 1*self.equation_lambda(**equation_variables_units).units 
+            self._equation_units = 1*self.equation_lambda(**equation_variables_units).units 
+            return self._equation_units
         elif input_type=='quantity':
             #self.equation_quantity  = self.equation_lambda(**self.equation_variables)
-            return self.equation_lambda_eval(input_type='value') * self.equation_lambda_eval(input_type='units')
+            self._equation_quantity = self.equation_lambda_eval(input_type='value') * self.equation_lambda_eval(input_type='units')
+            return self._equation_quantity
     
 
     # Seems like setting this as a @property doesn't cause fenics to recompile

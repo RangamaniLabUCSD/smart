@@ -7,6 +7,7 @@ from stat import UF_COMPRESSED
 from cached_property import cached_property
 from itertools import chain, combinations
 from collections import OrderedDict as odict
+import time
 
 import dolfin as d
 import ufl
@@ -127,7 +128,7 @@ class Model:
     # ==============================================================================
     # Model - Initialization
     # ==============================================================================
-    def initialize(self):
+    def initialize(self, initialize_solver=True):
         """
         Notes:
         * Now works with sub-volumes
@@ -148,7 +149,7 @@ class Model:
         self._init_2()
         self._init_3()
         self._init_4()
-        self._init_5()
+        self._init_5(initialize_solver)
 
         fancy_print(f"Model finished initialization!", format_type='title')
         self.pc.print()
@@ -198,12 +199,12 @@ class Model:
         self._init_4_5_name_functions()
         self._init_4_6_check_dolfin_function_validity()
         self._init_4_7_set_initial_conditions()
-    def _init_5(self):
-        "Dolfin solvers"
-        fancy_print(f"Dolfin Solvers (step 5 of ZZ)", format_type='title')
+    def _init_5(self, initialize_solver):
+        fancy_print(f"Dolfin fluxes, forms, and problems+solvers (step 5 of ZZ)", format_type='title')
         self._init_5_1_reactions_to_fluxes()
         self._init_5_2_create_variational_forms()
-        self._init_5_3_setup_variational_problem_and_solver()
+        if initialize_solver:
+            self.initialize_discrete_variational_problem_and_solver()
 
         
 
@@ -726,7 +727,7 @@ class Model:
             Munform = (-un)/self.dT * v * dx
             self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', True))
 
-    def _init_5_3_setup_variational_problem_and_solver(self):
+    def initialize_discrete_variational_problem_and_solver(self):
         fancy_print("Formulating problem as F(u;v) == 0 for newton iterations", format_type='log')
         # self.all_forms = sum([f.form for f in self.forms])
         # self.problem = d.NonlinearVariationalProblem(self.all_forms, self.u['u'], bcs=None)
@@ -1624,3 +1625,30 @@ class Model:
         # else:
         #     dict_to_convert = self.__dict__
         # return pandas.Series(dict_to_convert, name=self.name)
+
+
+
+        
+        
+
+# class Stopwatch(object):
+#     def __init__(self, name=None):
+#         self.name = name
+#         self.start = time.time()
+#         self.end = None
+#     def stopwatch(self, key, stop=False, pause=False):
+#         "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
+#         if key not in self.timers.keys(): # initialize timer
+#             self.timers[key] = d.Timer()
+#         if pause: 
+#             self.timers[key].stop()
+#             return
+#         if not stop:
+#             self.timers[key].start()
+#         if stop:
+#             elapsed_time = self.timers[key].elapsed()[0]
+#             time_str = str(elapsed_time)[0:8]
+#             fancy_print(f"{key} finished in {time_str} seconds", format_type='log')
+#             self.timers[key].stop()
+#             self.timings[key].append(elapsed_time)
+#             return elapsed_time

@@ -5,6 +5,7 @@ import pandas
 import dolfin as d
 #import trimesh
 import numpy as np
+import sympy
 import scipy.interpolate as interp
 import sys
 import os
@@ -237,44 +238,57 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
 # ====================================================
 # fancy printing
 # ====================================================
-def _fancy_print(title_text, buffer_color='cyan', text_color='green', filler_char='=',
-                             num_banners=0, new_lines=[0,0], left_justify=False,
-                             format_type=None):
+def _fancy_print(title_text, buffer_color=None, text_color=None, filler_char=None,
+                             num_banners=None, new_lines=None, left_justify=None,
+                             format_type='default'):
     "Formatted text to stand out."
-    # some default options
-    if format_type == 'title':
-        text_color = 'magenta'; num_banners = 1; new_lines = [1,0]
+
+    # Initialize with the default options
+    buffer_color_ = 'cyan'; text_color_ = 'green'; filler_char_ = '='
+    num_banners_ = 0; new_lines_ = [0,0]; left_justify_ = False
+    # Override with format_type options
+    if format_type == 'default':
+        pass
+    elif format_type == 'title':
+        text_color_ = 'magenta'; num_banners_ = 1; new_lines_ = [1,0]
     elif format_type == 'subtitle':
-        text_color = 'green'; filler_char = '.'; left_justify=True
+        text_color_ = 'green'; filler_char_ = '.'; left_justify_=True
     elif format_type == 'data':
-        buffer_color='white'; text_color = 'white'; filler_char = ''; left_justify=True
+        buffer_color_='white'; text_color_ = 'white'; filler_char_ = ''; left_justify_=True
     elif format_type == 'data_important':
-        buffer_color='white'; text_color = 'red'; filler_char = ''; left_justify=True
+        buffer_color_='white'; text_color_ = 'red'; filler_char_ = ''; left_justify_=True
     elif format_type == 'log':
-        buffer_color='white'; text_color = 'green'; filler_char = ''; left_justify=True
+        buffer_color_='white'; text_color_ = 'green'; filler_char_ = ''; left_justify_=True
     elif format_type == 'logred':
-        buffer_color='white'; text_color = 'green'; filler_char = ''; left_justify=True
+        buffer_color_='white'; text_color_ = 'green'; filler_char_ = ''; left_justify_=True
     elif format_type == 'log_important':
-        buffer_color='white'; text_color = 'magenta'; filler_char = '.'
+        buffer_color_='white'; text_color_ = 'magenta'; filler_char_ = '.'
     elif format_type == 'log_urgent':
-        buffer_color='white'; text_color = 'red'; filler_char = '.'
+        buffer_color_='white'; text_color_ = 'red'; filler_char_ = '.'
     elif format_type == 'warning':
-        buffer_color='magenta'; text_color = 'red'; filler_char = '!'; num_banners=2; new_lines=[1,1]
+        buffer_color_='magenta'; text_color_ = 'red'; filler_char_ = '!'; num_banners_=2; new_lines_=[1,1]
     elif format_type == 'timestep':
-        text_color = 'red'; num_banners = 2; filler_char = '.'; new_lines=[1,1]
+        text_color_ = 'red'; num_banners_ = 2; filler_char_ = '.'; new_lines_=[1,1]
     elif format_type == 'solverstep':
-        text_color = 'red'; num_banners = 1; filler_char = '.'; new_lines=[1,1]
+        text_color_ = 'red'; num_banners_ = 1; filler_char_ = '.'; new_lines_=[1,1]
     elif format_type == 'assembly':
-        text_color = 'magenta'; num_banners = 0; filler_char = '.'; new_lines=[1,0]
+        text_color_ = 'magenta'; num_banners_ = 0; filler_char_ = '.'; new_lines_=[1,0]
     elif format_type == 'assembly_sub':
-        text_color = 'magenta'; num_banners = 0; filler_char = ''; new_lines=[0,0]; left_justify=True
+        text_color_ = 'magenta'; num_banners_ = 0; filler_char_ = ''; new_lines_=[0,0]; left_justify_=True
     elif format_type is not None:
         raise ValueError("Unknown formatting_type.")
+
+    # Override again with user options
+    if buffer_color is None: buffer_color = buffer_color_
+    if text_color is None: text_color = text_color_
+    if filler_char is None: filler_char = filler_char_
+    if num_banners is None: num_banners = num_banners_
+    if new_lines is None: new_lines = new_lines_
+    if left_justify is None: left_justify = left_justify_
     
     # include MPI rank in message
     if size > 1:
         title_text = f"CPU {rank}: {title_text}"
-        
 
     # calculate optimal buffer size
     min_buffer_size = 5
@@ -587,6 +601,7 @@ def read_hdf5(hdf5_filename, metadata_dims=None):
 
 
 def data_path():
+    "data path for stubs directory"
     path    = Path('.').resolve()
     subdir  = 'data'
     while True:
@@ -595,3 +610,81 @@ def data_path():
             break
         path = path.parent
     return path
+
+
+
+# Write a stopwatch class to measure time elapsed with a start, stop, and pause methods
+# Keep track of timings in a list of lists called self.timings, each time the timer is paused,
+# the time elapsed since the last pause is added to the sublist. Using stop resets the timer to zero
+# and beings a new list of timings.
+
+class Stopwatch():
+    "Basic stopwatch class with inner/outer timings (pause and stop)"
+    def __init__(self, name=None, time_unit='s'):
+        self.name = name
+        self.time_unit = time_unit
+        self.stop_timings = []  # length = number of stops
+        self.pause_timings = [] # length = number of stops (list of lists)
+        self._pause_timings = [] # length = number of pauses (reset on stop)
+        self._times = []
+        self.start()
+    def start(self):
+        self._times.append(time.time())
+        self.is_paused = False
+    def pause(self):
+        if self.paused:
+            return
+        else:
+            self._times.append(time.time())
+            self._pause_timings.append(self._times[-1] - self._times[-2])
+            self.is_paused = True
+    def stop(self):
+        self._times.append(time.time())
+        if self.is_paused:
+            final_time = 0
+        else:
+            final_time = self._times[-1] - self._times[-2]
+            self.is_paused = True
+        total_time = sum(self._pause_timings) + final_time
+        self.stop_timings.append(total_time)
+        _fancy_print(f"{self.name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='log')
+        for idx, t in enumerate(self._pause_timings):
+            _fancy_print(f"{self.name} pause timings:", format_type='log')
+            _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='log')
+
+        # reset
+        self.pause_timings.append(self._pause_timings)
+        self._pause_timings = []
+        self._times = []
+    
+    def time_str(self, t):
+        return str({'us': 1e6, 'ms': 1e3, 's': 1, 'min': 1/60}[self.time_unit]*t)[0:8]
+        
+    
+def find_steady_state(reaction_list, constraints=None, return_equations=False):
+    """
+    Find the steady state of a list of reactions + constraints.
+    """
+    all_equations = list()
+    all_species = set()
+    for r in reaction_list:
+        eqn = r.get_steady_state_equation()
+        all_equations.append(eqn)
+        all_species = all_species.union(eqn.free_symbols)
+    
+    num_eqns = len(all_equations)
+    num_unknowns = len(all_species)
+    num_constraints_nom = num_unknowns - num_eqns
+    if constraints is None:
+        constraints = list()
+    _fancy_print(f"System has {num_eqns} equations and {num_unknowns} unknowns.")
+    _fancy_print(f"{len(constraints)} constraints provided. Requires {num_constraints_nom} constraints to be determined", format_type='log')
+    if num_constraints_nom != len(constraints):
+        _fancy_print(f"Warning: system may be under or overdetermined.", format_type='log')
+    
+    all_equations.extend(constraints)
+    
+    if return_equations:
+        return all_equations, all_species
+    else:
+        return sympy.solve(all_equations, all_species)
