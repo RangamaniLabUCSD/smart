@@ -77,6 +77,14 @@ class Model:
         self.reset_dt = False
 
         # Timers
+        self.stopwatches = {"Total time step": stubs.common.Stopwatch("Total time step"),
+                            "Total simulation": stubs.common.Stopwatch("Total simulation"),
+                            "snes total solve": stubs.common.Stopwatch("snes total solve"),
+                            "snes nonlinear solve": stubs.common.Stopwatch("snes nonlinear solve"),
+                            "snes jacobian assemble": stubs.common.Stopwatch("snes jacobian assemble"),
+                            "snes residual assemble": stubs.common.Stopwatch("snes residual assemble"),
+                            "snes initialize zero matrices": stubs.common.Stopwatch("snes initialize zero matrices"),
+                            }
         self.timers = {}
         self.timings = ddict(list)
 
@@ -740,7 +748,8 @@ class Model:
         if self.config.solver['use_snes']:
             fancy_print(f"Using SNES solver", format_type='log')
             compartment_names = [c.name for c in self._active_compartments]
-            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks, self._active_compartments, self.mpi_comm_world)
+            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks,
+                                                          self._active_compartments, self.stopwatches, self.mpi_comm_world)
             self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
             self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
@@ -876,24 +885,24 @@ class Model:
             if end_simulation:
                 break
 
-    def solve_single_timestep(self, plot_period=1):
-        if self.idx == 0:
-            self.stopwatch("Total simulation")
-        # Solve using specified multiphysics scheme (just monolithic for now)
-        self.monolithic_solve()
+    # def solve_single_timestep(self, plot_period=1):
+    #     if self.idx == 0:
+    #         self.stopwatch("Total simulation")
+    #     # Solve using specified multiphysics scheme (just monolithic for now)
+    #     self.monolithic_solve()
 
-        # # post processing
-        # self.post_process()
-        # if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
-        #     self.plot_solution()
+    #     # # post processing
+    #     # self.post_process()
+    #     # if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
+    #     #     self.plot_solution()
 
-        # if we've reached final time
-        end_simulation = self.t >= self.final_t
-        if end_simulation:
-            self.stopwatch("Total simulation", stop=True)
-            fancy_print(f"Model \'{self.name}\' finished simulating (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
+    #     # if we've reached final time
+    #     end_simulation = self.t >= self.final_t
+    #     if end_simulation:
+    #         self.stopwatch("Total simulation", stop=True)
+    #         fancy_print(f"Model \'{self.name}\' finished simulating (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
 
-        return end_simulation
+    #     return end_simulation
     #===============================================================================
     # Model - Solving (time related functions)
     #===============================================================================
@@ -973,7 +982,7 @@ class Model:
         
     def monolithic_solve(self):
         self.idx += 1
-        self.stopwatch("Total time step") # start a timer for the total time step
+        self.stopwatches["Total time step"].start() # start a timer for the total time step
         # Adjust dt if necessary
         self.check_dt_adjust()      # check if there is a manually prescribed time-step size
         self.check_dt_pass_tfinal() # adjust dt so that it doesn't pass tfinal
@@ -985,9 +994,11 @@ class Model:
         fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', new_lines=[1,0],format_type='timestep')
         if self.config.solver['use_snes']:
             fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
-            self.stopwatch("SNES solver")
+            self.stopwatches["snes total solve"].start()
             self.solver.solve(None, self._ubackend)
-            self.stopwatch("SNES solver", stop=True)
+            self.stopwatches["snes nonlinear solve"].stop()
+            self.stopwatches["snes total solve"].stop()
+            #self.stopwatch("SNES solver", stop=True)
 
             # Check how solver did
             self.idx_nl.append(self.solver.its)
@@ -1012,7 +1023,8 @@ class Model:
         
         self.update_solution() # assign most recently computed solution to "previous solution"
         #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
-        self.stopwatch("Total time step", stop=True)
+        #self.stopwatch("Total time step", stop=True)
+        self.stopwatches["Total time step"].stop()
 
     def update_time_dependent_parameters(self):
         """ Updates all time dependent parameters. Time-dependent parameters are 
@@ -1078,22 +1090,22 @@ class Model:
                 parameter.value = new_value
                 parameter.dolfin_constant.assign(new_value)
 
-    def stopwatch(self, key, stop=False, pause=False):
-        "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
-        if key not in self.timers.keys(): # initialize timer
-            self.timers[key] = d.Timer()
-        if pause: 
-            self.timers[key].stop()
-            return
-        if not stop:
-            self.timers[key].start()
-        if stop:
-            elapsed_time = self.timers[key].elapsed()[0]
-            time_str = str(elapsed_time)[0:8]
-            fancy_print(f"{key} finished in {time_str} seconds", format_type='log')
-            self.timers[key].stop()
-            self.timings[key].append(elapsed_time)
-            return elapsed_time
+    # def stopwatch(self, key, stop=False, pause=False):
+    #     "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
+    #     if key not in self.timers.keys(): # initialize timer
+    #         self.timers[key] = d.Timer()
+    #     if pause: 
+    #         self.timers[key].stop()
+    #         return
+    #     if not stop:
+    #         self.timers[key].start()
+    #     if stop:
+    #         elapsed_time = self.timers[key].elapsed()[0]
+    #         time_str = str(elapsed_time)[0:8]
+    #         fancy_print(f"{key} finished in {time_str} seconds", format_type='log')
+    #         self.timers[key].stop()
+    #         self.timings[key].append(elapsed_time)
+    #         return elapsed_time
 
     def _reset_timestep(self, comp_list=[]):
         """
@@ -1593,62 +1605,3 @@ class Model:
 
             
             print(tabulate(df, headers='keys', tablefmt=tablefmt))
-
-        #     df = self.get_pandas_dataframe(properties_to_print=properties_to_print)
-        #     if properties_to_print:
-        #         df = df[properties_to_print]
-
-        #     print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
-        #            #headers='keys', tablefmt=tablefmt), width=120)
-        # else:
-        #     pass
-        # df = pandas.DataFrame()
-        # if include_idx:
-        #     if properties_to_print and 'idx' not in properties_to_print:
-        #         properties_to_print.insert(0, 'idx')
-        #     for idx, (name, instance) in enumerate(self.items):
-        #         df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx))
-        # else:
-        #     for idx, (name, instance) in enumerate(self.items):
-        #         df = df.append(instance.get_pandas_series(properties_to_print=properties_to_print))
-        # # # sometimes types are recast. change entries into their original types
-        # # for dtypeName, dtype in self.dtypes.items():
-        # #     if dtypeName in df.columns:
-        # #         df = df.astype({dtypeName: dtype})
-
-        # return df
-
-        
-        # if properties_to_print:
-        #     dict_to_convert = odict({'idx': idx})
-        #     dict_to_convert.update(odict([(key,val) for (key,val) in self.__dict__.items() if key in properties_to_print]))
-        # else:
-        #     dict_to_convert = self.__dict__
-        # return pandas.Series(dict_to_convert, name=self.name)
-
-
-
-        
-        
-
-# class Stopwatch(object):
-#     def __init__(self, name=None):
-#         self.name = name
-#         self.start = time.time()
-#         self.end = None
-#     def stopwatch(self, key, stop=False, pause=False):
-#         "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
-#         if key not in self.timers.keys(): # initialize timer
-#             self.timers[key] = d.Timer()
-#         if pause: 
-#             self.timers[key].stop()
-#             return
-#         if not stop:
-#             self.timers[key].start()
-#         if stop:
-#             elapsed_time = self.timers[key].elapsed()[0]
-#             time_str = str(elapsed_time)[0:8]
-#             fancy_print(f"{key} finished in {time_str} seconds", format_type='log')
-#             self.timers[key].stop()
-#             self.timings[key].append(elapsed_time)
-#             return elapsed_time

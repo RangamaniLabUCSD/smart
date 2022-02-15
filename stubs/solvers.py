@@ -3,6 +3,7 @@ import dolfin as d
 import petsc4py.PETSc as PETSc
 import ufl
 from stubs.common import _fancy_print as fancy_print
+import time
 
 
 class stubsSNESProblem():
@@ -80,7 +81,7 @@ class stubsSNESProblem():
     """
 
 
-    def __init__(self, u, Fforms, Jforms, compartments, mpi_comm_world):
+    def __init__(self, u, Fforms, Jforms, compartments, stopwatches, mpi_comm_world):
         self.u = u
         self.Fforms = Fforms
         self.Jforms = Jforms
@@ -105,6 +106,9 @@ class stubsSNESProblem():
         self.block_sizes = [c._num_dofs for c in compartments]
 
         self.compartment_names = [c.name for c in compartments]
+
+        # Timings
+        self.stopwatches = stopwatches
 
     def initialize_petsc_matnest(self):
         dim = self.dim
@@ -189,6 +193,7 @@ class stubsSNESProblem():
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
         fancy_print(f"Assembling block Jacobian", format_type='assembly')
+        self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
         # Check for empty forms
@@ -256,9 +261,13 @@ class stubsSNESProblem():
         # assemble petsc
         Jnest.assemble()
 
+        self.stopwatches["snes jacobian assemble"].stop()
+
     def assemble_Fnest(self, Fnest):
         dim = self.dim
         fancy_print(f"Assembling block residual vector", format_type='assembly')
+        self.stopwatches["snes residual assemble"].start()
+
         Fj_petsc = Fnest.getNestSubVecs()
         Fvecs = []
         for j in range(dim):
@@ -274,6 +283,8 @@ class stubsSNESProblem():
         # for j in range(dim):
         #     Fi_petsc[j].assemble()
         Fnest.assemble()
+        self.stopwatches["snes residual assemble"].stop()
+        self.stopwatches["snes nonlinear solve"].start()
             
     def copy_u(self, unest):
         uvecs = unest.getNestSubVecs()
@@ -305,8 +316,10 @@ class stubsSNESProblem():
         # M.setSizes([dim, dim])
         # M.setType("aij")
         # M.setUp()
+        self.stopwatches['snes initialize zero matrices'].start()
         M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
         M.assemble()
+        self.stopwatches['snes initialize zero matrices'].stop()
         return d.PETScMatrix(M)
 
     def init_zero_petsc_vector(self, dim0):

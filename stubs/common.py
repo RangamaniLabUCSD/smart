@@ -16,6 +16,7 @@ import stubs
 from pandas import read_json
 from contextlib import contextmanager as _contextmanager
 from pathlib import Path
+import time
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -260,7 +261,7 @@ def _fancy_print(title_text, buffer_color=None, text_color=None, filler_char=Non
     elif format_type == 'log':
         buffer_color_='white'; text_color_ = 'green'; filler_char_ = ''; left_justify_=True
     elif format_type == 'logred':
-        buffer_color_='white'; text_color_ = 'green'; filler_char_ = ''; left_justify_=True
+        buffer_color_='white'; text_color_ = 'red'; filler_char_ = ''; left_justify_=True
     elif format_type == 'log_important':
         buffer_color_='white'; text_color_ = 'magenta'; filler_char_ = '.'
     elif format_type == 'log_urgent':
@@ -627,7 +628,8 @@ class Stopwatch():
         self.pause_timings = [] # length = number of stops (list of lists)
         self._pause_timings = [] # length = number of pauses (reset on stop)
         self._times = []
-        self.start()
+        self.is_paused = True
+        #self.start()
     def start(self):
         self._times.append(time.time())
         self.is_paused = False
@@ -647,10 +649,10 @@ class Stopwatch():
             self.is_paused = True
         total_time = sum(self._pause_timings) + final_time
         self.stop_timings.append(total_time)
-        _fancy_print(f"{self.name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='log')
+        _fancy_print(f"{self.name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred')
         for idx, t in enumerate(self._pause_timings):
-            _fancy_print(f"{self.name} pause timings:", format_type='log')
-            _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='log')
+            _fancy_print(f"{self.name} pause timings:", format_type='logred')
+            _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='logred')
 
         # reset
         self.pause_timings.append(self._pause_timings)
