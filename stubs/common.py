@@ -677,6 +677,8 @@ def find_steady_state(reaction_list, constraints=None, return_equations=False):
     num_constraints_nom = num_unknowns - num_eqns
     if constraints is None:
         constraints = list()
+    if not isinstance(constraints, list):
+        constraints = [constraints]
     _fancy_print(f"System has {num_eqns} equations and {num_unknowns} unknowns.")
     _fancy_print(f"{len(constraints)} constraints provided. Requires {num_constraints_nom} constraints to be determined", format_type='log')
     if num_constraints_nom != len(constraints):

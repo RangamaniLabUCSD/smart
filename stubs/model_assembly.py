@@ -3,11 +3,13 @@ Classes for parameters, species, compartments, reactions, fluxes, and forms
 Model class contains functions to efficiently solve a system
 """
 import pdb
+import sys
 import re
 from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
 from typing import Type, Any
+from textwrap import wrap
 
 import dolfin as d
 import ufl
@@ -173,42 +175,78 @@ class ObjectContainer:
 
         return df
 
-    def print_to_latex(self, properties_to_print=None, escape=False,
-                       include_idx=False):
-        df = self.get_pandas_dataframe(properties_to_print=properties_to_print,
-                                       include_idx=include_idx)
+    def print_to_latex(self, properties_to_print=None, max_col_width=None, sig_figs=2,
+                       latex_name_map=None, return_df=True):
+        """Requires latex packages \siunitx and \longtable"""
 
-        # converts Pint units to latex format
-        unit_to_tex = lambda unit: '${:L}$'.format(unit._units)
-        name_to_tex = lambda name: '$' + name.replace('_', '\_') + '$'
-        # bit of a hack... check the first row to guess which columns contain
-        # either Pint unit or quantity objects so we may convert them
-        for name, value in list(df.iloc[0].iteritems()):
-            if hasattr(value, '_units'):
-                df[name] = df[name].apply(unit_to_tex)
-            if name == 'name':
-                df[name] = df[name].apply(name_to_tex)
-            if name == 'idx' and include_idx == False:
+        df = self.get_pandas_dataframe_formatted(properties_to_print=properties_to_print,
+                                                 max_col_width=max_col_width, sig_figs=sig_figs)
+
+        # Change certain df entries to best format for 
+        for col in df.columns:
+            # Convert quantity objects to unit
+            if isinstance(df[col][0], pint.Quantity):
+                # if tablefmt=='latex':
+                df[col] = df[col].apply(lambda x: f"${x:0.{sig_figs}e~Lx}$" )
+        
+            if col=='idx':
                 df = df.drop('idx',axis=1)
-
-        with pandas.option_context("max_colwidth", 1000):
-            tex_str = df.to_latex(index=False, longtable=True, escape=escape)
-            print(tex_str)
-
-    def print(self, tablefmt='fancy_grid', properties_to_print=None):
-        if rank == root:
-            if properties_to_print:
-                if type(properties_to_print) != list: properties_to_print=[properties_to_print]
-            elif hasattr(self, 'properties_to_print'):
-                properties_to_print = self.properties_to_print
-            df = self.get_pandas_dataframe(properties_to_print=properties_to_print)
-            if properties_to_print:
-                df = df[properties_to_print]
-
-            print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
-                   #headers='keys', tablefmt=tablefmt), width=120)
+        
+        if return_df:
+            return df
         else:
-            pass
+            with pandas.option_context("max_colwidth", 1000):
+                print(df.to_latex(escape=False, longtable=True, index=False))
+
+    
+    def get_pandas_dataframe_formatted(self, properties_to_print=None,
+                                       max_col_width=50, sig_figs=2):
+        # Get the pandas dataframe with the properties we want to print
+        if properties_to_print:
+            if type(properties_to_print) != list: properties_to_print=[properties_to_print]
+        elif hasattr(self, 'properties_to_print'):
+            properties_to_print = self.properties_to_print
+        df = self.get_pandas_dataframe(properties_to_print=properties_to_print, include_idx=False)
+        if properties_to_print:
+            df = df[properties_to_print]
+        
+        # add new lines to df entries (type str) that exceed max col width
+        if max_col_width:
+            for col in df.columns:
+                if isinstance(df[col][0], str):
+                    df[col] = df[col].apply(lambda x: '\n'.join(wrap(x, max_col_width)))
+
+        # remove leading underscores from df column names (used for cached properties)
+        for col in df.columns:
+            #if isinstance(df[col][0], str) and col[0] == '_':
+            if col[0] == '_':
+                df.rename(columns={col: col[1:]}, inplace=True)
+            
+        return df
+
+    def print(self, tablefmt='fancy_grid', properties_to_print=None,
+                    filename=None, max_col_width=50, sig_figs=2):
+        df = self.get_pandas_dataframe_formatted(properties_to_print=properties_to_print,
+                                                 max_col_width=max_col_width, sig_figs=sig_figs)
+        
+        # # Change certain df entries to best format for printing
+        for col in df.columns:
+            # Convert quantity objects to unit
+            if isinstance(df[col][0], pint.Quantity):
+                # if tablefmt=='latex':
+                df[col] = df[col].apply(lambda x: f"{x:0.{sig_figs}e~P}" )
+
+        # print to file
+        if filename is None:
+            print(tabulate(df, headers='keys', tablefmt=tablefmt))
+        else: 
+            original_stdout = sys.stdout # Save a reference to the original standard output
+            with open(filename, 'w') as f:
+                sys.stdout = f # Change the standard output to the file we created.
+                print('This message will be written to a file.')
+                print(tabulate(df, headers='keys', tablefmt=tablefmt))#,
+                sys.stdout = original_stdout # Reset the standard output to its original value
+    
 
     def __str__(self):
         df = self.get_pandas_dataframe(properties_to_print=self.properties_to_print)
@@ -275,6 +313,7 @@ class ObjectInstance:
         else:
             dict_to_convert = self.__dict__
         return pandas.Series(dict_to_convert, name=self.name)
+        # return pandas.Series(dict_to_convert)
     def print(self, properties_to_print=None):
         if rank==root:
             print("Name: " + self.name)
@@ -298,7 +337,13 @@ class ParameterContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Parameter)
 
-        self.properties_to_print = ['value', 'unit', 'is_time_dependent', 'sym_expr', 'notes', 'group']
+        self.properties_to_print = ['_quantity', 'is_time_dependent', 'sym_expr', 'notes', 'group']
+
+    def print(self, tablefmt='fancy_grid', properties_to_print=None,
+                    filename=None, max_col_width=50):
+        for s in self:
+            s.quantity
+        super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 @dataclass
 class Parameter(ObjectInstance):
@@ -417,7 +462,8 @@ class Parameter(ObjectInstance):
     
     @property
     def quantity(self):
-        return self.value * self.unit
+        self._quantity = self.value * self.unit
+        return self._quantity
 
     def check_validity(self):
         if self.is_time_dependent:
@@ -428,100 +474,36 @@ class Parameter(ObjectInstance):
 class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
+        #self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
+        self.properties_to_print = ['compartment_name', 'dof_index', '_Initial_Concentration', '_Diffusion']
 
-        self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
+    def print(self, tablefmt='fancy_grid', properties_to_print=None,
+                    filename=None, max_col_width=50):
+        for s in self:
+            s.D_quantity
+            s.initial_condition_quantity
+            s.latex_name
+        super().print(tablefmt, self.properties_to_print, filename, max_col_width)
+    
+    def print_to_latex(self, properties_to_print=None, max_col_width=None, sig_figs=2, latex_name_map=None, return_df=False):
+        properties_to_print = ['_latex_name']
+        properties_to_print.extend(self.properties_to_print)
+        df = super().print_to_latex(properties_to_print, max_col_width, sig_figs, latex_name_map, return_df=True)
+        # fix dof_index
+        for col in df.columns:
+            if col=='dof_index':
+                df[col] = df[col].astype(int)
+        # fix name
+        # get the column of df that contains the name
+        # this can be more robust
+        #df.columns
 
-    # def assemble_dolfin_functions(self, rc, cc):
-    #     """
-    #     define dof/solution vectors (dolfin trialfunction, testfunction, and function types) based on number of species appearing in reactions
-    #     IMPORTANT: this function will create additional species on boundaries in order to use operator-splitting later on
-    #     e.g.
-    #     A [cyto] + B [pm] <-> C [pm]
-    #     Since the value of A is needed on the pm there will be a species A_b_pm which is just the values of A on the boundary pm
-    #     """
-
-    #     # functions to run beforehand as we need their results
-    #     num_species_per_compartment = rc.get_species_compartment_counts(self, cc)
-    #     #cc.get_min_max_dim() # refactor
-    #     self.assemble_compartment_indices(rc, cc)
-    #     cc.add_property_to_all('is_in_a_reaction', False)
-    #     cc.add_property_to_all('V', None)
-
-    #     V, u, v = {}, {}, {}
-    #     for compartment_name, num_species in num_species_per_compartment.items():
-    #         compartmentDim = cc[compartment_name].dimensionality
-    #         cc[compartment_name].num_species = num_species
-    #         if rank==root:
-    #             print('Compartment %s (dimension: %d) has %d species associated with it' %
-    #                   (compartment_name, compartmentDim, num_species))
-
-    #         # u is the actual function. t is for linearized versions. k is for picard iterations. n is for last time-step solution
-    #         if num_species == 1:
-    #             V[compartment_name] = d.FunctionSpace(cc.meshes[compartment_name], 'P', 1)
-    #             u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunction(V[compartment_name]),
-    #             'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
-    #             v[compartment_name] = d.TestFunction(V[compartment_name])
-    #         else: # vector space
-    #             V[compartment_name] = d.VectorFunctionSpace(cc.meshes[compartment_name], 'P', 1, dim=num_species)
-    #             u[compartment_name] = {'u': d.Function(V[compartment_name], name="concentration_u"), 't': d.TrialFunctions(V[compartment_name]),
-    #             'k': d.Function(V[compartment_name]), 'n': d.Function(V[compartment_name])}
-    #             v[compartment_name] = d.TestFunctions(V[compartment_name])
-
-    #     # now we create boundary functions, i.e. interpolations of functions defined on the volume
-    #     # to function spaces of the surrounding mesh
-    #     V['boundary'] = {}
-    #     for compartment_name, num_species in num_species_per_compartment.items():
-    #         compartmentDim = cc[compartment_name].dimensionality
-    #         if compartmentDim == cc.max_dim: # mesh may have boundaries
-    #             V['boundary'][compartment_name] = {}
-    #             for mesh_name, mesh in cc.meshes.items():
-    #                 if compartment_name != mesh_name and mesh.topology().dim() < compartmentDim:
-    #                     if num_species == 1:
-    #                         boundaryV = d.FunctionSpace(mesh, 'P', 1)
-    #                     else:
-    #                         boundaryV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
-    #                     V['boundary'][compartment_name].update({mesh_name: boundaryV})
-    #                     u[compartment_name]['b_'+mesh_name] = d.Function(boundaryV, name="concentration_ub")
-
-    #     # now we create volume functions, i.e. interpolations of functions defined on the surface
-    #     # to function spaces of the associated volume
-    #     V['volume'] = {}
-    #     for compartment_name, num_species in num_species_per_compartment.items():
-    #         compartmentDim = cc[compartment_name].dimensionality
-    #         if compartmentDim == cc.min_dim: # mesh may be a boundary with a connected volume
-    #             V['volume'][compartment_name] = {}
-    #             for mesh_name, mesh in cc.meshes.items():
-    #                 if compartment_name != mesh_name and mesh.topology().dim() > compartmentDim:
-    #                     if num_species == 1:
-    #                         volumeV = d.FunctionSpace(mesh, 'P', 1)
-    #                     else:
-    #                         volumeV = d.VectorFunctionSpace(mesh, 'P', 1, dim=num_species)
-    #                     V['volume'][compartment_name].update({mesh_name: volumeV})
-    #                     u[compartment_name]['v_'+mesh_name] = d.Function(volumeV, name="concentration_uv")
-
-    #     # associate indexed functions with dataframe
-    #     for key, sp in self.items:
-    #         sp.u = {}
-    #         sp.v = None
-    #         if sp.is_in_a_reaction:
-    #             sp.compartment.is_in_a_reaction = True
-    #             num_species = sp.compartment.num_species
-    #             for key in u[sp.compartment_name].keys():
-    #                 if num_species == 1:
-    #                     sp.u.update({key: u[sp.compartment_name][key]})
-    #                     sp.v = v[sp.compartment_name]
-    #                 else:
-    #                     sp.u.update({key: u[sp.compartment_name][key][sp.dof_index]})
-    #                     sp.v = v[sp.compartment_name][sp.dof_index]
-
-    #     # # associate function spaces with dataframe
-    #     for key, comp in cc.items:
-    #         if comp.is_in_a_reaction:
-    #             comp.V = V[comp.name]
-
-    #     self.u = u
-    #     self.v = v
-    #     self.V = V
+        if return_df:
+            return df
+        else:
+            with pandas.option_context("max_colwidth", 1000):
+                print(df.to_latex(escape=False, longtable=True, index=False))
+    
 
 @dataclass
 class Species(ObjectInstance):
@@ -584,12 +566,27 @@ class Species(ObjectInstance):
         return self._usplit['u'] * self.concentration_units
 
     @property
+    def initial_condition_quantity(self):
+        self._Initial_Concentration = self.initial_condition * self.concentration_units
+        return self._Initial_Concentration
+
+    @property
     def D_quantity(self):
-        return self.D * self.diffusion_units
+        self._Diffusion = self.D * self.diffusion_units
+        return self._Diffusion
     
     @property
     def sym(self):
-        return Symbol(self.name)
+        self._sym = Symbol(self.name)
+        return self._sym
+
+    @property
+    def latex_name(self):
+        # Change _ to - in name
+        name = self.name.replace('_', '-')
+        #self._latex_name = "$"+sym.latex(Symbol(name))+"$"
+        self._latex_name = sym.latex(Symbol(name))
+        return self._latex_name
 
 
 class CompartmentContainer(ObjectContainer):
@@ -598,14 +595,15 @@ class CompartmentContainer(ObjectContainer):
 
         self.properties_to_print = ['_mesh_id', 'dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_cells', 'cell_marker', '_nvolume']
     
-    def print(self, tablefmt='fancy_grid'):
+    def print(self, tablefmt='fancy_grid', properties_to_print=None,
+                    filename=None, max_col_width=50):
         for c in self:
             c.mesh_id
             c.nvolume
             c.num_vertices
             c.num_dofs
             c.num_cells
-        super().print(tablefmt, self.properties_to_print)
+        super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 
 @dataclass
@@ -686,6 +684,14 @@ class ReactionContainer(ObjectContainer):
 
         #self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_map', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ['lhs', 'rhs', 'eqn_f_str', 'eqn_r_str']
+
+    # def print_to_latex(self, properties_to_print=None, escape=False, include_idx=False):
+    #     return super().print_to_latex(properties_to_print, escape, include_idx)
+
+    def print(self, tablefmt='fancy_grid', properties_to_print=None,
+                    filename=None, max_col_width=50):
+        # for r in self:
+        super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 @dataclass
 class Reaction(ObjectInstance):
@@ -776,12 +782,18 @@ class FluxContainer(ObjectContainer):
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
     def print(self, tablefmt='fancy_grid'):
         for f in self:
             f.equation_lambda_eval('quantity')
         super().print(tablefmt, self.properties_to_print)
+
+    def print(self, tablefmt='fancy_grid', properties_to_print=None,
+                    filename=None, max_col_width=50):
+        for f in self:
+            f.equation_lambda_eval('quantity')
+        super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 @dataclass
 class Flux(ObjectInstance):
@@ -1011,7 +1023,8 @@ class Flux(ObjectInstance):
     @property
     def molecules_per_second(self):
         "Return the sum of the assembled form * -1 in units of molecule/second"
-        return -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+        self._molecules_per_second = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+        return self._molecules_per_second
 
     # def get_is_linear(self):
     #     """
