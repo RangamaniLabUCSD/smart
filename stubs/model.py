@@ -743,6 +743,10 @@ class Model:
         self.Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
         u = self.u['u']._functions
         self.Fblocks, self.Jblocks, self.block_sizes = self.get_block_system(self.Fsum, u)
+        # Print the residuals per compartment
+        for compartment in self._active_compartments:
+            res = self.get_compartment_residual(compartment, norm=2)
+            fancy_print(f"Initial L2-norm of compartment {compartment.name} is {res}", format_type='log')
 
         # if use snes
         if self.config.solver['use_snes']:
@@ -1506,7 +1510,7 @@ class Model:
             return d.assemble_mixed(species.u['u'] * species.compartment.mesh.dx)
         
     def get_compartment_residual(self, compartment, norm=None):
-        res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in self.Fblocks[compartment.dof_index]])
+        res_vec = sum([d.assemble_mixed(form).get_local() for form in self.Fblocks[compartment.dof_index]])
         if norm is None:
             return res_vec
         else:
@@ -1514,6 +1518,7 @@ class Model:
     
     def get_total_residual(self, norm=None):
         res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in chain.from_iterable(self.Fblocks)])
+        res_vec = np.hstack([self.get_compartment_residual(compartment, norm=None) for compartment in self._active_compartments])
         assert len(res_vec.shape) == 1
         if norm is None:
             return res_vec

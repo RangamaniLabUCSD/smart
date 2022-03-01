@@ -782,12 +782,13 @@ class FluxContainer(ObjectContainer):
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_assembled_flux']#'_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        #self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_assembled_flux']#'_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.properties_to_print = ['_species_name', 'equation', 'topology', '_assembled_flux']#'_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
     def print(self, tablefmt='fancy_grid', properties_to_print=None,
                     filename=None, max_col_width=50):
         for f in self:
-            f.molecules_per_second
+            #f.molecules_per_second
             f.assembled_flux
             f.equation_lambda_eval('quantity')
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
@@ -999,19 +1000,29 @@ class Flux(ObjectInstance):
         The values and units are evaluted separately and then combined because some expressions don't work well
         with pint quantity types.
         """
-        if input_type=='value':
-            equation_variables_values = {varname: var.magnitude for varname, var in self.equation_variables.items()}
-            self._equation_values = self.equation_lambda(**equation_variables_values)
-            return self._equation_values
-        elif input_type=='units':
-            equation_variables_units = {varname: common.pint_unit_to_quantity(var.units) for varname, var in self.equation_variables.items()}
-            # fixes minus sign in units and changes to quantity type so we can use to() method
-            self._equation_units = 1*self.equation_lambda(**equation_variables_units).units 
-            return self._equation_units
-        elif input_type=='quantity':
-            #self.equation_quantity  = self.equation_lambda(**self.equation_variables)
-            self._equation_quantity = self.equation_lambda_eval(input_type='value') * self.equation_lambda_eval(input_type='units')
+        # This is an attempt to make the equation lambda work with pint quantities
+        self._equation_quantity  = self.equation_lambda(**self.equation_variables)
+        if input_type == 'quantity':
             return self._equation_quantity
+        elif input_type == 'value':
+            return self._equation_quantity.magnitude
+        elif input_type == 'units':
+            return common.pint_unit_to_quantity(self._equation_quantity.units)
+
+        # This will satisfy total unit conversions but not inner unit conversions
+        # if input_type=='value':
+        #     equation_variables_values = {varname: var.magnitude for varname, var in self.equation_variables.items()}
+        #     self._equation_values = self.equation_lambda(**equation_variables_values)
+        #     return self._equation_values
+        # elif input_type=='units':
+        #     equation_variables_units = {varname: common.pint_unit_to_quantity(var.units) for varname, var in self.equation_variables.items()}
+        #     # fixes minus sign in units and changes to quantity type so we can use to() method
+        #     self._equation_units = 1*self.equation_lambda(**equation_variables_units).units 
+        #     return self._equation_units
+        # elif input_type=='quantity':
+        #     #self.equation_quantity  = self.equation_lambda(**self.equation_variables)
+        #     self._equation_quantity = self.equation_lambda_eval(input_type='value') * self.equation_lambda_eval(input_type='units')
+        #     return self._equation_quantity
     
 
     # Seems like setting this as a @property doesn't cause fenics to recompile
