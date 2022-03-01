@@ -68,20 +68,21 @@ model.initialize()
 print(model.dolfin_get_function_values(model.sc['A']).min())
 print(model.dolfin_get_function_values(model.sc['A']).max())
 if snes:
-    model.solver.solve(None, model._ubackend)
+    model.monolithic_solve()
+    #model.solver.solve(None, model._ubackend)
 else:
     model.solver.solve()
 print(model.dolfin_get_function_values(model.sc['A']).max())
 print(model.dolfin_get_function_values(model.sc['A']).min())
 
 
-with d.XDMFFile(model.mpi_comm_world, '021122_output/A.xdmf') as xdmf:
+with d.XDMFFile(model.mpi_comm_world, '022522_output/A.xdmf') as xdmf:
     xdmf.write(model.sc['A'].u['u'], model.t)
-with d.XDMFFile(model.mpi_comm_world, '021122_output/A3.xdmf') as xdmf:
+with d.XDMFFile(model.mpi_comm_world, '022522_output/A3.xdmf') as xdmf:
     xdmf.write(model.sc['A3'].u['u'], model.t)
-with d.XDMFFile(model.mpi_comm_world, '021122_output/X.xdmf') as xdmf:
+with d.XDMFFile(model.mpi_comm_world, '022522_output/X.xdmf') as xdmf:
     xdmf.write(model.sc['X'].u['u'], model.t)
-with d.XDMFFile(model.mpi_comm_world, '021122_output/B.xdmf') as xdmf:
+with d.XDMFFile(model.mpi_comm_world, '022522_output/B.xdmf') as xdmf:
     xdmf.write(model.sc['B'].u['u'], model.t)
 
 if snes:

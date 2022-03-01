@@ -758,6 +758,7 @@ class Model:
             # These are some reasonable preconditioner/linear solver settings for block systems
             self.solver.ksp.pc.setType('fieldsplit')
             self.solver.ksp.setType('bicg') # bcgs may be appropriate if convergence is difficult
+            # self.solver.ksp.setType('bcgs') # bcgs may be appropriate if convergence is difficult
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
         else:
@@ -986,6 +987,8 @@ class Model:
         # Adjust dt if necessary
         self.check_dt_adjust()      # check if there is a manually prescribed time-step size
         self.check_dt_pass_tfinal() # adjust dt so that it doesn't pass tfinal
+        if self.dt<=0:
+            raise ValueError("dt is <= 0")
 
         # Take a step forward in time and update time-dependent parameters
         # update time-dependent parameters

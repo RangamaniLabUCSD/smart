@@ -135,6 +135,8 @@ class stubsSNESProblem():
                     else:
                         Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
 
+                    # FIXME - not printing the correct domain 
+                    # (need to extract from form.function_space.mesh().id())
                     fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
                 if Jsum is None:
                     fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
@@ -365,6 +367,11 @@ class stubsSNESProblem():
         if info['nz_unneeded'] > 0:
             fancy_print(f"WARNING: {info['nz_unneeded']} nonzero entries are unneeded", format_type='warning')
 
+    def get_csr_matrix(self,i,j):
+        "This is a matrix that can be used to visualize the sparsity pattern using plt.spy()"
+        M = self.Jpetsc_nest.getNestSubMatrix(i,j)
+        from scipy.sparse import csr_matrix
+        return csr_matrix(M.getValuesCSR()[::-1], shape=M.size) 
 
 # """
 # Solver classes. Linear/Nonlinear are wrappers around dolfin solvers.

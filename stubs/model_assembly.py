@@ -784,14 +784,10 @@ class FluxContainer(ObjectContainer):
 
         self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
-    def print(self, tablefmt='fancy_grid'):
-        for f in self:
-            f.equation_lambda_eval('quantity')
-        super().print(tablefmt, self.properties_to_print)
-
     def print(self, tablefmt='fancy_grid', properties_to_print=None,
                     filename=None, max_col_width=50):
         for f in self:
+            f.molecules_per_second
             f.equation_lambda_eval('quantity')
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
@@ -842,6 +838,9 @@ class Flux(ObjectInstance):
         self._post_init_get_flux_units()
         self._post_init_get_integration_measure()
 
+        # Check if flux is linear with respect to different components
+        self.is_linear_wrt_comp = dict()
+        self._post_init_get_is_linear_comp()
 
     def _post_init_get_involved_species_parameters_compartments(self):
         self.destination_compartment = self.destination_species.compartment
@@ -1041,27 +1040,20 @@ class Flux(ObjectInstance):
 
     #     self.is_linear_wrt = is_linear_wrt
 
-    # def get_is_linear_comp(self):
-    #     """
-    #     Is the flux linear in terms of a compartment vector (e.g. dj/du['pm'])
-    #     """
-    #     is_linear_wrt_comp = {}
-    #     umap = {}
+    def _post_init_get_is_linear_comp(self):
+        """
+        Is the flux linear in terms of a compartment vector (e.g. dj/du['pm'])
+        """
+        umap = {}
 
-    #     for var_name in self.sym_list:
-    #         if var_name in self.involved_species:
-    #             comp_name = self.species_map[var_name].compartment_name
-    #             umap.update({var_name: 'u'+comp_name})
+        for species_name, species in self.species.items():
+            comp_name = species.compartment_name
+            umap.update({species_name: 'u'+comp_name})
+        
+        new_eqn = self.equation.subs(umap)
 
-    #     new_eqn = self.equation.subs(umap)
-
-    #     for comp_name in self.involved_compartments:
-    #         if sym.diff(new_eqn, 'u'+comp_name, 2).is_zero:
-    #             is_linear_wrt_comp[comp_name] = True
-    #         else:
-    #             is_linear_wrt_comp[comp_name] = False
-
-    #     self.is_linear_wrt_comp = is_linear_wrt_comp
+        for comp_name in self.compartments.keys():
+            self.is_linear_wrt_comp[comp_name] = sym.diff(new_eqn, 'u'+comp_name, 2).is_zero
 
 
 class FormContainer(ObjectContainer):
