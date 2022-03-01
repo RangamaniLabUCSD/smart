@@ -782,12 +782,13 @@ class FluxContainer(ObjectContainer):
         #                      'involved_parameters', 'source_compartment',
         #                      'destination_compartment', 'ukeys', 'group']
 
-        self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
+        self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_assembled_flux']#'_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
 
     def print(self, tablefmt='fancy_grid', properties_to_print=None,
                     filename=None, max_col_width=50):
         for f in self:
             f.molecules_per_second
+            f.assembled_flux
             f.equation_lambda_eval('quantity')
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
@@ -920,9 +921,9 @@ class Flux(ObjectInstance):
 
         # The expected units
         if self.is_boundary_condition:
-            self._expected_flux_units = concentration_units / compartment_units * diffusion_units # ~D*du/dn
+            self._expected_flux_units = 1 * concentration_units / compartment_units * diffusion_units # ~D*du/dn
         else:
-            self._expected_flux_units = concentration_units / unit.s # rhs term. ~du/dt
+            self._expected_flux_units = 1 * concentration_units / unit.s # rhs term. ~du/dt
         
         # Use the uninitialized unit_scale_factor to get the actual units
         self.unit_scale_factor = 1.0*unit.dimensionless # this is redundant if called by __post_init__
@@ -934,13 +935,23 @@ class Flux(ObjectInstance):
                                 f" - expected {self._expected_flux_units}, got {self.initial_equation_units}.")
         # Fix scaling 
         else:
+            print("=====")
+            print(self.name)
+            print(self.unit_scale_factor)
+            print(initial_equation_units)
+            print("=====")
             # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
             self.unit_scale_factor = initial_equation_units.to(self._expected_flux_units)/initial_equation_units
-            self.equation_units = self.equation_lambda_eval('units') 
+            self.equation_units = self.equation_lambda_eval('units') # these should now be the proper units
 
             # should be redundant with previous checks, but just in case
             assert self.unit_scale_factor.dimensionless 
-            assert self.equation_units*self.unit_scale_factor == self.equation_units.to(self._expected_flux_units)
+            print(f"unit scale factor {self.unit_scale_factor}")
+            print(f"equation units {self.equation_units}")
+            print(f"exepcted units {self._expected_flux_units}")
+            print(f"initial equation units * unit scale factor {initial_equation_units*self.unit_scale_factor}")
+            print(f"equation untis to expected flux units {self.equation_units.to(self._expected_flux_units)}")
+            assert (initial_equation_units*self.unit_scale_factor).units == self._expected_flux_units
             assert self.equation_units == self._expected_flux_units
 
             # If we already have the correct units, there is no need to update the equation
@@ -1024,6 +1035,14 @@ class Flux(ObjectInstance):
         "Return the sum of the assembled form * -1 in units of molecule/second"
         self._molecules_per_second = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
         return self._molecules_per_second
+    @property
+    def assembled_flux(self):
+        "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
+        try:
+            self._assembled_flux = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+        except:
+            self._assembled_flux = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units)
+        return self._assembled_flux
 
     # def get_is_linear(self):
     #     """
