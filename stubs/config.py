@@ -76,4 +76,7 @@ class Config:
 
     def set_all_logger_levels(self, log_level):
         for logger_name in self.loglevel.keys():
-            logging.getLogger(logger_name).setLevel(log_level)
+            self.loglevel[logger_name] = log_level
+        self.set_logger_levels()
+        # for logger_name in self.loglevel.keys():
+        #     logging.getLogger(logger_name).setLevel(log_level)

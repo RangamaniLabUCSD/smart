@@ -747,6 +747,9 @@ class Model:
         for compartment in self._active_compartments:
             res = self.get_compartment_residual(compartment, norm=2)
             fancy_print(f"Initial L2-norm of compartment {compartment.name} is {res}", format_type='log')
+            if res > 1:
+                fancy_print(f"Warning! Initial L2-norm of compartment {compartment.name} is {res} (possibly too large).", format_type='log_urgent')
+
 
         # if use snes
         if self.config.solver['use_snes']:
@@ -761,8 +764,7 @@ class Model:
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
             # These are some reasonable preconditioner/linear solver settings for block systems
             self.solver.ksp.pc.setType('fieldsplit')
-            self.solver.ksp.setType('bicg') # bcgs may be appropriate if convergence is difficult
-            # self.solver.ksp.setType('bcgs') # bcgs may be appropriate if convergence is difficult
+            self.solver.ksp.setType('bcgs') # bcgs is probably the best option
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
         else:
@@ -1014,6 +1016,12 @@ class Model:
             fancy_print(f"Linear solver iterations: {self.solver.ksp.its}", format_type='log')
             fancy_print(f"SNES converged reason: {self.solver.getConvergedReason()}", format_type='log')
             fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
+            for compartment in self._active_compartments:
+                res = self.get_compartment_residual(compartment, norm=2)
+                fancy_print(f"L2-norm of compartment {compartment.name} is {res}", format_type='log')
+                if res > 1:
+                    fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {res} (possibly too large).", format_type='log_urgent')
+
             if not self.solver.converged:
                 fancy_print(f"SNES failed to converge. Reason = {self.solver.getConvergedReason()}", format_type='log')
                 fancy_print(f"(https://petsc.org/main/docs/manualpages/SNES/SNESConvergedReason.html)", format_type='log')
