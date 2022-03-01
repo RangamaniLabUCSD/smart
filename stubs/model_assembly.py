@@ -921,9 +921,9 @@ class Flux(ObjectInstance):
 
         # The expected units
         if self.is_boundary_condition:
-            self._expected_flux_units = 1 * concentration_units / compartment_units * diffusion_units # ~D*du/dn
+            self._expected_flux_units = 1.0 * concentration_units / compartment_units * diffusion_units # ~D*du/dn
         else:
-            self._expected_flux_units = 1 * concentration_units / unit.s # rhs term. ~du/dt
+            self._expected_flux_units = 1.0 * concentration_units / unit.s # rhs term. ~du/dt
         
         # Use the uninitialized unit_scale_factor to get the actual units
         self.unit_scale_factor = 1.0*unit.dimensionless # this is redundant if called by __post_init__
@@ -935,22 +935,12 @@ class Flux(ObjectInstance):
                                 f" - expected {self._expected_flux_units}, got {self.initial_equation_units}.")
         # Fix scaling 
         else:
-            print("=====")
-            print(self.name)
-            print(self.unit_scale_factor)
-            print(initial_equation_units)
-            print("=====")
             # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
             self.unit_scale_factor = initial_equation_units.to(self._expected_flux_units)/initial_equation_units
             self.equation_units = self.equation_lambda_eval('units') # these should now be the proper units
 
             # should be redundant with previous checks, but just in case
             assert self.unit_scale_factor.dimensionless 
-            print(f"unit scale factor {self.unit_scale_factor}")
-            print(f"equation units {self.equation_units}")
-            print(f"exepcted units {self._expected_flux_units}")
-            print(f"initial equation units * unit scale factor {initial_equation_units*self.unit_scale_factor}")
-            print(f"equation untis to expected flux units {self.equation_units.to(self._expected_flux_units)}")
             assert (initial_equation_units*self.unit_scale_factor).units == self._expected_flux_units
             assert self.equation_units == self._expected_flux_units
 
