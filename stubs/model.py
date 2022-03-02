@@ -520,8 +520,10 @@ class Model:
         for parameter in self.pc.values:
             if parameter.type == 'constant':
                 parameter.dolfin_constant = d.Constant(parameter.value)
-            elif parameter.type == 'expression':
+            elif parameter.type == 'expression' and not parameter.use_preintegration:
                 parameter.dolfin_expression = d.Expression(sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1)
+            elif parameter.type == 'expression' and parameter.use_preintegration:
+                parameter.dolfin_constant = d.Constant(parameter.value)
             elif parameter.type == 'from_file':
                 parameter.dolfin_constant = d.Constant(parameter.value)
 
@@ -764,7 +766,10 @@ class Model:
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
             # These are some reasonable preconditioner/linear solver settings for block systems
             self.solver.ksp.pc.setType('fieldsplit')
-            self.solver.ksp.setType('bcgs') # bcgs is probably the best option
+            self.solver.ksp.setType('bcgs') # biconjugate gradient stabilized. in most cases probably the best option
+            # Some other reasonable krylov solvers:
+            # bcgsl, ibcgs (improved stabilized bcgs)
+            # fbcgsr, fbcgs (flexible bcgs)
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
         else:
@@ -1104,6 +1109,9 @@ class Model:
                 parameter.value_vector = np.vstack((parameter.value_vector, [t, new_value]))
                 parameter.value = new_value
                 parameter.dolfin_constant.assign(new_value)
+            else:
+                # Time dependent but nothing assigned
+                raise AssertionError() 
 
     # def stopwatch(self, key, stop=False, pause=False):
     #     "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"

@@ -421,7 +421,7 @@ class Parameter(ObjectInstance):
         parameter.is_space_dependent    = is_space_dependent
 
         # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
-        parameter.type == 'expression'
+        parameter.type = 'expression'
         fancy_print(f"Time-dependent parameter {name} evaluated from expression.", format_type='log')
 
         return parameter
@@ -455,7 +455,7 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if hasattr(self, 'dolfin_expression'):
+        if hasattr(self, 'dolfin_expression') and not self.use_preintegration:
             return self.dolfin_expression * self.unit
         else:
             return self.dolfin_constant * self.unit
