@@ -77,16 +77,16 @@ class Model:
         self.reset_dt = False
 
         # Timers
-        self.stopwatches = {"Total time step": stubs.common.Stopwatch("Total time step"),
-                            "Total simulation": stubs.common.Stopwatch("Total simulation"),
-                            "snes total solve": stubs.common.Stopwatch("snes total solve"),
-                            "snes nonlinear solve": stubs.common.Stopwatch("snes nonlinear solve"),
-                            "snes jacobian assemble": stubs.common.Stopwatch("snes jacobian assemble"),
-                            "snes residual assemble": stubs.common.Stopwatch("snes residual assemble"),
-                            "snes initialize zero matrices": stubs.common.Stopwatch("snes initialize zero matrices"),
-                            }
-        self.timers = {}
-        self.timings = ddict(list)
+        stopwatch_names = ["Total time step", "Total simulation",
+                           "snes all", "snes total solve",
+                           "snes total assemble", "snes jacobian assemble",
+                           "snes residual assemble", "snes initialize zero matrices",]
+    
+        # nicer printing for timers
+        print_buffer = max([len(stopwatch_name) for stopwatch_name in stopwatch_names])
+        self.stopwatches = {stopwatch_name: stubs.common.Stopwatch(stopwatch_name, print_buffer=print_buffer) for stopwatch_name in stopwatch_names}
+
+        # self.timers = {} self.timings = ddict(list)
 
         # Functional forms
         self.forms = stubs.model_assembly.FormContainer()
@@ -543,6 +543,7 @@ class Model:
         
         # addressing https://github.com/justinlaughlin/stubs/issues/36
         self._active_compartments = list(self.cc.Dict.values())
+        self._all_compartments    = list(self.cc.Dict.values())
         for compartment in self._active_compartments:
             if compartment.num_species < 1:
                 self._active_compartments.remove(compartment)
@@ -756,12 +757,14 @@ class Model:
         # if use snes
         if self.config.solver['use_snes']:
             fancy_print(f"Using SNES solver", format_type='log')
-            compartment_names = [c.name for c in self._active_compartments]
             self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks,
-                                                          self._active_compartments, self.stopwatches, self.mpi_comm_world)
+                                                          self._active_compartments, self._all_compartments, self.stopwatches, self.mpi_comm_world)
             self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
-            self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
+            if len(self.problem.block_sizes) == 1:
+                self._ubackend = u[0].vector().vec().copy()
+            else:
+                self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
 
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
             # These are some reasonable preconditioner/linear solver settings for block systems
@@ -932,7 +935,7 @@ class Model:
             self.dt = dt
             self.dT.assign(dt)
 
-    def check_dt_adjust(self):
+    def adjust_dt_if_prescribed(self):
         """
         Checks to see if the size of a full-time step would pass a "reset dt"
         checkpoint. At these checkpoints dt is reset to some value
@@ -969,7 +972,7 @@ class Model:
             # set a flag to change dt to the config specified value
             self.reset_dt = True
     
-    def check_dt_pass_tfinal(self):
+    def adjust_dt_if_pass_tfinal(self):
         """
         Check if current value of t and dt would cause t+dt > t_final
         """
@@ -979,9 +982,9 @@ class Model:
             fancy_print(f"[{self.idx}, t={self.t}] Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
             self.set_dt(new_dt)
 
-    def forward_time_step(self, dt_factor=1):
-        "Take a step forward in time and upate time-dependent parameters"
-        self.dt = float(self.dt*dt_factor)
+    def forward_time_step(self):
+        "Take a step forward in time"
+        self.dt = float(self.dt)
         self.tn = float(self.t) # save the previous time
         self.t = float(self.t+self.dt)
         self.dT.assign(self.dt)
@@ -990,28 +993,43 @@ class Model:
         self.tvec.append(self.t)
         self.dtvec.append(self.dt)
 
-        self.update_time_dependent_parameters()
+        #self.update_time_dependent_parameters()
         
     def monolithic_solve(self):
         self.idx += 1
         self.stopwatches["Total time step"].start() # start a timer for the total time step
         # Adjust dt if necessary
-        self.check_dt_adjust()      # check if there is a manually prescribed time-step size
-        self.check_dt_pass_tfinal() # adjust dt so that it doesn't pass tfinal
+        self.adjust_dt_if_prescribed()  # check if there is a manually prescribed time-step size
+        self.adjust_dt_if_pass_tfinal() # adjust dt so that it doesn't pass tfinal
         if self.dt<=0:
             raise ValueError("dt is <= 0")
 
         # Take a step forward in time and update time-dependent parameters
         # update time-dependent parameters
-        self.forward_time_step(dt_factor=1) # march forward in time and update time-dependent parameters
-
+        self.forward_time_step() # march forward in time and update time-dependent parameters
         fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', new_lines=[1,0],format_type='timestep')
+        self.update_time_dependent_parameters()
         if self.config.solver['use_snes']:
             fancy_print(f'Solving using PETSc.SNES Solver', format_type='log')
-            self.stopwatches["snes total solve"].start()
+            self.stopwatches["snes all"].start()
+
+            # Solve
             self.solver.solve(None, self._ubackend)
-            self.stopwatches["snes nonlinear solve"].stop()
-            self.stopwatches["snes total solve"].stop()
+
+            # Store/compute timings
+            fancy_print(f"Successfully completed time-step {self.idx} [time={self.t}, dt={self.dt}]", new_lines=[1,0], format_type='solverstep')
+            for k in ["snes initialize zero matrices", "snes jacobian assemble", "snes residual assemble", "snes all"]:
+                print_results=False if k=='snes all' else True
+                self.stopwatches[k].stop(print_results)
+
+            assembly_time = self.stopwatches["snes jacobian assemble"].stop_timings[-1] \
+                          + self.stopwatches["snes residual assemble"].stop_timings[-1]\
+                          + self.stopwatches["snes initialize zero matrices"].stop_timings[-1]
+            # time to solve minus all the assemblies
+            solve_time    = self.stopwatches["snes all"].stop_timings[-1] - assembly_time
+            self.stopwatches["snes total assemble"].set_timing(assembly_time)
+            self.stopwatches["snes total solve"].set_timing(solve_time)
+            self.stopwatches["snes all"].print_last_stop()
             #self.stopwatch("SNES solver", stop=True)
 
             # Check how solver did

@@ -621,7 +621,7 @@ def data_path():
 
 class Stopwatch():
     "Basic stopwatch class with inner/outer timings (pause and stop)"
-    def __init__(self, name=None, time_unit='s'):
+    def __init__(self, name=None, time_unit='s', print_buffer=0):
         self.name = name
         self.time_unit = time_unit
         self.stop_timings = []  # length = number of stops
@@ -629,18 +629,21 @@ class Stopwatch():
         self._pause_timings = [] # length = number of pauses (reset on stop)
         self._times = []
         self.is_paused = True
+        self.print_buffer=print_buffer
+        self._print_name = f"{str(self.name): <{self.print_buffer}}"
         #self.start()
     def start(self):
         self._times.append(time.time())
         self.is_paused = False
     def pause(self):
-        if self.paused:
+        if self.is_paused:
             return
         else:
             self._times.append(time.time())
             self._pause_timings.append(self._times[-1] - self._times[-2])
             self.is_paused = True
-    def stop(self):
+            _fancy_print(f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}", format_type='logred')
+    def stop(self, print_result=True):
         self._times.append(time.time())
         if self.is_paused:
             final_time = 0
@@ -649,15 +652,24 @@ class Stopwatch():
             self.is_paused = True
         total_time = sum(self._pause_timings) + final_time
         self.stop_timings.append(total_time)
-        _fancy_print(f"{self.name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred')
-        for idx, t in enumerate(self._pause_timings):
-            _fancy_print(f"{self.name} pause timings:", format_type='logred')
-            _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='logred')
+        if print_result:
+            _fancy_print(f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred')
+
+        # for idx, t in enumerate(self._pause_timings):
+        #     _fancy_print(f"{self.name} pause timings:", format_type='logred')
+        #     _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='logred')
 
         # reset
         self.pause_timings.append(self._pause_timings)
         self._pause_timings = []
         self._times = []
+    def set_timing(self, timing):
+        self.stop_timings.append(timing)
+        _fancy_print(f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}", format_type='logred')
+
+    def print_last_stop(self):
+        _fancy_print(f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}", format_type='logred')
+        
     
     def time_str(self, t):
         return str({'us': 1e6, 'ms': 1e3, 's': 1, 'min': 1/60}[self.time_unit]*t)[0:8]
