@@ -17,6 +17,7 @@ class Config:
                                    'use_snes': True,
                                    'initial_dt': None,
                                    'adjust_dt': None,
+                                   'time_precision': None,
                                    'dt_decrease_factor': 1.0,
                                    'dt_increase_factor': 1.0,}
 

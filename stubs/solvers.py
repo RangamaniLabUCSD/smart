@@ -126,7 +126,7 @@ class stubsSNESProblem():
                 for k in range(len(self.Jforms[ij])):
                     # compartment names for indices
                     if self.Jforms[ij][k].function_space(0) is None:
-                        fancy_print(f"{self.Jijk_name(i,j,k)} has no function space", format_type='log')
+                        fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
                         continue
 
                     # initialize the tensor

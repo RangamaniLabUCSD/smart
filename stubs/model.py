@@ -8,6 +8,7 @@ from cached_property import cached_property
 from itertools import chain, combinations
 from collections import OrderedDict as odict
 import time
+from decimal import Decimal, getcontext
 
 import dolfin as d
 import ufl
@@ -144,12 +145,17 @@ class Model:
         """
 
         # Solver related parameters
-        self.t = 0.0
-        self.dt = self.config.solver['initial_dt']
-        self.T = d.Constant(self.t)
-        self.dT = d.Constant(self.dt)
-        self.final_t = self.config.solver['final_t']
-        self.tvec = [self.t]
+        self.t       = Decimal(0.0)
+        self.dt      = Decimal(self.config.solver['initial_dt'])
+        self.final_t = Decimal(self.config.solver['final_t'])
+        if self.config.solver['time_precision'] is not None:
+            getcontext().prec = self.config.solver['time_precision']
+            self.dt      = round(self.dt, self.config.solver['time_precision'])
+            self.final_t = round(self.final_t, self.config.solver['time_precision'])
+
+        self.T     = d.Constant(self.t)
+        self.dT    = d.Constant(self.dt)
+        self.tvec  = [self.t]
         self.dtvec = [self.dt]
         self.config.set_logger_levels()
 
@@ -930,8 +936,12 @@ class Model:
 
     def set_dt(self, dt):
         "Explicitly change time-step"
+        dt = Decimal(dt)
+        if self.config.solver['time_precision'] is not None:
+            dt = round(dt, self.config.solver['time_precision'])
+            
         if dt != self.dt:
-            fancy_print(f"dt changed from {self.dt} to {dt}", format_type='log')
+            fancy_print(f"dt set to {dt} (previously {self.dt})", format_type='log')
             self.dt = dt
             self.dT.assign(dt)
 
@@ -946,15 +956,19 @@ class Model:
             return
         # Aliases
         # check if we pass a reset dt checkpoint
-        tnow  = self.t # time right now
-        dtnow = self.dt
+        tnow  = Decimal(self.t) # time right now
+        dtnow = Decimal(self.dt)
         tnext = tnow + dtnow # the final time if dt is not reset
         tadjust, dtadjust = self.config.solver['adjust_dt'][0] # next time to adjust dt, and the value of dt to adjust to
+        tadjust  = Decimal(tadjust)
+        dtadjust = Decimal(dtadjust)
+        if self.config.solver['time_precision'] is not None:
+            dtadjust = round(dtadjust, self.config.solver['time_precision'])
 
         # if last time-step we passed a reset dt checkpoint then reset it now
         if self.reset_dt:
-            fancy_print(f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {dtadjust}) to match config specified value", format_type='log')
             self.set_dt(dtadjust)
+            fancy_print(f"[{self.idx}, t={tnow}] Adjusted time-step (dt = {dtnow} -> {self.dt}) to match config specified value", format_type='log')
             del(self.config.solver['adjust_dt'][0])
             self.reset_dt = False
             return
@@ -966,6 +980,8 @@ class Model:
             # Safeguard against taking ridiculously small time-steps which may cause convergence issues 
             # (e.g. current time is tnow=0.999999999, tadjust=1.0, dtadjust=0.01, instead of changing current dt to tadjust-tnow, we change it to dtadjust)
             new_dt = max([tadjust - tnow, dtadjust]) # this is needed otherwise very small time-steps might be taken which wont converge
+            if self.config.solver['time_precision'] is not None:
+                new_dt = round(new_dt, self.config.solver['time_precision'])
             fancy_print(f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {new_dt}) to avoid passing reset dt checkpoint", format_type='log_important')
             self.set_dt(new_dt)
 
@@ -979,14 +995,19 @@ class Model:
         tnext = self.t + self.dt
         if tnext > self.final_t:
             new_dt = self.final_t - self.t 
+            if self.config.solver['time_precision'] is not None:
+                new_dt = round(new_dt, self.config.solver['time_precision'])
             fancy_print(f"[{self.idx}, t={self.t}] Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time", format_type='log')
             self.set_dt(new_dt)
+                
 
     def forward_time_step(self):
         "Take a step forward in time"
-        self.dt = float(self.dt)
-        self.tn = float(self.t) # save the previous time
-        self.t = float(self.t+self.dt)
+        self.dt = Decimal(self.dt)
+        if self.config.solver['time_precision'] is not None:
+            self.dt = round(self.dt, self.config.solver['time_precision'])
+        self.tn = Decimal(self.t) # save the previous time
+        self.t = Decimal(self.t+self.dt)
         self.dT.assign(self.dt)
         self.T.assign(self.t)
 
@@ -1083,9 +1104,9 @@ class Model:
         f(t_{n+1}) = (F_i(t_{n+1}) - F_i(t_n))/dt
         """
         # Aliases
-        t = self.t
-        dt = self.dt
-        tn = self.tn
+        t = float(self.t)
+        dt = float(self.dt)
+        tn = float(self.tn)
 
         # Update time dependent parameters
         for parameter_name, parameter in self.pc.items:

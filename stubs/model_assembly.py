@@ -2,6 +2,7 @@
 Classes for parameters, species, compartments, reactions, fluxes, and forms
 Model class contains functions to efficiently solve a system
 """
+from ast import parse
 import pdb
 import sys
 import re
@@ -388,7 +389,9 @@ class Parameter(ObjectInstance):
     @classmethod
     def from_expression(cls, name, sym_expr, unit, preint_sym_expr=None, group='', notes='', use_preintegration=False):
         # Parse the given string to create a sympy expression
-        sym_expr = parse_expr(sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
+        if isinstance(sym_expr, str):
+            sym_expr = parse_expr(sym_expr)
+        sym_expr = sym_expr.subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
         
         # Check if expression is time/space dependent
         free_symbols = [str(x) for x in sym_expr.free_symbols]
@@ -408,7 +411,9 @@ class Parameter(ObjectInstance):
 
         if use_preintegration:
             if preint_sym_expr:
-                preint_sym_expr = parse_expr(preint_sym_expr).subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
+                if isinstance(preint_sym_expr, str):
+                    preint_sym_expr = parse_expr(preint_sym_expr)
+                preint_sym_expr = preint_sym_expr.subs({'x': 'x[0]', 'y': 'x[1]', 'z': 'x[2]'})
             else:
                 # try to integrate
                 t = Symbol('t')
