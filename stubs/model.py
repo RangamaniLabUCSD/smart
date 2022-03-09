@@ -77,6 +77,10 @@ class Model:
         self.stopping_conditions = {'F_abs': {}, 'F_rel': {}, 'udiff_abs': {}, 'udiff_rel': {}}
         self.reset_dt = False
 
+        self._failed_to_converge = False
+        self.failed_solves = list() # idx, idx_nl, idx_l, t, dt, residuals, reason
+        self.residuals = list() # list of dicts
+
         # Timers
         stopwatch_names = ["Total time step", "Total simulation",
                            "snes all", "snes total solve",
@@ -145,13 +149,12 @@ class Model:
         """
 
         # Solver related parameters
-        self.t       = Decimal(0.0)
-        self.dt      = Decimal(self.config.solver['initial_dt'])
-        self.final_t = Decimal(self.config.solver['final_t'])
-        if self.config.solver['time_precision'] is not None:
-            getcontext().prec = self.config.solver['time_precision']
-            self.dt      = round(self.dt, self.config.solver['time_precision'])
-            self.final_t = round(self.final_t, self.config.solver['time_precision'])
+        self._base_t = Decimal("0."+(self.config.solver['time_precision']-1)*"0"+"1")
+        self.t       = self.rounded_decimal(0.0)
+        self.dt      = self.rounded_decimal(self.config.solver['initial_dt'])
+        self.final_t = self.rounded_decimal(self.config.solver['final_t'])
+        assert self.config.solver['time_precision'] in range(1,30)
+        getcontext().prec = self.config.solver['time_precision']
 
         self.T     = d.Constant(self.t)
         self.dT    = d.Constant(self.dt)
@@ -727,7 +730,8 @@ class Model:
         for flux in self.fc:
             # -1 factor in flux.form means this is a lhs term
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
-            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, True))
+            flux_form_units = flux.equation_units * flux.measure_units
+            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True))
         for species in self.sc:
             u  = species._usplit['u']
             #ut = species.ut
@@ -736,13 +740,22 @@ class Model:
             D  = species.D
             dx = species.compartment.mesh.dx
             # diffusion term
-            Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
-            self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', True))
+            if species.D==0:
+                fancy_print(f"Species {species.name} has a diffusion coefficient of 0. Skipping creation of diffusive form.", format_type='log')
+            else:
+                Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
+                # exponent is -2 because of two gradients
+                Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2)
+                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True))
             # mass (time derivative) terms
             Muform = (u)/self.dT * v * dx
-            self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', True))
+            mass_form_units = species.concentration_units/unit.s * species.compartment.compartment_units**species.compartment.dimensionality
+            self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', mass_form_units, True))
             Munform = (-un)/self.dT * v * dx
-            self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', True))
+            self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', mass_form_units, True))
+        
+    def _init_5_3_check_form_units(self):
+        pass
 
     def initialize_discrete_variational_problem_and_solver(self):
         fancy_print("Formulating problem as F(u;v) == 0 for newton iterations", format_type='log')
@@ -764,7 +777,7 @@ class Model:
         if self.config.solver['use_snes']:
             fancy_print(f"Using SNES solver", format_type='log')
             self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks,
-                                                          self._active_compartments, self._all_compartments, self.stopwatches, self.mpi_comm_world)
+                                                          self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
             self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
             if len(self.problem.block_sizes) == 1:
@@ -936,7 +949,7 @@ class Model:
 
     def set_dt(self, dt):
         "Explicitly change time-step"
-        dt = Decimal(dt)
+        dt = self.rounded_decimal(dt)
         if self.config.solver['time_precision'] is not None:
             dt = round(dt, self.config.solver['time_precision'])
             
@@ -956,22 +969,22 @@ class Model:
             return
         # Aliases
         # check if we pass a reset dt checkpoint
-        tnow  = Decimal(self.t) # time right now
-        dtnow = Decimal(self.dt)
+        tnow  = self.rounded_decimal(self.t) # time right now
+        dtnow = self.rounded_decimal(self.dt)
         tnext = tnow + dtnow # the final time if dt is not reset
+        tnext = self.rounded_decimal(tnext)
         tadjust, dtadjust = self.config.solver['adjust_dt'][0] # next time to adjust dt, and the value of dt to adjust to
-        tadjust  = Decimal(tadjust)
-        dtadjust = Decimal(dtadjust)
-        if self.config.solver['time_precision'] is not None:
-            dtadjust = round(dtadjust, self.config.solver['time_precision'])
+        tadjust  = self.rounded_decimal(tadjust)
+        dtadjust = self.rounded_decimal(dtadjust)
 
-        # if last time-step we passed a reset dt checkpoint then reset it now
-        if self.reset_dt:
+        # if last time-step we reached a reset dt checkpoint then reset it now
+        if self.reset_dt or tadjust==tnow:
             self.set_dt(dtadjust)
             fancy_print(f"[{self.idx}, t={tnow}] Adjusted time-step (dt = {dtnow} -> {self.dt}) to match config specified value", format_type='log')
             del(self.config.solver['adjust_dt'][0])
             self.reset_dt = False
             return
+            
         if tadjust < tnow:
             raise AssertionError("tadjust (Next time to adjust dt) is smaller than current time.")
             
@@ -979,14 +992,22 @@ class Model:
         if tnow < tadjust <= tnext: 
             # Safeguard against taking ridiculously small time-steps which may cause convergence issues 
             # (e.g. current time is tnow=0.999999999, tadjust=1.0, dtadjust=0.01, instead of changing current dt to tadjust-tnow, we change it to dtadjust)
-            new_dt = max([tadjust - tnow, dtadjust]) # this is needed otherwise very small time-steps might be taken which wont converge
-            if self.config.solver['time_precision'] is not None:
-                new_dt = round(new_dt, self.config.solver['time_precision'])
-            fancy_print(f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {new_dt}) to avoid passing reset dt checkpoint", format_type='log_important')
-            self.set_dt(new_dt)
+            print(f"tadjust = {tadjust}")
+            print(f"tnow = {tnow}")
+            print(f"dtadjust = {dtadjust}")
+            new_dt = self.rounded_decimal(max([tadjust - tnow, dtadjust])) # this is needed otherwise very small time-steps might be taken which wont converge
+            print(f"newdt = {new_dt}")
 
-            # set a flag to change dt to the config specified value
-            self.reset_dt = True
+            if dtadjust > tadjust-tnow:
+                fancy_print(f"[{self.idx}, t={tnow}] Adjusted time-step (dt = {dtnow} -> {new_dt}) to match config specified value (adjusted early because dt_adjust > t_adjust-t_now)", format_type='log')
+                self.set_dt(new_dt)
+                del(self.config.solver['adjust_dt'][0])
+                self.reset_dt = False
+            else:
+                fancy_print(f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {new_dt}) to avoid passing reset dt checkpoint", format_type='log_important')
+                self.set_dt(new_dt)
+                # set a flag to change dt to the config specified value
+                self.reset_dt = True
     
     def adjust_dt_if_pass_tfinal(self):
         """
@@ -1003,11 +1024,11 @@ class Model:
 
     def forward_time_step(self):
         "Take a step forward in time"
-        self.dt = Decimal(self.dt)
+        self.dt = self.rounded_decimal(self.dt)
         if self.config.solver['time_precision'] is not None:
             self.dt = round(self.dt, self.config.solver['time_precision'])
-        self.tn = Decimal(self.t) # save the previous time
-        self.t = Decimal(self.t+self.dt)
+        self.tn = self.rounded_decimal(self.t) # save the previous time
+        self.t = self.rounded_decimal(self.t+self.dt)
         self.dT.assign(self.dt)
         self.T.assign(self.t)
 
@@ -1019,9 +1040,10 @@ class Model:
     def monolithic_solve(self):
         self.idx += 1
         self.stopwatches["Total time step"].start() # start a timer for the total time step
-        # Adjust dt if necessary
-        self.adjust_dt_if_prescribed()  # check if there is a manually prescribed time-step size
-        self.adjust_dt_if_pass_tfinal() # adjust dt so that it doesn't pass tfinal
+        # Adjust dt if necessary (if the last time-step did not converge then it is already adjusted)
+        if not self._failed_to_converge:
+            self.adjust_dt_if_prescribed()  # check if there is a manually prescribed time-step size
+            self.adjust_dt_if_pass_tfinal() # adjust dt so that it doesn't pass tfinal
         if self.dt<=0:
             raise ValueError("dt is <= 0")
 
@@ -1038,7 +1060,7 @@ class Model:
             self.solver.solve(None, self._ubackend)
 
             # Store/compute timings
-            fancy_print(f"Successfully completed time-step {self.idx} [time={self.t}, dt={self.dt}]", new_lines=[1,0], format_type='solverstep')
+            fancy_print(f"Completed time-step {self.idx} [time={self.t}, dt={self.dt}]", new_lines=[1,0], format_type='solverstep')
             for k in ["snes initialize zero matrices", "snes jacobian assemble", "snes residual assemble", "snes all"]:
                 print_results=False if k=='snes all' else True
                 self.stopwatches[k].stop(print_results)
@@ -1060,16 +1082,30 @@ class Model:
             fancy_print(f"Linear solver iterations: {self.solver.ksp.its}", format_type='log')
             fancy_print(f"SNES converged reason: {self.solver.getConvergedReason()}", format_type='log')
             fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
+            residuals = dict()
             for compartment in self._active_compartments:
-                res = self.get_compartment_residual(compartment, norm=2)
-                fancy_print(f"L2-norm of compartment {compartment.name} is {res}", format_type='log')
-                if res > 1:
-                    fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {res} (possibly too large).", format_type='log_urgent')
+                residuals[compartment.name] = self.get_compartment_residual(compartment, norm=2)
+                fancy_print(f"L2-norm of compartment {compartment.name} is {residuals[compartment.name]}", format_type='log')
+                if residuals[compartment.name] > 1:
+                    fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {residuals[compartment.name]} (possibly too large).", format_type='log_urgent')
+
+            self.residuals.append(residuals)
 
             if not self.solver.converged:
+                self.stopwatches["Total time step"].stop()
                 fancy_print(f"SNES failed to converge. Reason = {self.solver.getConvergedReason()}", format_type='log')
                 fancy_print(f"(https://petsc.org/main/docs/manualpages/SNES/SNESConvergedReason.html)", format_type='log')
-                raise AssertionError()
+                self.reset_timestep()
+                # Re-initialize SNES solver
+                #self.initialize_discrete_variational_problem_and_solver()
+                if len(self.problem.block_sizes) == 1:
+                    self._ubackend = u[0].vector().vec().copy()
+                else:
+                    self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
+                self._failed_to_converge = True
+                self.monolithic_solve()
+            else:
+                self._failed_to_converge = False
         else:
             fancy_print(f'Solving using dolfin.MixedNonlinearVariationalSolver()', format_type='log')
             self.solver.solve()
@@ -1084,6 +1120,25 @@ class Model:
         #self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
         #self.stopwatch("Total time step", stop=True)
         self.stopwatches["Total time step"].stop()
+    
+    def reset_timestep(self, dt_scale=0.20):
+        """
+        t failed. Revert t->tn. Revert solution
+        """
+        fancy_print(f"Resetting time-step: {self.idx}", format_type='log')
+        # Change t and decrease dt
+        self.set_time(self.tvec[-2]) # t=tn
+        self.set_dt(float(self.dtvec[-1])*dt_scale) # dt=dt*0.2
+        # Store information on failed solve
+        # idx, idx_nl, idx_l, t, dt, residuals, reason
+        self.failed_solves.append((self.idx, self.idx_nl[-1], self.idx_l[-1], self.tvec[-1], self.dtvec[-1], self.residuals[-1], self.solver.getConvergedReason()))
+        # Remove previous values
+        self.idx = int(self.idx)-1
+        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec, self.residuals]:
+            data.pop()
+        # Undo the solution to the previous time-step
+        self.update_solution(ukeys=['u'], unew='n')
+
 
     def update_time_dependent_parameters(self):
         """ Updates all time dependent parameters. Time-dependent parameters are 
@@ -1169,18 +1224,6 @@ class Model:
     #         self.timings[key].append(elapsed_time)
     #         return elapsed_time
 
-    def _reset_timestep(self, comp_list=[]):
-        """
-        Resets the time back to what it was before the time-step. Optionally, input a list of compartments
-        to have their function values reset (['n'] value will be assigned to ['u'] function).
-        """
-        raise NotImplementedError("Need to check this code")
-        self.set_time(self.t - self.dt, self.dt*self.config.solver['dt_decrease_dt_factor'])
-        Print("Resetting time-step and decreasing step size")
-        for comp_name in comp_list:
-            self.u[comp_name]['u'].assign(self.u[comp_name]['n'])
-            Print("Assigning old value of u to species in compartment %s" % comp_name)
-
     # def update_solution_boundary_to_volume(self):
     #     for comp_name in self.cc.keys:
     #         for key in self.u[comp_name].keys():
@@ -1233,20 +1276,20 @@ class Model:
     #     else:
     #         raise ValueError("Unknown nonlinear solver method")
 
-    def update_solution(self, ukeys=['n']):
+    def update_solution(self, ukeys=['n'], unew='u'):
         """
         After finishing a time step, assign all the most recently computed solutions as 
         the solutions for the previous time step.
         """
         if ukeys is None:
-            ukeys = set(self.u.keys()).remove('u')
+            ukeys = set(self.u.keys()).remove(unew)
 
         for ukey in ukeys:
             if ukey not in self.u.keys():
                 raise ValueError(f"Key {ukey} is not in model.u.keys()")
             # for a function from a mixed function space
             for idx in range(self.num_active_compartments):
-                self.u[ukey].sub(idx).assign(self.u['u'].sub(idx))
+                self.u[ukey].sub(idx).assign(self.u[unew].sub(idx))
 
     # def adjust_dt(self):
     #     # check if time step should be changed based on number of nonlinear iterations
@@ -1560,9 +1603,9 @@ class Model:
     def get_mass(self, species, ukey='u', sub_domain=None):
         if sub_domain is not None:
             assert isinstance(sub_domain, int)
-            return d.assemble_mixed(species.u['u'] * species.compartment.mesh.dx_uncombined[sub_domain])
+            return d.assemble(species.u['u'] * species.compartment.mesh.dx_uncombined[sub_domain])
         else:
-            return d.assemble_mixed(species.u['u'] * species.compartment.mesh.dx)
+            return d.assemble(species.u['u'] * species.compartment.mesh.dx)
         
     def get_compartment_residual(self, compartment, norm=None):
         res_vec = sum([d.assemble_mixed(form).get_local() for form in self.Fblocks[compartment.dof_index]])
@@ -1668,3 +1711,6 @@ class Model:
 
             
             print(tabulate(df, headers='keys', tablefmt=tablefmt))
+
+    def rounded_decimal(self, x):
+        return Decimal(x).quantize(self._base_t)

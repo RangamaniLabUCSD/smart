@@ -976,6 +976,7 @@ class Flux(ObjectInstance):
         if self.topology in ['volume', 'surface']:
             self.measure       = self.destination_compartment.mesh.dx
             self.measure_units = self.destination_compartment.compartment_units**self.destination_compartment.dimensionality
+            self.measure_compartment = self.destination_compartment
         elif self.topology in ['volume_to_surface', 'surface_to_volume', 'volume-volume_to_surface', 'volume-surface_to_volume']:
             # intersection of this surface with boundary of source volume(s)
             # assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
@@ -983,6 +984,9 @@ class Flux(ObjectInstance):
             print("DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)")
             self.measure = self.surface.mesh.dx
             self.measure_units = self.surface.compartment_units**self.surface.dimensionality
+            self.measure_compartment = self.surface
+        
+        
 
 
     # We define this as a property so that it is automatically updated
@@ -1039,15 +1043,15 @@ class Flux(ObjectInstance):
     @property
     def molecules_per_second(self):
         "Return the sum of the assembled form * -1 in units of molecule/second"
-        self._molecules_per_second = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+        self._molecules_per_second = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
         return self._molecules_per_second
     @property
     def assembled_flux(self):
         "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
         try:
-            self._assembled_flux = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+            self._assembled_flux = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
         except:
-            self._assembled_flux = -1*(d.assemble_mixed(self.form).sum() * self.equation_units * self.measure_units)
+            self._assembled_flux = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units)
         return self._assembled_flux
 
     # def get_is_linear(self):
@@ -1105,6 +1109,7 @@ class Form(ObjectInstance):
     form: ufl.Form
     species: Species
     form_type: str
+    units: pint.Unit
     is_lhs: bool
 
     @property
@@ -1123,7 +1128,10 @@ class Form(ObjectInstance):
     def __post_init__(self):
         self.compartment = self.species.compartment
         self._compartment_name = self.compartment.name
-        pass
+
+        self._convert_pint_quantity_to_unit()
+        self._check_input_type_validity()
+        self._convert_pint_unit_to_quantity()
 
     @property
     def integrals(self):

@@ -30,6 +30,13 @@ from stubs import unit as unit
 # fsmed = 7
 # fssmall = 5
 
+class PostProcessor:
+    def __init__(self, model):
+        self.model = model
+        self.probe_concentrations = ddict(list)
+        self.probe_fluxes         = ddict(list)
+        
+
 class Data:
     def __init__(self, model, config):
         self.model = model

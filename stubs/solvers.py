@@ -81,7 +81,7 @@ class stubsSNESProblem():
     """
 
 
-    def __init__(self, u, Fforms, Jforms, active_compartments, all_compartments, stopwatches, mpi_comm_world):
+    def __init__(self, u, Fforms, Jforms, active_compartments, all_compartments, stopwatches, print_assembly, mpi_comm_world):
         self.u = u
         self.Fforms = Fforms
         self.Jforms = Jforms
@@ -108,13 +108,17 @@ class stubsSNESProblem():
 
         self.active_compartment_names = [c.name for c in active_compartments]
         self.mesh_id_to_name = {c.mesh_id:c.name for c in all_compartments}
+    
+        # Should we print assembly info (can get very verbose)
+        self.print_assembly = print_assembly
 
         # Timings
         self.stopwatches = stopwatches
 
     def initialize_petsc_matnest(self):
         dim = self.dim
-        fancy_print(f"Initializing block Jacobian", format_type='assembly')
+        if self.print_assembly:
+            fancy_print(f"Initializing block Jacobian", format_type='assembly')
 
         #Jdpetsc = [[None]*dim]*dim
         Jpetsc = []
@@ -126,7 +130,8 @@ class stubsSNESProblem():
                 for k in range(len(self.Jforms[ij])):
                     # compartment names for indices
                     if self.Jforms[ij][k].function_space(0) is None:
-                        fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
+                        if self.print_assembly:
+                            fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
                         continue
 
                     # initialize the tensor
@@ -137,11 +142,11 @@ class stubsSNESProblem():
                     else:
                         Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
 
-                    # FIXME - not printing the correct domain 
-                    # (need to extract from form.function_space.mesh().id())
-                    fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
+                    if self.print_assembly:
+                        fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
                 if Jsum is None:
-                    fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
+                    if self.print_assembly:
+                        fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
                     Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
                     #raise AssertionError()
                     # tensor = d.PETScMatrix(Jsum.size(0))
@@ -161,7 +166,8 @@ class stubsSNESProblem():
 
     def initialize_petsc_vecnest(self):
         dim = self.dim
-        fancy_print(f"Initializing block residual vector", format_type='assembly')
+        if self.print_assembly:
+            fancy_print(f"Initializing block residual vector", format_type='assembly')
 
         Fpetsc = []
         for j in range(dim):
@@ -172,14 +178,16 @@ class stubsSNESProblem():
             Fsum = None
             for k in range(len(self.Fforms[j])):
                 if self.Fforms[j][k].function_space(0) is None:
-                    fancy_print(f"{self.Fjk_name(j,k)}] has no function space", format_type='log')
+                    if self.print_assembly:
+                        fancy_print(f"{self.Fjk_name(j,k)}] has no function space", format_type='log')
                     continue
                 if Fsum is None:
                     Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
                 else:
                     Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
             if Fsum is None:
-                fancy_print(f"{self.Fjk_name(j)} is empty - initializing as empty PETSc Vector with size {self.block_sizes[j]}")
+                if self.print_assembly:
+                    fancy_print(f"{self.Fjk_name(j)} is empty - initializing as empty PETSc Vector with size {self.block_sizes[j]}", format_type='log')
                 Fsum = self.init_zero_petsc_vector(self.block_sizes[j])
                 #raise AssertionError()
 
@@ -204,7 +212,8 @@ class stubsSNESProblem():
 
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
-        fancy_print(f"Assembling block Jacobian", format_type='assembly')
+        if self.print_assembly:
+            fancy_print(f"Assembling block Jacobian", format_type='assembly')
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
@@ -216,7 +225,8 @@ class stubsSNESProblem():
                 if all(self.Jforms[ij][k].function_space(0) is None for k in range(len(self.Jforms[ij]))):
                     empty_forms.append((i,j))
         if len(empty_forms) > 0:
-            fancy_print(f"Forms {empty_forms} are empty. Skipping assembly.", format_type='data')
+            if self.print_assembly:
+                fancy_print(f"Forms {empty_forms} are empty. Skipping assembly.", format_type='data')
 
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using dolfin wrapper as tensor
         #for ij, Jij_forms in enumerate(self.Jforms):
@@ -235,7 +245,8 @@ class stubsSNESProblem():
 
                 if num_subforms==1 and self.Jforms[ij][0].function_space(0) is None:
                     continue
-                fancy_print(f"Assembling {self.Jijk_name(i,j)}:", format_type='assembly_sub')
+                if self.print_assembly:
+                    fancy_print(f"Assembling {self.Jijk_name(i,j)}:", format_type='assembly_sub')
 
                 # Assemble the form
                 if num_subforms==1:
@@ -252,14 +263,16 @@ class stubsSNESProblem():
                     for k in range(num_subforms):
                         # Check for empty form
                         if self.Jforms[ij][k].function_space(0) is None:
-                            fancy_print(f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.", format_type='data')
+                            if self.print_assembly:
+                                fancy_print(f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.", format_type='data')
                             continue
                         # if we have the sparsity pattern re-use it, if not save it for next time
                         # single domain can't re-use the tensor for some reason
                         if self.tensors[ij][k] is None or self.is_single_domain: 
                             self.tensors[ij][k] = d.PETScMatrix()
                         else:
-                            fancy_print(f"Reusing tensor for {self.Jijk_name(i,j,k)}", format_type='data')
+                            if self.print_assembly:
+                                fancy_print(f"Reusing tensor for {self.Jijk_name(i,j,k)}", format_type='data')
                         # Assemble and append to the list of subforms
                         Jmats.append(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
                         # Print some useful info on assembled Jijk
@@ -281,7 +294,8 @@ class stubsSNESProblem():
 
     def assemble_Fnest(self, Fnest):
         dim = self.dim
-        fancy_print(f"Assembling block residual vector", format_type='assembly')
+        if self.print_assembly:
+            fancy_print(f"Assembling block residual vector", format_type='assembly')
         self.stopwatches["snes residual assemble"].start()
 
         if self.is_single_domain:
@@ -371,6 +385,8 @@ class stubsSNESProblem():
             return f"F{j} = F[{self.active_compartment_names[j]}] (domain={domain_name})"
             
     def print_Jijk_info(self, i, j, k=None, tensor=None):
+        if not self.print_assembly:
+            return
         if tensor is None:
             return
         # Print some useful info on Jijk
