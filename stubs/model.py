@@ -730,8 +730,8 @@ class Model:
         for flux in self.fc:
             # -1 factor in flux.form means this is a lhs term
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
-            flux_form_units = flux.equation_units * flux.measure_units
-            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True))
+            flux_form_units = flux.equation_units * flux.measure_units * unit.s
+            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form*self.dT, flux.destination_species, form_type, flux_form_units, True))
         for species in self.sc:
             u  = species._usplit['u']
             #ut = species.ut
@@ -743,15 +743,15 @@ class Model:
             if species.D==0:
                 fancy_print(f"Species {species.name} has a diffusion coefficient of 0. Skipping creation of diffusive form.", format_type='log')
             else:
-                Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
+                Dform = D * d.inner(d.grad(u), d.grad(v)) * self.dT * dx
                 # exponent is -2 because of two gradients
-                Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2)
+                Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2) * unit.s
                 self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True))
             # mass (time derivative) terms
-            Muform = (u)/self.dT * v * dx
+            Muform = (u) * v * dx
             mass_form_units = species.concentration_units/unit.s * species.compartment.compartment_units**species.compartment.dimensionality
             self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', mass_form_units, True))
-            Munform = (-un)/self.dT * v * dx
+            Munform = (-un) * v * dx
             self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', mass_form_units, True))
         
     def _init_5_3_check_form_units(self):
