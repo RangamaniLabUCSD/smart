@@ -13,15 +13,19 @@ import re
 import pint
 from termcolor import colored
 import stubs
+gset = stubs.config.global_settings
 from pandas import read_json
 from contextlib import contextmanager as _contextmanager
 from pathlib import Path
 import time
+import contextvars
 
 comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
+
+
 
 def sub(func, idx, collapse_function_space=True):
     "A collection of the proper ways to refer to a (sub) function, functionspace, etc. in dolfin"
@@ -241,7 +245,7 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
 # ====================================================
 def _fancy_print(title_text, buffer_color=None, text_color=None, filler_char=None,
                              num_banners=None, new_lines=None, left_justify=None,
-                             format_type='default'):
+                             format_type='default', filename=None):
     "Formatted text to stand out."
 
     # Initialize with the default options
@@ -306,23 +310,33 @@ def _fancy_print(title_text, buffer_color=None, text_color=None, filler_char=Non
         title_str = f"{buffer(buffer_size)} {colored(title_text, text_color)} {buffer(buffer_size+parity)}"
     banner = colored(filler_char*(title_str_len+parity), buffer_color)
 
+    def print_out(text, filename=None):
+        "print to file and terminal"
+        if filename is not None:
+            with open(filename, 'a') as f:
+                f.write(text+'\n')
+        elif stubs.config.global_settings['log_filename'] is not None:
+            with open(stubs.config.global_settings['log_filename'], 'a') as f:
+                f.write(text+'\n')
+        print(text)
+        
     # initial spacing
-    if new_lines[0] > 0: print('\n'*(new_lines[0]-1))
+    if new_lines[0] > 0: print_out('\n'*(new_lines[0]-1), filename)
     # print first banner
     for _ in range(num_banners):
-        print(f"{banner}")
+        print_out(f"{banner}", filename)
     # print main text
-    print(title_str)
+    print_out(title_str, filename)
     # print second banner
     for _ in range(num_banners):
-        print(f"{banner}")
+        print_out(f"{banner}", filename)
     # end spacing
-    if new_lines[1] > 0: print('\n'*(new_lines[1]-1))
+    if new_lines[1] > 0: print_out('\n'*(new_lines[1]-1), filename)
 
-# demonstrate built in options
-def _fancy_print_options():
-    for format_type in ['title', 'subtitle', 'log', 'log_important', 'log_urgent', 'timestep', 'solverstep']:
-        _fancy_print(format_type, format_type=format_type)
+# # demonstrate built in options
+# def _fancy_print_options():
+#     for format_type in ['title', 'subtitle', 'log', 'log_important', 'log_urgent', 'timestep', 'solverstep']:
+#         _fancy_print(format_type, format_type=format_type)
 
 # ====================================================
 # I/O
@@ -518,36 +532,36 @@ def pint_quantity_to_unit(pint_quantity):
     return pint_quantity.units
 
 
-# Some stack exchange code to redirect/suppress c++ stdout
-# https://stackoverflow.com/questions/4675728/redirect-stdout-to-a-file-in-python/22434262#22434262
-def _fileno(file_or_fd):
-    fd = getattr(file_or_fd, 'fileno', lambda: file_or_fd)()
-    if not isinstance(fd, int):
-        raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
-    return fd
+# # Some stack exchange code to redirect/suppress c++ stdout
+# # https://stackoverflow.com/questions/4675728/redirect-stdout-to-a-file-in-python/22434262#22434262
+# def _fileno(file_or_fd):
+#     fd = getattr(file_or_fd, 'fileno', lambda: file_or_fd)()
+#     if not isinstance(fd, int):
+#         raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
+#     return fd
 
-@_contextmanager
-def _stdout_redirected(to=os.devnull, stdout=None):
-    if stdout is None:
-       stdout = sys.stdout
+# @_contextmanager
+# def _stdout_redirected(to=os.devnull, stdout=None):
+#     if stdout is None:
+#        stdout = sys.stdout
 
-    stdout_fd = _fileno(stdout)
-    # copy stdout_fd before it is overwritten
-    #NOTE: `copied` is inheritable on Windows when duplicating a standard stream
-    with os.fdopen(os.dup(stdout_fd), 'wb') as copied: 
-        stdout.flush()  # flush library buffers that dup2 knows nothing about
-        try:
-            os.dup2(_fileno(to), stdout_fd)  # $ exec >&to
-        except ValueError:  # filename
-            with open(to, 'wb') as to_file:
-                os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
-        try:
-            yield stdout # allow code to be run with the redirected stdout
-        finally:
-            # restore stdout to its previous value
-            #NOTE: dup2 makes stdout_fd inheritable unconditionally
-            stdout.flush()
-            os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
+#     stdout_fd = _fileno(stdout)
+#     # copy stdout_fd before it is overwritten
+#     #NOTE: `copied` is inheritable on Windows when duplicating a standard stream
+#     with os.fdopen(os.dup(stdout_fd), 'wb') as copied: 
+#         stdout.flush()  # flush library buffers that dup2 knows nothing about
+#         try:
+#             os.dup2(_fileno(to), stdout_fd)  # $ exec >&to
+#         except ValueError:  # filename
+#             with open(to, 'wb') as to_file:
+#                 os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
+#         try:
+#             yield stdout # allow code to be run with the redirected stdout
+#         finally:
+#             # restore stdout to its previous value
+#             #NOTE: dup2 makes stdout_fd inheritable unconditionally
+#             stdout.flush()
+#             os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
     
 
 def convert_xml_to_hdf5(xml_filename, hdf5_filename, metadata_dims=None):
@@ -621,7 +635,7 @@ def data_path():
 
 class Stopwatch():
     "Basic stopwatch class with inner/outer timings (pause and stop)"
-    def __init__(self, name=None, time_unit='s', print_buffer=0):
+    def __init__(self, name=None, time_unit='s', print_buffer=0, filename=None):
         self.name = name
         self.time_unit = time_unit
         self.stop_timings = []  # length = number of stops
@@ -632,6 +646,7 @@ class Stopwatch():
         self.print_buffer=print_buffer
         self._print_name = f"{str(self.name): <{self.print_buffer}}"
         #self.start()
+        self.filename=filename
     def start(self):
         self._times.append(time.time())
         self.is_paused = False
@@ -642,7 +657,7 @@ class Stopwatch():
             self._times.append(time.time())
             self._pause_timings.append(self._times[-1] - self._times[-2])
             self.is_paused = True
-            _fancy_print(f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}", format_type='logred')
+            _fancy_print(f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}", format_type='logred', filename=filename)
     def stop(self, print_result=True):
         self._times.append(time.time())
         if self.is_paused:
@@ -653,7 +668,7 @@ class Stopwatch():
         total_time = sum(self._pause_timings) + final_time
         self.stop_timings.append(total_time)
         if print_result:
-            _fancy_print(f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred')
+            _fancy_print(f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred', filename=filename)
 
         # for idx, t in enumerate(self._pause_timings):
         #     _fancy_print(f"{self.name} pause timings:", format_type='logred')
@@ -665,17 +680,17 @@ class Stopwatch():
         self._times = []
     def set_timing(self, timing):
         self.stop_timings.append(timing)
-        _fancy_print(f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}", format_type='logred')
+        _fancy_print(f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}", format_type='logred', filename=filename)
 
     def print_last_stop(self):
-        _fancy_print(f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}", format_type='logred')
+        _fancy_print(f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}", format_type='logred', filename=filename)
         
     
     def time_str(self, t):
         return str({'us': 1e6, 'ms': 1e3, 's': 1, 'min': 1/60}[self.time_unit]*t)[0:8]
         
     
-def find_steady_state(reaction_list, constraints=None, return_equations=False):
+def find_steady_state(reaction_list, constraints=None, return_equations=False, filename=None):
     """
     Find the steady state of a list of reactions + constraints.
     """
@@ -693,10 +708,10 @@ def find_steady_state(reaction_list, constraints=None, return_equations=False):
         constraints = list()
     if not isinstance(constraints, list):
         constraints = [constraints]
-    _fancy_print(f"System has {num_eqns} equations and {num_unknowns} unknowns.")
-    _fancy_print(f"{len(constraints)} constraints provided. Requires {num_constraints_nom} constraints to be determined", format_type='log')
+    _fancy_print(f"System has {num_eqns} equations and {num_unknowns} unknowns.", filename=filename)
+    _fancy_print(f"{len(constraints)} constraints provided. Requires {num_constraints_nom} constraints to be determined", format_type='log', filename=filename)
     if num_constraints_nom != len(constraints):
-        _fancy_print(f"Warning: system may be under or overdetermined.", format_type='log')
+        _fancy_print(f"Warning: system may be under or overdetermined.", format_type='log', filename=filename)
     
     all_equations.extend(constraints)
     

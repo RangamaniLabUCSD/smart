@@ -4,6 +4,10 @@ Configuration settings for simulation: plotting, reaction types, solution output
 import dolfin as d
 import logging
 
+
+global_settings = {'main_dir': None,
+                   'log_filename': None}
+
 class Config:
     """
     Refactored config 

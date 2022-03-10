@@ -1099,9 +1099,9 @@ class Model:
                 # Re-initialize SNES solver
                 #self.initialize_discrete_variational_problem_and_solver()
                 if len(self.problem.block_sizes) == 1:
-                    self._ubackend = u[0].vector().vec().copy()
+                    self._ubackend = self.u['u']._functions[0].vector().vec().copy()
                 else:
-                    self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
+                    self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in self.u['u']._functions])
                 self._failed_to_converge = True
                 self.monolithic_solve()
             else:
@@ -1609,6 +1609,13 @@ class Model:
         
     def get_compartment_residual(self, compartment, norm=None):
         res_vec = sum([d.assemble_mixed(form).get_local() for form in self.Fblocks[compartment.dof_index]])
+        if norm is None:
+            return res_vec
+        else:
+            return np.linalg.norm(res_vec, norm)
+    
+    def get_species_residual(self, species, norm=None):
+        res_vec = sum([d.assemble_mixed(form.form).get_local() for form in self.forms if form.species == species])
         if norm is None:
             return res_vec
         else:
