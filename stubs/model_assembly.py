@@ -1041,6 +1041,11 @@ class Flux(ObjectInstance):
         return d.Constant(-1) * self.equation_lambda_eval(input_type='value') * self.destination_species.v * self.measure
     
     @property
+    def form_dt(self):
+        "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
+        return d.Constant(-1) * self.equation_lambda_eval(input_type='value') * self.destination_species.v * self.dT * self.measure
+    
+    @property
     def molecules_per_second(self):
         "Return the sum of the assembled form * -1 in units of molecule/second"
         self._molecules_per_second = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)

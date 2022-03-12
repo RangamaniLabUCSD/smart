@@ -730,12 +730,16 @@ class Model:
         for flux in self.fc:
             # -1 factor in flux.form means this is a lhs term
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
-            flux_form_units = flux.equation_units * flux.measure_units * unit.s
-            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form*self.dT, flux.destination_species, form_type, flux_form_units, True))
+            flux_form_units = flux.equation_units * flux.measure_units
+            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True))
+            #flux_form_units = flux.equation_units * flux.measure_units * unit.s
+            #flux.dT = self.dT
+            #self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form_dt, flux.destination_species, form_type, flux_form_units, True))
         for species in self.sc:
             u  = species._usplit['u']
             #ut = species.ut
-            un = species.u['n']
+            #un = species.u['n']
+            un = species._usplit['n']
             v  = species.v
             D  = species.D
             dx = species.compartment.mesh.dx
@@ -743,15 +747,15 @@ class Model:
             if species.D==0:
                 fancy_print(f"Species {species.name} has a diffusion coefficient of 0. Skipping creation of diffusive form.", format_type='log')
             else:
-                Dform = D * d.inner(d.grad(u), d.grad(v)) * self.dT * dx
+                Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
-                Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2) * unit.s
+                Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2)
                 self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True))
             # mass (time derivative) terms
-            Muform = (u) * v * dx
+            Muform = (u) * v / self.dT * dx
             mass_form_units = species.concentration_units/unit.s * species.compartment.compartment_units**species.compartment.dimensionality
             self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', mass_form_units, True))
-            Munform = (-un) * v * dx
+            Munform = (-un) * v / self.dT * dx
             self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', mass_form_units, True))
         
     def _init_5_3_check_form_units(self):
@@ -1600,12 +1604,16 @@ class Model:
     def num_active_compartments(self):
         return len(self._active_compartments)
     
-    def get_mass(self, species, ukey='u', sub_domain=None):
+    def get_mass(self, species, units=None, ukey='u', sub_domain=None):
+        if units is None:
+            units_scale = 1
+        else:
+            units_scale = ((1*species.concentration_units/units).to(unit.dimensionless)).magnitude
         if sub_domain is not None:
             assert isinstance(sub_domain, int)
-            return d.assemble(species.u['u'] * species.compartment.mesh.dx_uncombined[sub_domain])
+            return d.assemble(species.u['u'] * units_scale * species.compartment.mesh.dx_uncombined[sub_domain])
         else:
-            return d.assemble(species.u['u'] * species.compartment.mesh.dx)
+            return d.assemble(species.u['u'] * units_scale * species.compartment.mesh.dx)
         
     def get_compartment_residual(self, compartment, norm=None):
         res_vec = sum([d.assemble_mixed(form).get_local() for form in self.Fblocks[compartment.dof_index]])

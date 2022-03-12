@@ -18,7 +18,6 @@ from pandas import read_json
 from contextlib import contextmanager as _contextmanager
 from pathlib import Path
 import time
-import contextvars
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -657,7 +656,7 @@ class Stopwatch():
             self._times.append(time.time())
             self._pause_timings.append(self._times[-1] - self._times[-2])
             self.is_paused = True
-            _fancy_print(f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}", format_type='logred', filename=filename)
+            _fancy_print(f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}", format_type='logred', filename=self.filename)
     def stop(self, print_result=True):
         self._times.append(time.time())
         if self.is_paused:
@@ -668,7 +667,7 @@ class Stopwatch():
         total_time = sum(self._pause_timings) + final_time
         self.stop_timings.append(total_time)
         if print_result:
-            _fancy_print(f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred', filename=filename)
+            _fancy_print(f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}", format_type='logred', filename=self.filename)
 
         # for idx, t in enumerate(self._pause_timings):
         #     _fancy_print(f"{self.name} pause timings:", format_type='logred')
@@ -680,10 +679,10 @@ class Stopwatch():
         self._times = []
     def set_timing(self, timing):
         self.stop_timings.append(timing)
-        _fancy_print(f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}", format_type='logred', filename=filename)
+        _fancy_print(f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}", format_type='logred', filename=self.filename)
 
     def print_last_stop(self):
-        _fancy_print(f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}", format_type='logred', filename=filename)
+        _fancy_print(f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}", format_type='logred', filename=self.filename)
         
     
     def time_str(self, t):
