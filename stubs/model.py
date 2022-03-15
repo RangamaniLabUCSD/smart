@@ -790,6 +790,14 @@ class Model:
             self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', mass_form_units, True))
             Munform = (-un) * v / self.dT * dx
             self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', mass_form_units, True))
+        for compartment in self.cc:
+            diffusive_forms = [f for f in self.forms if f.compartment.name == compartment.name and f.form_type=='diffusion']
+            if len(diffusive_forms) == 0:
+                fancy_print(f"Compartment {compartment.name} has no diffusive forms.", format_type='log')
+                compartment.has_diffusive_forms = False
+            else:
+                compartment.has_diffusive_forms = True
+                
         
     def _init_5_3_check_form_units(self):
         pass
@@ -823,14 +831,36 @@ class Model:
                 self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
 
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
-            # These are some reasonable preconditioner/linear solver settings for block systems
-            self.solver.ksp.pc.setType('fieldsplit')
-            self.solver.ksp.setType('bcgs') # biconjugate gradient stabilized. in most cases probably the best option
-            # Some other reasonable krylov solvers:
-            # bcgsl, ibcgs (improved stabilized bcgs)
-            # fbcgsr, fbcgs (flexible bcgs)
+
+            # Define the function/jacobian blocks
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
+
+            # These are some reasonable preconditioner/linear solver settings for block systems
+            # Krylov solver
+            self.solver.ksp.setType('bcgs') # biconjugate gradient stabilized. in most cases probably the best option
+            self.solver.ksp.setTolerances(rtol=1e-6)# 1e-5 is too small
+            # Some other reasonable krylov solvers: (I don't think they work with block systems)
+            # bcgsl, ibcgs (improved stabilized bcgs)
+            # fbcgsr, fbcgs (flexible bcgs)
+
+            # Field split preconditioning
+            self.solver.ksp.pc.setType('fieldsplit')
+            # Set the indices
+            nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
+            nest_indices_tuples = [(str(i), val) for i,val in enumerate(nest_indices)]
+            #self.solver.ksp.pc.setFieldSplitIS(("0", is_0), ("1", is_1))
+            self.solver.ksp.pc.setFieldSplitIS(*nest_indices_tuples)
+            self.solver.ksp.pc.setFieldSplitType(1) # 0 == 'additive' [jacobi], 1 == gauss-seidel
+            subksps = self.solver.ksp.pc.getFieldSplitSubKSP()
+            for i,subksp in enumerate(subksps):
+                subksp.setType('preonly')
+                # If there is not diffusion then this is really just a distributed set of ODEs
+                if not self._active_compartments[i].has_diffusive_forms:
+                    subksp.pc.setType('none')
+                subksp.setType('preonly')
+                subksp.pc.setType('hypre')
+
         else:
             fancy_print(f"Using dolfin MixedNonlinearVariationalSolver", format_type='log')
             self._ubackend = [u[i]._cpp_object for i in range(len(u))] 
