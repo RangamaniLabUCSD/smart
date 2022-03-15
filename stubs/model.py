@@ -19,6 +19,7 @@ import petsc4py.PETSc as PETSc
 
 Print = PETSc.Sys.Print
 import operator
+import pickle
 
 import numpy as np
 import sympy as sym
@@ -51,6 +52,38 @@ class Model:
     #solver_system: stubs.solvers.SolverSystem
     parent_mesh: stubs.mesh.ParentMesh
     name: str=''
+
+    def to_dict(self):
+        parameters = self.pc.to_dicts()
+        species = self.sc.to_dicts()
+        compartments = self.cc.to_dicts()
+        reactions = self.rc.to_dicts()
+        return {'name': self.name, 'parameters': parameters, 'species': species,
+                'compartments': compartments, 'reactions': reactions,
+                'parent_mesh_filename': self.parent_mesh.mesh_filename, 'parent_mesh_filetype': self.parent_mesh.mesh_filetype,
+                'config': self.config.__dict__}
+
+    @classmethod
+    def from_dict(cls, input_dict):
+        pc, sc, cc, rc = stubs.common.empty_sbmodel()
+        pc.add([stubs.model_assembly.Parameter.from_dict(parameter) for parameter in input_dict['parameters']])
+        sc.add([stubs.model_assembly.Species.from_dict(species) for species in input_dict['species']])
+        cc.add([stubs.model_assembly.Compartment.from_dict(compartment) for compartment in input_dict['compartments']])
+        rc.add([stubs.model_assembly.Reaction.from_dict(reaction) for reaction in input_dict['reactions']])
+        config = stubs.config.Config()
+        config.__dict__ = input_dict['config']
+        parent_mesh = stubs.mesh.ParentMesh(input_dict['parent_mesh_filename'], input_dict['parent_mesh_filetype'])
+        return cls(pc, sc, cc, rc, config, parent_mesh, input_dict['name'])
+         
+    
+    def to_pickle(self, filename):
+        with open(filename, 'wb') as f:
+            pickle.dump(self.to_dict(), f)
+    @classmethod
+    def from_pickle(cls, filename):
+        with open(filename, 'rb') as f:
+            input_dict = pickle.load(f)
+        return cls.from_dict(input_dict)
 
     def __post_init__(self):
         # # Check that solver_system is valid
@@ -1729,3 +1762,17 @@ class Model:
 
     def rounded_decimal(self, x):
         return Decimal(x).quantize(self._base_t)
+    
+    def to_file(self, filename):
+        """
+        Dump the model to a file
+        """
+        if self.mpi_am_i_root:
+            parameters = self.pc.to_dicts()
+            species = self.sc.to_dicts()
+            compartments = self.cc.to_dicts()
+            reactions = self.rc.to_dicts()
+            model_dict = {'parameters': parameters, 'species': species, 'compartments': compartments, 'reactions': reactions}
+            with open(filename, 'wb') as f:
+                pickle.dump(model_dict, f)
+                    

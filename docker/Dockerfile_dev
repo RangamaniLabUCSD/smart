@@ -43,6 +43,8 @@ RUN apt-get update && apt-get install -y \
     libxcursor1 \
     libxinerama1 \
     libgl1-mesa-glx \
+    libgl1-mesa-dev \
+    xvfb \
     gnuplot && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -63,6 +65,9 @@ RUN python3 -m pip install bpython
 RUN python3 -m pip install gmsh
 RUN python3 -m pip install vedo
 RUN python3 -m pip install termplotlib
+# PyQt5 for matplotlib
+RUN python3 -m pip install PyQt5
+ENV MPLBACKEND=QT5Agg
 #RUN python3 -m pip install h5py
 # this is to install just the dependencies so that we can use the local version of stubs
 RUN python3 -m pip install fenics-stubs

@@ -85,6 +85,10 @@ class ObjectContainer:
     @property
     def indices(self):
         return enumerate(self.keys)
+    
+    def to_dicts(self):
+        "Returns a list of dicts that can be used to recreate the ObjectContainer"
+        return [obj.to_dict() for obj in self.values]
 
     def __getitem__(self, key):
         "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
@@ -355,6 +359,21 @@ class Parameter(ObjectInstance):
     notes: str=''
     use_preintegration: bool=False
 
+    def to_dict(self):
+        "Convert to a dict that can be used to recreate the object."
+        keys_to_keep = ['name', 'value', 'unit', 'group', 'notes', 'use_preintegration',
+                        'is_time_dependent', 'is_space_dependent', 'sym_expr', 'preint_sym_expr',
+                        'sampling_data', 'preint_sampling_data', 'type', 'free_symbols']
+        return {key: self.__dict__[key] for key in keys_to_keep}
+        
+    @classmethod
+    def from_dict(cls, input_dict):
+        parameter = cls(input_dict['name'], input_dict['value'], input_dict['unit'])
+        for key, val in input_dict.items():
+            setattr(parameter, key, val)
+        parameter.__post_init__()
+        return parameter
+
     @classmethod
     def from_file(cls, name, sampling_file, unit, group='', notes='', use_preintegration=False):
         "Load in a purely time-dependent scalar function from data"
@@ -382,6 +401,7 @@ class Parameter(ObjectInstance):
         parameter.is_time_dependent     = True
         parameter.is_space_dependent    = False # not supported yet
         parameter.type = 'from_file'
+        parameter.__post_init__()
         fancy_print(f"Time-dependent parameter {name} loaded from file.", format_type='log')
 
         return parameter
@@ -427,6 +447,7 @@ class Parameter(ObjectInstance):
 
         # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
         parameter.type = 'expression'
+        parameter.__post_init__()
         fancy_print(f"Time-dependent parameter {name} evaluated from expression.", format_type='log')
 
         return parameter
@@ -440,7 +461,7 @@ class Parameter(ObjectInstance):
         if self.use_preintegration:
             fancy_print(f"Warning! Pre-integrating parameter {self.name}. Make sure that expressions {self.name} appears in have no other time-dependent variables.", format_type='warning')
         
-        attributes = ['sym_expr', 'preint_sym_expr', 'sampling_data', 'preint_sampling_data']
+        attributes = ['sym_expr', 'preint_sym_expr', 'sampling_file', 'sampling_data', 'preint_sampling_data', 'free_symbols']
         for attribute in attributes:
             if not hasattr(self, attribute):
                 setattr(self, attribute, None)
@@ -472,7 +493,7 @@ class Parameter(ObjectInstance):
 
     def check_validity(self):
         if self.is_time_dependent:
-            if all([x=='' for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]):
+            if all([x in ('', None) for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]):
                 raise ValueError(f"Parameter {self.name} is marked as time dependent but is not defined in terms of time.")
 
 
@@ -520,6 +541,16 @@ class Species(ObjectInstance):
     diffusion_units: pint.Unit
     compartment_name: str
     group: str=''
+
+    def to_dict(self):
+        "Convert to a dict that can be used to recreate the object."
+        keys_to_keep = ['name', 'initial_condition', 'concentration_units', 'D', 'diffusion_units',
+                        'compartment_name', 'group']
+        return {key: self.__dict__[key] for key in keys_to_keep}
+        
+    @classmethod
+    def from_dict(cls, input_dict):
+        return cls(**input_dict)
 
     def __post_init__(self):
         self.sub_species = {} # additional compartments this species may live in in addition to its primary one
@@ -618,6 +649,15 @@ class Compartment(ObjectInstance):
     compartment_units: pint.Unit
     cell_marker: Any
     
+    def to_dict(self):
+        "Convert to a dict that can be used to recreate the object."
+        keys_to_keep = ['name', 'dimensionality', 'compartment_units', 'cell_marker']
+        return {key: self.__dict__[key] for key in keys_to_keep}
+        
+    @classmethod
+    def from_dict(cls, input_dict):
+        return cls(**input_dict)
+
     def __post_init__(self):
 
         if isinstance(self.cell_marker, list) and not all([isinstance(m, int) for m in self.cell_marker]) \
@@ -711,6 +751,16 @@ class Reaction(ObjectInstance):
     eqn_f_str: str=''
     eqn_r_str: str=''
     group: str=''
+
+    def to_dict(self):
+        "Convert to a dict that can be used to recreate the object."
+        keys_to_keep = ['name', 'lhs', 'rhs', 'param_map', 'species_map', 'reaction_type',
+                        'explicit_restriction_to_domain', 'track_value', 'eqn_f_str', 'eqn_r_str', 'group']
+        return {key: self.__dict__[key] for key in keys_to_keep}
+        
+    @classmethod
+    def from_dict(cls, input_dict):
+        return cls(**input_dict)
 
     def __post_init__(self):
         self._check_input_type_validity()
