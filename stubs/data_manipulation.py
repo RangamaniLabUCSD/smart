@@ -8,11 +8,13 @@ import matplotlib.pyplot as plt
 import pickle
 from numbers import Number
 import os
+import termplotlib as tpl
 import petsc4py.PETSc as PETSc
 from collections import defaultdict as ddict
 Print = PETSc.Sys.Print
 import matplotlib.lines as mlines
 from stubs.common import round_to_n
+from stubs.model_assembly import Parameter, Species, Compartment, Reaction, Flux, FieldVariable
 
 comm = d.MPI.comm_world
 size = comm.size
@@ -38,34 +40,48 @@ class PostProcessor:
         
 
 class Probe:
-    "Collects the value of a function/flux at a point"
-    def __init__(self, model, probe_type, var_type, var_name, expression=None, unit_total=None, x_probe=None, filename=None):
+    """
+    Collects the value of a function/flux at a point
+    unit_total = total unit of the final quantity (e.g. integrated value if using probe_type=sum). Useful if just setting values and the unit is known
+
+    """
+    #def __init__(self, model, probe_type, var_type, var_name, expression=None, unit_total=None, x_probe=None, filename=None):
+    def __init__(self, model, probe_type, var, unit_total=None, x_probe=None, filename=None):
         self.model      = model
         self.probe_type = probe_type
-        self.var_type   = var_type
-        self.var_name   = var_name # name of the variable to probe (could be a species or flux)
-        self.expression = expression
+        if isinstance(var, Parameter):
+            self.var_type = 'time_dependent_parameter'
+        elif isinstance(var, Species):
+            self.var_type = 'concentration'
+        elif isinstance(var, Flux):
+            self.var_type = 'flux'
+        elif isinstance(var, FieldVariable):
+            self.var_type = 'field_variable'
+        
+        self.var_name   = var.name # name of the variable to probe (could be a species or flux)
         self.x_probe    = x_probe # Coordinate to probe function/flux at
         self.filename   = filename
 
         # (point==evaluate at a specific point, sum==integrated over appropriate measure, all==all vertex values, stats==(min,max,mean,mean_vertex,median,std))
-        assert probe_type in ['point', 'sum', 'all', 'stats']
-        assert var_type in ['flux', 'concentration', 'time_dependent_parameter', 'expression']
+        assert self.probe_type in ['point', 'sum', 'all', 'stats']
+        assert self.var_type in ['flux', 'concentration', 'time_dependent_parameter', 'field_variable']
         # Store the variable 
-        if var_type == 'concentration':
+        if self.var_type == 'concentration':
             self.var = self.model.sc[var_name]
             self.unit = self.var.concentration_units
-            self.unit_dx = self.var.compartment.compartment_units
-        elif var_type == 'flux':
+            self.unit_dx = self.var.compartment.measure_units #self.var.compartment.compartment_units**self.var.compartment.dimensionality
+        elif self.var_type == 'flux':
             self.var = self.model.fc[var_name]
             self.unit = self.var.equation_units
             self.unit_dx = self.var.measure_units
-        elif var_type == 'time_dependent_parameter':
+        elif self.var_type == 'time_dependent_parameter':
             self.var = self.model.pc[var_name]
             self.unit = self.var.unit
             self.unit_dx = None
-        elif var_type == 'expression':
-            self.var = expression
+        elif self.var_type == 'field_variable':
+            self.var = var
+            self.unit = self.var.equation_units
+            self.unit_dx = self.var.measure_units
 
             
         if self.var_type == 'time_dependent_parameter':
@@ -102,19 +118,29 @@ class Probe:
             mean_value = self.model.get_mass(self.var) / self.var.compartment.nvolume.magnitude
             value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
                      'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
-        elif probevar_type == ('point', 'flux'):
+        elif probevar_type in [('point', 'flux'), ('point', 'field_variable')]:
             value = self.var._equation_quantity.magnitude(self.x_probe)
         elif probevar_type == ('sum', 'flux'):
             value = self.var.assembled_flux.magnitude
             assert self.var._assembled_flux.units == (self.unit_total).units
+        elif probevar_type == ('sum', 'field_variable'):
+            value = self.var.assembled_quantity.magnitude
+            assert self.var._assembled_quantity.units == (self.unit_total).units
         elif probevar_type == ('all', 'flux'):
             value = -1*d.assemble(self.var.form).get_local()
+        elif probevar_type == ('all', 'field_variable'):
+            value = d.assemble(self.var._equation_quantity.magnitude*self.var.v*self.var.measure).get_local()
         elif probevar_type == ('stats', 'flux'):
             all_values = -1*d.assemble(self.var.form).get_local()
             mean_value = self.var.assembled_flux.magnitude / self.var.measure_compartment.nvolume.magnitude
             value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
                      'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
-        elif var_type == 'time_dependent_parameter':
+        elif probevar_type == ('stats', 'field_variable'):
+            all_values = d.assemble(self.var._equation_quantity.magnitude*self.var.v*self.var.measure).get_local()
+            mean_value = self.var.assembled_quantity.magnitude / self.var.measure_compartment.nvolume.magnitude
+            value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
+                     'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
+        elif self.var_type == 'time_dependent_parameter':
             value = self.var.value
         else:
             raise ValueError('Unknown probe type')
@@ -127,10 +153,11 @@ class Probe:
             self.values.append(value)
 
         # Append the current time and model iteration
-        self.tvec.append(float(self.model.t))
+        t = float(self.model.t)
+        self.tvec.append(t)
         self.idx.append(self.model.idx)
 
-        return (self.tvec, self.idx, value)
+        return (t, self.model.idx, value)
     
     def set_values(self, value):
         if self.probe_type == 'stats':
@@ -169,7 +196,6 @@ class Probe:
     def tpl_plot(self, stat_key=None):
         "Generate plot in terminal"
         # post processing
-        import termplotlib as tpl
         if self.probe_type == 'stats':
             if stat_key is None:
                 raise ValueError('stat_key must be specified')
@@ -195,6 +221,8 @@ class Probe:
 
         plt.clf()
         plt.plot(ty[:,0], ty[:,1])
+        plt.xlabel('Time [s]')
+        plt.ylabel(f'{self.var_name} [{self.unit_total}]')
         if stat_key is not None:
             plt.title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={stat_key}")
         else:

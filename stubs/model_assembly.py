@@ -684,6 +684,10 @@ class Compartment(ObjectInstance):
             raise ValueError(f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length].")
     
     @property
+    def measure_units(self):
+        return self.compartment_units**self.dimensionality
+
+    @property
     def mesh_id(self):
         self._mesh_id = self.mesh.id
         return self._mesh_id
@@ -882,6 +886,7 @@ class Flux(ObjectInstance):
 
         # Add in an uninitialized unit_scale_factor
         self.unit_scale_factor = 1.0*unit.dimensionless
+        self.equation_str = str(self.equation)
         self.equation = self.equation * Symbol('unit_scale_factor')
 
         # Getting additional flux properties
@@ -1029,7 +1034,7 @@ class Flux(ObjectInstance):
         #if not self.is_boundary_condition:
         if self.topology in ['volume', 'surface']:
             self.measure       = self.destination_compartment.mesh.dx
-            self.measure_units = self.destination_compartment.compartment_units**self.destination_compartment.dimensionality
+            self.measure_units = self.destination_compartment.measure_units # self.destination_compartment.compartment_units**self.destination_compartment.dimensionality
             self.measure_compartment = self.destination_compartment
         elif self.topology in ['volume_to_surface', 'surface_to_volume', 'volume-volume_to_surface', 'volume-surface_to_volume']:
             # intersection of this surface with boundary of source volume(s)
@@ -1205,13 +1210,14 @@ class Form(ObjectInstance):
 class FieldVariable(ObjectInstance):
     """
     A (scalar) field variable defined over a compartment.
-    eqn_str will be parsed into a Sympy symbolic expression using provided parameters/species in var_map
+    equation_str will be parsed into a Sympy symbolic expression using provided parameters/species in var_map
     """
     name: str
-    compartment_name: str
+    #compartment_name: str
+    compartment: Compartment
     variables: list
-    eqn_str: str
-    desired_units: pint.Unit
+    equation_str: str
+    #desired_units: pint.Unit
     # parameters: list = dataclasses.field(default_factory=list)
     # species: list = dataclasses.field(default_factory=list)
 
@@ -1220,13 +1226,23 @@ class FieldVariable(ObjectInstance):
         self.unit_scale_factor = 1.0*unit.dimensionless
 
         # Parse the equation string and replace equation variables. Multiply by unit_scale_factor
-        self.equation = parse_expr(self.eqn_str).subs(self.variables_dict) * Symbol('unit_scale_factor')
+        self.equation = parse_expr(self.equation_str).subs(self.variables_dict) * Symbol('unit_scale_factor')
 
         # Get equation lambda expression
         self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=['sympy','numpy'])
+        self.equation_units = self.equation_lambda_eval('units') # default
+        self.desired_units = self.equation_lambda_eval('units') # default
 
+        self.measure       = self.compartment.mesh.dx
+        self.measure_units = self.compartment.measure_units #self.compartment.compartment_units**self.compartment.dimensionality
+        self.measure_compartment = self.compartment
+    
+        # Test function if needed
+        self.v = common.sub(self.compartment.v, 0)
+    
+    def change_units(self, desired_units):
+        self.desired_units = desired_units
         # Update equation with correct unit scale factor
-        
         # Use the uninitialized unit_scale_factor to get the actual units
         initial_equation_units = self.equation_lambda_eval('units')
 
@@ -1251,9 +1267,6 @@ class FieldVariable(ObjectInstance):
                 fancy_print(f"Old units: {self.equation_units}", format_type='log')
                 fancy_print(f"New units: {self._expected_flux_units}", new_lines=[0,1], format_type='log')
 
-        self.measure       = self.compartment.mesh.dx
-        self.measure_units = self.compartment.compartment_units**self.compartment.dimensionality
-        self.measure_compartment = self.compartment
 
     def equation_lambda_eval(self, input_type='quantity'):
         """
@@ -1262,7 +1275,7 @@ class FieldVariable(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
-        self._equation_quantity  = self.equation_lambda(**self.equation_variables)
+        self._equation_quantity  = self.equation_lambda(**self.variables_dict)
         if input_type == 'quantity':
             return self._equation_quantity
         elif input_type == 'value':
@@ -1278,14 +1291,15 @@ class FieldVariable(ObjectInstance):
         return variables
 
     @property
-    def assembled_value(self):
+    def assembled_quantity(self):
         "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
-        self._assembled_value = d.assemble(self.equation_lambda_eval(input_type='value')*self.measure) * self.equation_units * self.measure_units
-        return self._assembled_value
+        assembled_quantity = self.equation_lambda_eval('quantity')
+        self._assembled_quantity = d.assemble(assembled_quantity.magnitude*self.measure) * assembled_quantity.units * self.measure_units
+        return self._assembled_quantity
 
 
     # def to_dict(self):
     #     "Convert to a dict that can be used to recreate the object."
-    #     keys_to_keep = ['name', 'compartment_name', 'var_map', 'eqn_str']
+    #     keys_to_keep = ['name', 'compartment_name', 'var_map', 'equation_str']
     #     return {key: self.__dict__[key] for key in keys_to_keep}
   

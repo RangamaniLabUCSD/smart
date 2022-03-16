@@ -1669,11 +1669,17 @@ class Model:
     def num_active_compartments(self):
         return len(self._active_compartments)
     
-    def get_mass(self, species, units=None, ukey='u', sub_domain=None):
-        if units is None:
-            units_scale = 1
+    def get_mass(self, species, units=None, units_final=None, ukey='u', sub_domain=None):
+        u_units  = species.concentration_units
+        dx_units = species.compartment.measure_units
+
+        if units_final is not None:
+            units_scale = ((1*u_units*dx_units/units_final).to(unit.dimensionless)).magnitude
+        elif units is not None:
+            units_scale = ((1*u_units/units).to(unit.dimensionless)).magnitude
         else:
-            units_scale = ((1*species.concentration_units/units).to(unit.dimensionless)).magnitude
+            units_scale = 1
+
         if sub_domain is not None:
             assert isinstance(sub_domain, int)
             return d.assemble(species.u['u'] * units_scale * species.compartment.mesh.dx_uncombined[sub_domain])
