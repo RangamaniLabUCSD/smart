@@ -1159,6 +1159,8 @@ class Model:
             self.residuals.append(residuals)
 
             if not self.solver.converged:
+                if not self.config.solver['attempt_timestep_restart_on_divergence']:
+                    raise RuntimeError(f"Model {self.name}: SNES diverged and attempt_timestep_restart_on_divergence is False. Exiting.")
                 self.stopwatches["Total time step"].stop()
                 fancy_print(f"SNES failed to converge. Reason = {self.solver.getConvergedReason()}", format_type='log')
                 fancy_print(f"(https://petsc.org/main/docs/manualpages/SNES/SNESConvergedReason.html)", format_type='log')

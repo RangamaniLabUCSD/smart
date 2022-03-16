@@ -861,6 +861,10 @@ class Flux(ObjectInstance):
     # parent_reaction: Reaction
     # explicit_restriction_to_domain: str=''
     # track_value: bool=False        
+    # @classmethod
+    # def from_reaction(cls, name, destination_species, equation, reaction):
+    #     flux = cls(name, destination_species, equation)
+    #     flux.reaction = reaction
     
     def check_validity(self):
         pass
@@ -1196,3 +1200,92 @@ class Form(ObjectInstance):
     def inspect(self):
         for index, integral in enumerate(self.integrals):
             print(str(integral) + "\n")
+
+@dataclass
+class FieldVariable(ObjectInstance):
+    """
+    A (scalar) field variable defined over a compartment.
+    eqn_str will be parsed into a Sympy symbolic expression using provided parameters/species in var_map
+    """
+    name: str
+    compartment_name: str
+    variables: list
+    eqn_str: str
+    desired_units: pint.Unit
+    # parameters: list = dataclasses.field(default_factory=list)
+    # species: list = dataclasses.field(default_factory=list)
+
+    def __post_init__(self):
+        # Add in an uninitialized unit_scale_factor
+        self.unit_scale_factor = 1.0*unit.dimensionless
+
+        # Parse the equation string and replace equation variables. Multiply by unit_scale_factor
+        self.equation = parse_expr(self.eqn_str).subs(self.variables_dict) * Symbol('unit_scale_factor')
+
+        # Get equation lambda expression
+        self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=['sympy','numpy'])
+
+        # Update equation with correct unit scale factor
+        
+        # Use the uninitialized unit_scale_factor to get the actual units
+        initial_equation_units = self.equation_lambda_eval('units')
+
+        # If unit dimensionality is not correct a parameter likely needs to be adjusted
+        if self.desired_units.dimensionality != initial_equation_units.dimensionality:
+            raise ValueError(f"FieldVariable {self.name} has wrong units (cannot be converted)"
+                                f" - expected {self.desired_units}, got {self.initial_equation_units}.")
+        # Fix scaling 
+        else:
+            # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
+            self.unit_scale_factor = initial_equation_units.to(self.desired_units)/initial_equation_units
+            self.equation_units = self.equation_lambda_eval('units') # these should now be the proper units
+
+            # should be redundant with previous checks, but just in case
+            assert self.unit_scale_factor.dimensionless 
+            assert (initial_equation_units*self.unit_scale_factor).units == self.desired_units
+            assert self.equation_units == self.desired_units
+
+            # If we already have the correct units, there is no need to update the equation
+            if self.unit_scale_factor.magnitude != 1.0:
+                fancy_print(f"FieldVariable {self.name} scaled by {self.unit_scale_factor}", new_lines=[1,0], format_type='log')
+                fancy_print(f"Old units: {self.equation_units}", format_type='log')
+                fancy_print(f"New units: {self._expected_flux_units}", new_lines=[0,1], format_type='log')
+
+        self.measure       = self.compartment.mesh.dx
+        self.measure_units = self.compartment.compartment_units**self.compartment.dimensionality
+        self.measure_compartment = self.compartment
+
+    def equation_lambda_eval(self, input_type='quantity'):
+        """
+        Evaluates the equation lambda function using either the quantity (value * units), the value, or the units.
+        The values and units are evaluted separately and then combined because some expressions don't work well
+        with pint quantity types.
+        """
+        # This is an attempt to make the equation lambda work with pint quantities
+        self._equation_quantity  = self.equation_lambda(**self.equation_variables)
+        if input_type == 'quantity':
+            return self._equation_quantity
+        elif input_type == 'value':
+            return self._equation_quantity.magnitude
+        elif input_type == 'units':
+            return common.pint_unit_to_quantity(self._equation_quantity.units)
+        
+    # We define this as a property so that it is automatically updated
+    @property
+    def variables_dict(self):
+        variables = {variable.name: variable.dolfin_quantity for variable in self.variables}
+        variables.update({'unit_scale_factor': self.unit_scale_factor})
+        return variables
+
+    @property
+    def assembled_value(self):
+        "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
+        self._assembled_value = d.assemble(self.equation_lambda_eval(input_type='value')*self.measure) * self.equation_units * self.measure_units
+        return self._assembled_value
+
+
+    # def to_dict(self):
+    #     "Convert to a dict that can be used to recreate the object."
+    #     keys_to_keep = ['name', 'compartment_name', 'var_map', 'eqn_str']
+    #     return {key: self.__dict__[key] for key in keys_to_keep}
+  

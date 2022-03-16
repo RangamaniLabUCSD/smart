@@ -37,6 +37,189 @@ class PostProcessor:
         self.probe_fluxes         = ddict(list)
         
 
+class Probe:
+    "Collects the value of a function/flux at a point"
+    def __init__(self, model, probe_type, var_type, var_name, expression=None, unit_total=None, x_probe=None, filename=None):
+        self.model      = model
+        self.probe_type = probe_type
+        self.var_type   = var_type
+        self.var_name   = var_name # name of the variable to probe (could be a species or flux)
+        self.expression = expression
+        self.x_probe    = x_probe # Coordinate to probe function/flux at
+        self.filename   = filename
+
+        # (point==evaluate at a specific point, sum==integrated over appropriate measure, all==all vertex values, stats==(min,max,mean,mean_vertex,median,std))
+        assert probe_type in ['point', 'sum', 'all', 'stats']
+        assert var_type in ['flux', 'concentration', 'time_dependent_parameter', 'expression']
+        # Store the variable 
+        if var_type == 'concentration':
+            self.var = self.model.sc[var_name]
+            self.unit = self.var.concentration_units
+            self.unit_dx = self.var.compartment.compartment_units
+        elif var_type == 'flux':
+            self.var = self.model.fc[var_name]
+            self.unit = self.var.equation_units
+            self.unit_dx = self.var.measure_units
+        elif var_type == 'time_dependent_parameter':
+            self.var = self.model.pc[var_name]
+            self.unit = self.var.unit
+            self.unit_dx = None
+        elif var_type == 'expression':
+            self.var = expression
+
+            
+        if self.var_type == 'time_dependent_parameter':
+            self.unit_total = self.unit
+        elif self.probe_type in ['sum']:
+            # units of integrated value 
+            self.unit_total = self.unit*self.unit_dx
+        elif self.probe_type in ['point', 'all', 'stats']:
+            self.unit_total = self.unit
+        
+        # Override with user specified, if given
+        if unit_total is not None:
+            self.unit_total = unit_total
+            
+        # probed values
+        if self.probe_type=='stats':
+            self.values = {'min': [], 'max': [], 'mean': [], 'mean_vertex': [], 'median_vertex': [], 'std_vertex': []}
+        else:
+            self.values = []
+        self.tvec = []
+        self.idx = []
+
+
+    def collect_values(self):
+        probevar_type = (self.probe_type, self.var_type)
+        if probevar_type == ('point', 'concentration'):
+            value = self.model.dolfin_get_function_values_at_point(self.var, self.x_probe)
+        elif probevar_type == ('sum', 'concentration'):
+            value = self.model.get_mass(self.var)
+        elif probevar_type == ('all', 'concentration'):
+            value = self.model.dolfin_get_function_values(self.var)
+        elif probevar_type == ('stats', 'concentration'):
+            all_values = self.model.dolfin_get_function_values(self.var)
+            mean_value = self.model.get_mass(self.var) / self.var.compartment.nvolume.magnitude
+            value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
+                     'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
+        elif probevar_type == ('point', 'flux'):
+            value = self.var._equation_quantity.magnitude(self.x_probe)
+        elif probevar_type == ('sum', 'flux'):
+            value = self.var.assembled_flux.magnitude
+            assert self.var._assembled_flux.units == (self.unit_total).units
+        elif probevar_type == ('all', 'flux'):
+            value = -1*d.assemble(self.var.form).get_local()
+        elif probevar_type == ('stats', 'flux'):
+            all_values = -1*d.assemble(self.var.form).get_local()
+            mean_value = self.var.assembled_flux.magnitude / self.var.measure_compartment.nvolume.magnitude
+            value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
+                     'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
+        elif var_type == 'time_dependent_parameter':
+            value = self.var.value
+        else:
+            raise ValueError('Unknown probe type')
+            
+        # Append the value to the list
+        if self.probe_type == 'stats':
+            for key in self.values.keys():
+                self.values[key].append(value[key])
+        else:
+            self.values.append(value)
+
+        # Append the current time and model iteration
+        self.tvec.append(float(self.model.t))
+        self.idx.append(self.model.idx)
+
+        return (self.tvec, self.idx, value)
+    
+    def set_values(self, value):
+        if self.probe_type == 'stats':
+            for key in self.values.keys():
+                self.values[key].append(value[key])
+        else:
+            self.values.append(value)
+
+        # Append the current time and model iteration
+        self.tvec.append(float(self.model.t))
+        self.idx.append(self.model.idx)
+        return (self.tvec, self.idx, value)
+    
+    @property
+    def values_np(self):
+        if self.probe_type == 'stats':
+            return {key: np.array(self.values[key]) for key in self.values.keys()}
+        else:
+            return np.array(self.values)
+    @property
+    def tvec_np(self):
+        return np.array(self.tvec)
+    @property
+    def tvec_values_np(self):
+        if self.probe_type == 'stats':
+            return {key: np.vstack((self.tvec_np, self.values_np[key])).T for key in self.values.keys()}
+        else:
+            return np.vstack((self.tvec_np, self.values_np)).T
+    def _print_str(self, stat_key=None):
+        if stat_key is not None:
+            fancy_print(f"Time-plot of {self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={stat_key}", format_type='log')
+        else:
+            fancy_print(f"Time-plot of {self.var_name}, probe_type={self.probe_type}, units={self.unit_total}", format_type='log')
+        
+    
+    def tpl_plot(self, stat_key=None):
+        "Generate plot in terminal"
+        # post processing
+        import termplotlib as tpl
+        if self.probe_type == 'stats':
+            if stat_key is None:
+                raise ValueError('stat_key must be specified')
+            else:
+                ty = self.tvec_values_np[stat_key]
+        else:
+            ty=self.tvec_values_np
+        self._print_str(stat_key)
+        fig = tpl.figure(); fig.plot(ty[:,0], ty[:,1]); fig.show()
+        
+    def mpl_plot(self, stat_key=None, filename=None):
+        if self.probe_type == 'stats':
+            if stat_key is None:
+                raise ValueError('stat_key must be specified')
+            else:
+                ty = self.tvec_values_np[stat_key]
+        else:
+            ty = self.tvec_values_np
+        if filename is None:
+            filename = self.filename
+
+        self._print_str(stat_key)
+
+        plt.clf()
+        plt.plot(ty[:,0], ty[:,1])
+        if stat_key is not None:
+            plt.title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={stat_key}")
+        else:
+            plt.title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}")
+
+        if filename is None:
+            plt.show()
+        else:
+            plt.savefig(filename)        
+            fancy_print(f"Saving plot to {filename}", format_type='log')
+    
+    def dump_to_file(self, stat_key, filename=None):
+        if filename is None:
+            filename = self.filename
+        if filename is None:
+            raise ValueError('No filename specified')
+        if stat_key is None and self.probe_type == 'stats':
+            raise ValueError('stat_key must be specified')
+        if stat_key is not None and self.probe_type == 'stats':
+            np.savetxt(filename, self.tvec_values_np[stat_key], delimiter=',')
+        else:
+            np.savetxt(filename, self.tvec_values_np, delimiter=',')
+
+
+
 class Data:
     def __init__(self, model, config):
         self.model = model

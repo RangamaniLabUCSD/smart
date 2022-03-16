@@ -96,7 +96,7 @@ alias sourceme='source ~/.bashrc'\n\
 alias vimbash='vim ~/.bashrc'\n\
 alias vimalias='vim ~/.bash_aliases'\n\
 alias cdstubs='cd ~/shared/gitrepos/stubs'\n\
-alias cdpurk='cd ~/shared/gitrepos/purkinje-model'\n\
+alias cdpurk='cd ~/shared/gitrepos/purkinje-model/new_stubs/figure2'\n\
 alias debug='cd ~/shared/gitrepos/stubs/debug; bpython -i debug_stubs.py'\n\
 alias vimrc='vim ~/.vimrc'" >> $FENICS_HOME/.bash_aliases
 

@@ -24,7 +24,9 @@ class Config:
                                    'time_precision': 6,
                                    'print_assembly': True,
                                    'dt_decrease_factor': 1.0,
-                                   'dt_increase_factor': 1.0,}
+                                   'dt_increase_factor': 1.0,
+                                   'attempt_timestep_restart_on_divergence': False, #Currently needs to be looked int
+                                   }
 
         # initialize with default values
         self.flags              = {'store_solutions': True,
