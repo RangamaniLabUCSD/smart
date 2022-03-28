@@ -14,6 +14,8 @@ from collections import defaultdict as ddict
 Print = PETSc.Sys.Print
 import matplotlib.lines as mlines
 from stubs.common import round_to_n
+from stubs.common import _fancy_print as fancy_print
+
 from stubs.model_assembly import Parameter, Species, Compartment, Reaction, Flux, FieldVariable
 
 comm = d.MPI.comm_world
@@ -67,15 +69,15 @@ class Probe:
         assert self.var_type in ['flux', 'concentration', 'time_dependent_parameter', 'field_variable']
         # Store the variable 
         if self.var_type == 'concentration':
-            self.var = self.model.sc[var_name]
+            self.var = self.model.sc[self.var_name]
             self.unit = self.var.concentration_units
             self.unit_dx = self.var.compartment.measure_units #self.var.compartment.compartment_units**self.var.compartment.dimensionality
         elif self.var_type == 'flux':
-            self.var = self.model.fc[var_name]
+            self.var = self.model.fc[self.var_name]
             self.unit = self.var.equation_units
             self.unit_dx = self.var.measure_units
         elif self.var_type == 'time_dependent_parameter':
-            self.var = self.model.pc[var_name]
+            self.var = self.model.pc[self.var_name]
             self.unit = self.var.unit
             self.unit_dx = None
         elif self.var_type == 'field_variable':
@@ -215,7 +217,10 @@ class Probe:
         else:
             ty = self.tvec_values_np
         if filename is None:
-            filename = self.filename
+            if stat_key is not None:
+                filename = self.filename+'_'+stat_key+'.png'
+            else:
+                filename = self.filename+'.png'
 
         self._print_str(stat_key)
 
@@ -234,9 +239,11 @@ class Probe:
             plt.savefig(filename)        
             fancy_print(f"Saving plot to {filename}", format_type='log')
     
-    def dump_to_file(self, stat_key, filename=None):
-        if filename is None:
-            filename = self.filename
+    def dump_to_file(self, stat_key=None, filename=None):
+        if stat_key is not None:
+            filename = self.filename+'_'+stat_key+'.csv'
+        else:
+            filename = self.filename+'.csv'
         if filename is None:
             raise ValueError('No filename specified')
         if stat_key is None and self.probe_type == 'stats':

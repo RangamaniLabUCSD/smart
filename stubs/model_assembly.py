@@ -1240,16 +1240,17 @@ class FieldVariable(ObjectInstance):
         # Test function if needed
         self.v = common.sub(self.compartment.v, 0)
     
-    def change_units(self, desired_units):
-        self.desired_units = desired_units
+    def set_units(self, desired_units):
+        self.desired_units = stubs.common.pint_unit_to_quantity(desired_units)
         # Update equation with correct unit scale factor
         # Use the uninitialized unit_scale_factor to get the actual units
+        self.unit_scale_factor = 1.0*unit.dimensionless # this is redundant if called by __post_init__
         initial_equation_units = self.equation_lambda_eval('units')
 
         # If unit dimensionality is not correct a parameter likely needs to be adjusted
         if self.desired_units.dimensionality != initial_equation_units.dimensionality:
             raise ValueError(f"FieldVariable {self.name} has wrong units (cannot be converted)"
-                                f" - expected {self.desired_units}, got {self.initial_equation_units}.")
+                                f" - expected {self.desired_units}, got {initial_equation_units}.")
         # Fix scaling 
         else:
             # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
@@ -1264,8 +1265,8 @@ class FieldVariable(ObjectInstance):
             # If we already have the correct units, there is no need to update the equation
             if self.unit_scale_factor.magnitude != 1.0:
                 fancy_print(f"FieldVariable {self.name} scaled by {self.unit_scale_factor}", new_lines=[1,0], format_type='log')
-                fancy_print(f"Old units: {self.equation_units}", format_type='log')
-                fancy_print(f"New units: {self._expected_flux_units}", new_lines=[0,1], format_type='log')
+                fancy_print(f"Old units: {initial_equation_units}", format_type='log')
+                fancy_print(f"New units: {self.desired_units}", new_lines=[0,1], format_type='log')
 
 
     def equation_lambda_eval(self, input_type='quantity'):
