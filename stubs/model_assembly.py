@@ -594,8 +594,8 @@ class Species(ObjectInstance):
         # checking units
         if not self.diffusion_units.check('[length]^2/[time]'):
             raise ValueError(f"Units of diffusion coefficient for species {self.name} must be dimensionally equivalent to [length]^2/[time].")
-        if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
-            raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
+        # if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
+        #     raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
 
     @property
     def dolfin_quantity(self):

@@ -748,6 +748,7 @@ class Model:
     def _init_5_1_reactions_to_fluxes(self):
         fancy_print(f"Convert reactions to flux objects", format_type='log')
         for reaction in self.rc:
+            print(reaction)
             reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
             
