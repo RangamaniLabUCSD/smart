@@ -5,14 +5,16 @@ import dolfin as d
 import ufl
 import logging
 
-
 global_settings = {'main_dir': None,
                    'log_filename': None,
                    # These functions will be substituted into any expressions
-                   'dolfin_expressions': {'exp': d.exp, 'cos': d.cos, 'sin': d.sin, 'tan': d.tan, 'cosh': d.cosh, 'sinh': d.sinh, 'tanh': d.tanh,
+                   'dolfin_expressions': {'exp': d.exp, 'cos': d.cos, 'sin': d.sin, 'tan': d.tan, 'cosh': ufl.cosh, 'sinh': ufl.sinh, 'tanh': ufl.tanh,
                               'acos': d.acos, 'asin': d.asin, 'atan': d.atan, 'atan2': ufl.atan_2, 
-                              'sqrt': d.sqrt, 'ln': d.ln, 'abs': d.abs, 'sign': ufl.sign, 'pi': d.pi, 'erf': d.erf}}
+                              'sqrt': d.sqrt, 'ln': d.ln, 'abs': ufl.algebra.Abs, 'sign': ufl.sign, 'pi': d.pi, 'erf': d.erf}, }
 
+dolfin_expressions= {'exp': d.exp, 'cos': d.cos, 'sin': d.sin, 'tan': d.tan, 'cosh': ufl.cosh, 'sinh': ufl.sinh, 'tanh': ufl.tanh,
+            'acos': d.acos, 'asin': d.asin, 'atan': d.atan, 'atan2': ufl.atan_2, 
+            'sqrt': d.sqrt, 'ln': d.ln, 'abs': ufl.algebra.Abs, 'sign': ufl.sign, 'pi': d.pi, 'erf': d.erf}
 class Config:
     """
     Refactored config 

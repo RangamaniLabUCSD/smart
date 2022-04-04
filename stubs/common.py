@@ -13,6 +13,7 @@ import re
 import pint
 from termcolor import colored
 import stubs
+from stubs import unit
 gset = stubs.config.global_settings
 from pandas import read_json
 from contextlib import contextmanager as _contextmanager
@@ -24,6 +25,10 @@ rank = comm.rank
 size = comm.size
 root = 0
 
+
+
+def stubs_expressions(dolfin_expressions):
+    return {k : lambda x: v(x.to(unit.dimensionless).magnitude) for k,v in dolfin_expressions.items()}
 
 
 def sub(func, idx, collapse_function_space=True):

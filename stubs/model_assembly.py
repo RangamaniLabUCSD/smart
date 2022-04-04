@@ -904,7 +904,7 @@ class Flux(ObjectInstance):
         # self.equation_variables.update({'unit_scale_factor': self.unit_scale_factor})
         # Get equation lambda expression
         # self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
-        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=gset['dolfin_expressions'])
+        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=common.stubs_expressions(gset['dolfin_expressions']))
 
         # Evaluate equation lambda expression with uninitialized unit scale factor
         #self.equation_lambda_eval()
@@ -1243,7 +1243,7 @@ class FieldVariable(ObjectInstance):
 
         # Get equation lambda expression
         # self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=['sympy','numpy'])
-        self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=gset['dolfin_expressions'])
+        self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=common.stubs_expressions(gset['dolfin_expressions']))
 
         self.equation_units = self.equation_lambda_eval('units') # default
         self.desired_units = self.equation_lambda_eval('units') # default
@@ -1298,6 +1298,11 @@ class FieldVariable(ObjectInstance):
             return self._equation_quantity.magnitude
         elif input_type == 'units':
             return common.pint_unit_to_quantity(self._equation_quantity.units)
+    
+    
+    @cached_property
+    def vscalar(self):
+        return d.TestFunction(sub(self.compartment.V, 0, True))
         
     # We define this as a property so that it is automatically updated
     @property
