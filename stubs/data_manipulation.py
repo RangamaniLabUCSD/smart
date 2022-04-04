@@ -129,16 +129,16 @@ class Probe:
             value = self.var.assembled_quantity.magnitude
             assert self.var._assembled_quantity.units == (self.unit_total).units
         elif probevar_type == ('all', 'flux'):
-            value = -1*d.assemble(self.var.form).get_local()
+            value = -1*d.assemble(self.var.scalar_form).get_local()
         elif probevar_type == ('all', 'field_variable'):
-            value = d.assemble(self.var._equation_quantity.magnitude*self.var.v*self.var.measure).get_local()
+            value = d.assemble(self.var._equation_quantity.magnitude*self.var.vscalar*self.var.measure).get_local()
         elif probevar_type == ('stats', 'flux'):
-            all_values = -1*d.assemble(self.var.form).get_local()
+            all_values = -1*d.assemble(self.var.scalar_form).get_local()
             mean_value = self.var.assembled_flux.magnitude / self.var.measure_compartment.nvolume.magnitude
             value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
                      'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
         elif probevar_type == ('stats', 'field_variable'):
-            all_values = d.assemble(self.var._equation_quantity.magnitude*self.var.v*self.var.measure).get_local()
+            all_values = d.assemble(self.var._equation_quantity.magnitude*self.var.vscalar*self.var.measure).get_local()
             mean_value = self.var.assembled_quantity.magnitude / self.var.measure_compartment.nvolume.magnitude
             value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
                      'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}

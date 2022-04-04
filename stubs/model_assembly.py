@@ -9,6 +9,7 @@ import re
 from collections import Counter
 from collections import OrderedDict as odict
 from collections import defaultdict as ddict
+from cached_property import cached_property
 from typing import Type, Any
 from textwrap import wrap
 
@@ -36,8 +37,10 @@ from tabulate import tabulate
 
 import stubs
 import stubs.common as common
+from stubs.common import sub
 from stubs.common import _fancy_print as fancy_print
 from stubs import unit
+gset = stubs.config.global_settings
 
 import dataclasses
 from dataclasses import dataclass
@@ -553,7 +556,7 @@ class Species(ObjectInstance):
         return cls(**input_dict)
 
     def __post_init__(self):
-        self.sub_species = {} # additional compartments this species may live in in addition to its primary one
+        # self.sub_species = {} # additional compartments this species may live in in addition to its primary one
         self.is_in_a_reaction = False
         self.is_an_added_species = False
         self.dof_map = None
@@ -596,6 +599,10 @@ class Species(ObjectInstance):
             raise ValueError(f"Units of diffusion coefficient for species {self.name} must be dimensionally equivalent to [length]^2/[time].")
         # if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
         #     raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
+
+    @cached_property
+    def vscalar(self):
+        return d.TestFunction(sub(self.compartment.V, 0, True))
 
     @property
     def dolfin_quantity(self):
@@ -896,7 +903,8 @@ class Flux(ObjectInstance):
         # self.equation_variables = {variable.name: variable.dolfin_quantity for variable in {**self.parameters, **self.species}.values()}
         # self.equation_variables.update({'unit_scale_factor': self.unit_scale_factor})
         # Get equation lambda expression
-        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
+        # self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
+        self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=gset['dolfin_expressions'])
 
         # Evaluate equation lambda expression with uninitialized unit scale factor
         #self.equation_lambda_eval()
@@ -1100,6 +1108,11 @@ class Flux(ObjectInstance):
         return d.Constant(-1) * self.equation_lambda_eval(input_type='value') * self.destination_species.v * self.measure
     
     @property
+    def scalar_form(self):
+        "if the destination species is a vector function, the assembled form will be a vector of size NDOF."
+        return d.Constant(-1) * self.equation_lambda_eval(input_type='value') * self.destination_species.vscalar * self.measure
+    
+    @property
     def form_dt(self):
         "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
         return d.Constant(-1) * self.equation_lambda_eval(input_type='value') * self.destination_species.v * self.dT * self.measure
@@ -1107,15 +1120,15 @@ class Flux(ObjectInstance):
     @property
     def molecules_per_second(self):
         "Return the sum of the assembled form * -1 in units of molecule/second"
-        self._molecules_per_second = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+        self._molecules_per_second = -1*(d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
         return self._molecules_per_second
     @property
     def assembled_flux(self):
         "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
         try:
-            self._assembled_flux = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
+            self._assembled_flux = -1*(d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units).to(unit.molecule/unit.s)
         except:
-            self._assembled_flux = -1*(d.assemble(self.form).sum() * self.equation_units * self.measure_units)
+            self._assembled_flux = -1*(d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units)
         return self._assembled_flux
 
     # def get_is_linear(self):
@@ -1229,7 +1242,9 @@ class FieldVariable(ObjectInstance):
         self.equation = parse_expr(self.equation_str).subs(self.variables_dict) * Symbol('unit_scale_factor')
 
         # Get equation lambda expression
-        self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=['sympy','numpy'])
+        # self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=['sympy','numpy'])
+        self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=gset['dolfin_expressions'])
+
         self.equation_units = self.equation_lambda_eval('units') # default
         self.desired_units = self.equation_lambda_eval('units') # default
 

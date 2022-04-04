@@ -748,7 +748,6 @@ class Model:
     def _init_5_1_reactions_to_fluxes(self):
         fancy_print(f"Convert reactions to flux objects", format_type='log')
         for reaction in self.rc:
-            print(reaction)
             reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
             
@@ -1694,12 +1693,13 @@ class Model:
         else:
             return np.linalg.norm(res_vec, norm)
     
-    def get_species_residual(self, species, norm=None):
-        res_vec = sum([d.assemble_mixed(form.form).get_local() for form in self.forms if form.species == species])
-        if norm is None:
-            return res_vec
-        else:
-            return np.linalg.norm(res_vec, norm)
+    # Needs to use scalar_form somehow....
+    # def get_species_residual(self, species, norm=None):
+    #     res_vec = sum([d.assemble_mixed(form.form).get_local() for form in self.forms if form.species == species])
+    #     if norm is None:
+    #         return res_vec
+    #     else:
+    #         return np.linalg.norm(res_vec, norm)
     
     def get_total_residual(self, norm=None):
         res_vec = np.hstack([d.assemble_mixed(form).get_local() for form in chain.from_iterable(self.Fblocks)])
