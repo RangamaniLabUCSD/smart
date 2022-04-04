@@ -1004,8 +1004,8 @@ class Flux(ObjectInstance):
 
         # If unit dimensionality is not correct a parameter likely needs to be adjusted
         if self._expected_flux_units.dimensionality != initial_equation_units.dimensionality:
-            raise ValueError(f"Flux {self.name} has wrong units (cannot be converted)"
-                                f" - expected {self._expected_flux_units}, got {self.initial_equation_units}.")
+            print(self.unit_scale_factor)
+            raise ValueError(f"Flux {self.name} has wrong units (cannot be converted) - expected {self._expected_flux_units}, got {initial_equation_units}.")
         # Fix scaling 
         else:
             # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
@@ -1183,11 +1183,21 @@ class Form(ObjectInstance):
     'boundary_reaction'
     """
     name: str
-    form: ufl.Form
+    form_: ufl.Form
     species: Species
     form_type: str
     units: pint.Unit
     is_lhs: bool
+    form_scaling: float = 1.0
+    
+    def set_scaling(self, form_scaling=1.0):
+        self.form_scaling = form_scaling
+        self.form_scaling_dolfin_constant.assign(self.form_scaling)
+        fancy_print(f'Form scaling for form {self.name} set to {self.form_scaling}', format_type='log')
+
+    @property
+    def form(self):
+        return self.form_scaling_dolfin_constant*self.form_
 
     @property
     def lhs(self):
@@ -1205,6 +1215,8 @@ class Form(ObjectInstance):
     def __post_init__(self):
         self.compartment = self.species.compartment
         self._compartment_name = self.compartment.name
+
+        self.form_scaling_dolfin_constant = d.Constant(self.form_scaling)
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()

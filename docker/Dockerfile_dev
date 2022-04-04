@@ -68,7 +68,7 @@ RUN python3 -m pip install gmsh
 RUN python3 -m pip install vedo
 RUN python3 -m pip install termplotlib
 # PyQt5 for matplotlib
-RUN python3 -m pip install PyQt5
+RUN python3 -m pip install PyQt5==5.12.2
 ENV MPLBACKEND=QT5Agg
 # For tikz plotting
 RUN python3 -m pip install tikzplotlib

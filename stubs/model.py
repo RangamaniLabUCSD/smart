@@ -960,6 +960,11 @@ class Model:
 
         #return Flist, Jlist
         return Flist, Jlist, block_sizes
+    
+    def set_form_scaling(self, compartment_name, scaling=1.0):
+        for form in self.forms:
+            if form.compartment.name == compartment_name:
+                form.set_scaling(scaling)
   
     #===============================================================================
     # Model - Solving
