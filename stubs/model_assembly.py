@@ -805,6 +805,7 @@ class Reaction(ObjectInstance):
         return str(reaction_expr)
 
     def reaction_to_fluxes(self):
+        fancy_print(f"Getting fluxes for reaction {self.name}", format_type='log')
         # set of 2-tuples. (species_name, signed stoichiometry)
         species_stoich      = {(species_name, -1*self.lhs.count(species_name)) for species_name in self.lhs}
         species_stoich.update({(species_name,  1*self.rhs.count(species_name)) for species_name in self.rhs})

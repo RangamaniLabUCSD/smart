@@ -854,10 +854,10 @@ class Model:
             self.solver.ksp.pc.setFieldSplitType(1) # 0 == 'additive' [jacobi], 1 == gauss-seidel
             subksps = self.solver.ksp.pc.getFieldSplitSubKSP()
             for i,subksp in enumerate(subksps):
-                subksp.setType('preonly')
-                # If there is not diffusion then this is really just a distributed set of ODEs
-                if not self._active_compartments[i].has_diffusive_forms:
-                    subksp.pc.setType('none')
+                # subksp.setType('preonly')
+                # # If there is not diffusion then this is really just a distributed set of ODEs
+                # if not self._active_compartments[i].has_diffusive_forms:
+                #     subksp.pc.setType('none')
                 subksp.setType('preonly')
                 subksp.pc.setType('hypre')
 
