@@ -1191,10 +1191,11 @@ class Form(ObjectInstance):
     is_lhs: bool
     form_scaling: float = 1.0
     
-    def set_scaling(self, form_scaling=1.0):
+    def set_scaling(self, form_scaling=1.0, print_scaling=True):
         self.form_scaling = form_scaling
         self.form_scaling_dolfin_constant.assign(self.form_scaling)
-        fancy_print(f'Form scaling for form {self.name} set to {self.form_scaling}', format_type='log')
+        if print_scaling:
+            fancy_print(f'Form scaling for form {self.name} set to {self.form_scaling}', format_type='log')
 
     @property
     def form(self):

@@ -63,6 +63,7 @@ class Probe:
         self.var_name   = var.name # name of the variable to probe (could be a species or flux)
         self.x_probe    = x_probe # Coordinate to probe function/flux at
         self.filename   = filename
+        self.figures = dict() # plt.figure() 
 
         # (point==evaluate at a specific point, sum==integrated over appropriate measure, all==all vertex values, stats==(min,max,mean,mean_vertex,median,std))
         assert self.probe_type in ['point', 'sum', 'all', 'stats']
@@ -208,38 +209,65 @@ class Probe:
         self._print_str(stat_key)
         fig = tpl.figure(); fig.plot(ty[:,0], ty[:,1]); fig.show()
         
-    def mpl_plot(self, stat_key=None, filename=None):
+    def mpl_plot(self, stat_keys=None, filename=None):
+        # plot_data = list()
+        if isinstance(stat_keys, str):
+            stat_keys = [stat_keys]
+
         if self.probe_type == 'stats':
-            if stat_key is None:
+            if stat_keys is None:
                 raise ValueError('stat_key must be specified')
             else:
-                ty = self.tvec_values_np[stat_key]
+                # for stat_key in stat_keys:
+                #     plot_data.append(self.tvec_values_np[stat_key])
+                plot_name = '_'.join(stat_keys)
         else:
-            ty = self.tvec_values_np
+            # plot_data.append(self.tvec_values_np)
+            plot_name = 'default'
+
         if filename is None:
-            if stat_key is not None:
-                filename = self.filename+'_'+stat_key+'.png'
+            if stat_keys is not None:
+                filename = self.filename+'_'+plot_name+'.png'
             else:
                 filename = self.filename+'.png'
 
-        self._print_str(stat_key)
 
-        plt.clf()
-        plt.plot(ty[:,0], ty[:,1])
-        plt.xlabel('Time [s]')
-        plt.ylabel(f'{self.var_name} [{self.unit_total}]')
-        if stat_key is not None:
-            plt.title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={stat_key}")
+        # begin plotting
+        if plot_name not in self.figures:
+            self.figures[plot_name] = plt.subplots()
+        
+        f,a = self.figures[plot_name] # figure, axes
+        a.cla()
+        if stat_keys is not None:
+            for stat_key in stat_keys:
+                self._print_str(stat_key)
+                ty = self.tvec_values_np[stat_key]
+                a.plot(ty[:,0], ty[:,1])
+                a.set_xlabel('Time [s]')
+                a.set_ylabel(f'{self.var_name} [{self.unit_total}]')
         else:
-            plt.title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}")
+            self._print_str(None)
+            ty = self.tvec_values_np
+            a.plot(ty[:,0], ty[:,1])
+            a.set_xlabel('Time [s]')
+            a.set_ylabel(f'{self.var_name} [{self.unit_total}]')
+        
+        if stat_keys is not None:
+            a.set_title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={plot_name}")
+        else:
+            a.set_title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}")
 
+        #f.set_tight_layout(1)
         if filename is None:
-            plt.show()
+            f.show()
         else:
-            plt.savefig(filename)        
+            f.savefig(filename)        
             fancy_print(f"Saving plot to {filename}", format_type='log')
+            
     
     def dump_to_file(self, stat_key=None, filename=None):
+        if stat_key is not None and not isinstance(stat_key, str):
+            return
         if stat_key is not None:
             filename = self.filename+'_'+stat_key+'.csv'
         else:

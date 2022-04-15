@@ -187,7 +187,9 @@ class Model:
         self.dt      = self.rounded_decimal(self.config.solver['initial_dt'])
         self.final_t = self.rounded_decimal(self.config.solver['final_t'])
         assert self.config.solver['time_precision'] in range(1,30)
-        getcontext().prec = self.config.solver['time_precision']
+        #getcontext().prec = self.config.solver['time_precision']
+        # quantize precision
+        #getcontext().prec = self.config.solver['time_precision']
 
         self.T     = d.Constant(self.t)
         self.dT    = d.Constant(self.dt)
@@ -961,10 +963,10 @@ class Model:
         #return Flist, Jlist
         return Flist, Jlist, block_sizes
     
-    def set_form_scaling(self, compartment_name, scaling=1.0):
+    def set_form_scaling(self, compartment_name, scaling=1.0, print_scaling=True):
         for form in self.forms:
             if form.compartment.name == compartment_name:
-                form.set_scaling(scaling)
+                form.set_scaling(scaling, print_scaling)
   
     #===============================================================================
     # Model - Solving
