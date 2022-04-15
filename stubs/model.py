@@ -1155,6 +1155,9 @@ class Model:
             fancy_print(f"Non-linear solver iterations: {self.solver.its}", format_type='log')
             fancy_print(f"Linear solver iterations: {self.solver.ksp.its}", format_type='log')
             fancy_print(f"SNES converged reason: {self.solver.getConvergedReason()}", format_type='log')
+            fancy_print(f"KSP converged reason: {self.solver.ksp.getConvergedReason()}", format_type='log')
+            fancy_print(f"KSP residual norm: {self.solver.ksp.getResidualNorm()}", format_type='log')
+
             fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
             residuals = dict()
             for compartment in self._active_compartments:
