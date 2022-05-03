@@ -1160,7 +1160,7 @@ class Flux(ObjectInstance):
         new_eqn = self.equation.subs(umap)
 
         for comp_name in self.compartments.keys():
-            self.is_linear_wrt_comp[comp_name] = sym.diff(new_eqn, 'u'+comp_name, 2).is_zero
+            self.is_linear_wrt_comp[comp_name] = bool(sym.diff(new_eqn, 'u'+comp_name, 2).is_zero)
 
 
 class FormContainer(ObjectContainer):
@@ -1182,6 +1182,9 @@ class Form(ObjectInstance):
     'diffusion'
     'domain_reaction'
     'boundary_reaction'
+
+    Differentiating using ufl doesn't seem to get it right when using vector functions. Luckily we have all fluxes as sympy objects
+    and mass/diffusive forms are always linear w.r.t components.
     """
     name: str
     form_: ufl.Form
@@ -1189,6 +1192,7 @@ class Form(ObjectInstance):
     form_type: str
     units: pint.Unit
     is_lhs: bool
+    linear_wrt_comp: dict = dataclasses.field(default_factory=dict)
     form_scaling: float = 1.0
     
     def set_scaling(self, form_scaling=1.0, print_scaling=True):

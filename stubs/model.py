@@ -761,15 +761,20 @@ class Model:
                  linear wrt u         (v)         linear wrt u       possibly nonlinear wrt u
         """
         fancy_print(f"Creating functional forms", format_type='log')
+
+        # default dictionary (linear w.r.t all compartment functions)
+        linear_wrt_comp = {k:True for k in self.cc.keys}
+
         # reactive terms
         for flux in self.fc:
             # -1 factor in flux.form means this is a lhs term
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
             flux_form_units = flux.equation_units * flux.measure_units
-            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True))
-            #flux_form_units = flux.equation_units * flux.measure_units * unit.s
-            #flux.dT = self.dT
-            #self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form_dt, flux.destination_species, form_type, flux_form_units, True))
+            # Determine if flux is linear w.r.t. compartment functions
+            # Use flux.is_linear_wrt_comp and combine with linear_wrt_comp (prioritizing former). If compartment is relevant to flux then it is linear
+            linearity_dict = {k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
+            self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True, linearity_dict))
+
         for species in self.sc:
             u  = species._usplit['u']
             #ut = species.ut
@@ -785,13 +790,13 @@ class Model:
                 Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
                 Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2)
-                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True))
+                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True, linear_wrt_comp))
             # mass (time derivative) terms
             Muform = (u) * v / self.dT * dx
             mass_form_units = species.concentration_units/unit.s * species.compartment.compartment_units**species.compartment.dimensionality
-            self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', mass_form_units, True))
+            self.forms.add(stubs.model_assembly.Form(f"mass_u_{species.name}", Muform, species, 'mass_u', mass_form_units, True, linear_wrt_comp))
             Munform = (-un) * v / self.dT * dx
-            self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', mass_form_units, True))
+            self.forms.add(stubs.model_assembly.Form(f"mass_un_{species.name}", Munform, species, 'mass_un', mass_form_units, True, linear_wrt_comp))
         for compartment in self.cc:
             diffusive_forms = [f for f in self.forms if f.compartment.name == compartment.name and f.form_type=='diffusion']
             if len(diffusive_forms) == 0:
@@ -809,9 +814,22 @@ class Model:
         # self.all_forms = sum([f.form for f in self.forms])
         # self.problem = d.NonlinearVariationalProblem(self.all_forms, self.u['u'], bcs=None)
         # Aliases
-        self.Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
         u = self.u['u']._functions
-        self.Fblocks, self.Jblocks, self.block_sizes = self.get_block_system(self.Fsum, u)
+        #Because it is a little tricky (see comment on d.extract_blocks(F) in model.get_block_system()), 
+        #we are only going to separate fluxes that are linear with respect to 
+        self.Fsum_linear    = sum([f.form for f in self.forms if all(z==True for z in f.linear_wrt_comp.values())])
+        self.Fsum_nonlinear = sum([f.form for f in self.forms if not all(z==True for z in f.linear_wrt_comp.values())])
+
+        # Not separating linear/non-linear components
+        # self.Fsum = sum([f.lhs for f in self.forms]) # Sum of all forms
+        # self.Fblocks, self.Jblocks, self.block_sizes = self.get_block_system(self.Fsum, u)
+        # Separating linear/non-linear components
+        fancy_print("Getting block system for linear components", format_type='log')
+        self.Fblocks_linear,    self.Jblocks_linear,    self.block_sizes_linear    = self.get_block_system(self.Fsum_linear, u)
+        fancy_print("Getting block system for non-linear components", format_type='log')
+        self.Fblocks_nonlinear, self.Jblocks_nonlinear, self.block_sizes_nonlinear = self.get_block_system(self.Fsum_nonlinear, u)
+
+        
         # Print the residuals per compartment
         for compartment in self._active_compartments:
             res = self.get_compartment_residual(compartment, norm=2)
@@ -869,6 +887,7 @@ class Model:
             self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(self.Fblocks, self._ubackend, [], self.Jblocks)
             #self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)
             self.solver = d.MixedNonlinearVariationalSolver(self.problem)
+    
     
     #@staticmethod
     def get_block_system(self, Fsum, u):
