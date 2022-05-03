@@ -764,6 +764,7 @@ class Model:
 
         # default dictionary (linear w.r.t all compartment functions)
         linear_wrt_comp = {k:True for k in self.cc.keys}
+        nonlinear_wrt_comp = {k:False for k in self.cc.keys}
 
         # reactive terms
         for flux in self.fc:
@@ -772,7 +773,8 @@ class Model:
             flux_form_units = flux.equation_units * flux.measure_units
             # Determine if flux is linear w.r.t. compartment functions
             # Use flux.is_linear_wrt_comp and combine with linear_wrt_comp (prioritizing former). If compartment is relevant to flux then it is linear
-            linearity_dict = {k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
+            # linearity_dict = {k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
+            linearity_dict = nonlinear_wrt_comp#{k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
             self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True, linearity_dict))
 
         for species in self.sc:
@@ -790,7 +792,7 @@ class Model:
                 Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
                 Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2)
-                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True, linear_wrt_comp))
+                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True, nonlinear_wrt_comp))
             # mass (time derivative) terms
             Muform = (u) * v / self.dT * dx
             mass_form_units = species.concentration_units/unit.s * species.compartment.compartment_units**species.compartment.dimensionality
@@ -830,7 +832,7 @@ class Model:
             self.Jblocks_linear    = self.get_block_J(self.Fsum_linear, u)
             fancy_print("Getting non-linear block Jacobian components", format_type='log')
             self.Jblocks_nonlinear = self.get_block_J(self.Fsum_nonlinear, u)
-            self.Fblocks_all       = self.get_block_F(self.Fsum_linear + self.Fsum_nonlinear, u)
+            self.Fblocks_all       = self.get_block_F(self.Fsum_all, u)
             self.Jblocks_all       = self.get_block_J(self.Fsum_all, u)
 
         # Not separating linear/non-linear components (everything assumed non-linear)
@@ -856,7 +858,9 @@ class Model:
             fancy_print(f"Using SNES solver", format_type='log')
             # self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks,
             #                                               self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
-            self.problem = stubs.solvers.stubsSNESProblem(self)
+            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks_all, self.Jblocks_all, self.Jblocks_linear, self.Jblocks_nonlinear,
+                                                          self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
+            # self.problem = stubs.solvers.stubsSNESProblem(self)
             if self.config.solver['snes_preassemble_linear_system']:
                 self.problem.initialize_petsc_matnest_new()
                 # self.problem.initialize_petsc_linear_jacobian()
