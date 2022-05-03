@@ -120,10 +120,6 @@ class stubsSNESProblem():
             for j in range(self.dim):
                 ij = i*self.dim+j
                 if all(self.Jforms_nonlinear[ij][k].function_space(0) is None for k in range(len(self.Jforms_nonlinear[ij]))):
-                    # debugging
-                    for k in range(len(self.Jforms_nonlinear[ij])):
-                        print(f"ij={ij}, k={k} ... nonlinear form:")
-                        print(self.Jforms_nonlinear[ij][k].function_space)
                     self.empty_nonlinear_forms.append((i,j))
         if len(self.empty_nonlinear_forms) > 0:
             if self.print_assembly:
@@ -285,14 +281,11 @@ class stubsSNESProblem():
                     # if we have the sparsity pattern re-use it, if not save it for next time
                     # single domain can't re-use the tensor for some reason
                     if self.tensors[ij][k] is None or self.is_single_domain: 
-                        print("C")
                         self.tensors[ij][k] = d.PETScMatrix()
-                        print("D")
                     else:
                         if self.print_assembly:
                             fancy_print(f"Reusing tensor for {self.Jijk_name(i,j,k)}", format_type='data')
                     # Assemble and append to the list of subforms
-                    print("E")
                     Jmats.append(d.assemble_mixed(Jform[ij][k], tensor=self.tensors[ij][k]))
                     # Print some useful info on assembled Jijk
                     self.print_Jijk_info(i,j,k,tensor=self.tensors[ij][k].mat())

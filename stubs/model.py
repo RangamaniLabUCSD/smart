@@ -772,9 +772,9 @@ class Model:
             form_type = 'boundary_reaction' if flux.is_boundary_condition else 'domain_reaction'
             flux_form_units = flux.equation_units * flux.measure_units
             # Determine if flux is linear w.r.t. compartment functions
-            # Use flux.is_linear_wrt_comp and combine with linear_wrt_comp (prioritizing former). If compartment is relevant to flux then it is linear
-            # linearity_dict = {k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
-            linearity_dict = nonlinear_wrt_comp#{k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
+            # Use flux.is_linear_wrt_comp and combine with linear_wrt_comp (prioritizing former). If compartment is not relevant to flux then it is linear
+            linearity_dict = {k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
+            # linearity_dict = nonlinear_wrt_comp#{k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
             self.forms.add(stubs.model_assembly.Form(f"{flux.name}", flux.form, flux.destination_species, form_type, flux_form_units, True, linearity_dict))
 
         for species in self.sc:

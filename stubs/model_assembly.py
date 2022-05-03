@@ -1156,11 +1156,17 @@ class Flux(ObjectInstance):
         for species_name, species in self.species.items():
             comp_name = species.compartment_name
             umap.update({species_name: 'u'+comp_name})
-        
+
+        uset = set(umap.values())
         new_eqn = self.equation.subs(umap)
 
         for comp_name in self.compartments.keys():
-            self.is_linear_wrt_comp[comp_name] = bool(sym.diff(new_eqn, 'u'+comp_name, 2).is_zero)
+            d_new_eqn = sym.diff(new_eqn, 'u'+comp_name, 1)
+            d_new_eqn_species = {str(x) for x in d_new_eqn.free_symbols}
+            self.is_linear_wrt_comp[comp_name] = uset.isdisjoint(d_new_eqn_species)
+                
+        
+        #bool(sym.diff(new_eqn, 'u'+comp_name, 2).is_zero)
 
 
 class FormContainer(ObjectContainer):
