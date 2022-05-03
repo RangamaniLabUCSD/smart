@@ -1156,11 +1156,17 @@ class Flux(ObjectInstance):
         for species_name, species in self.species.items():
             comp_name = species.compartment_name
             umap.update({species_name: 'u'+comp_name})
-        
+
+        uset = set(umap.values())
         new_eqn = self.equation.subs(umap)
 
         for comp_name in self.compartments.keys():
-            self.is_linear_wrt_comp[comp_name] = sym.diff(new_eqn, 'u'+comp_name, 2).is_zero
+            d_new_eqn = sym.diff(new_eqn, 'u'+comp_name, 1)
+            d_new_eqn_species = {str(x) for x in d_new_eqn.free_symbols}
+            self.is_linear_wrt_comp[comp_name] = uset.isdisjoint(d_new_eqn_species)
+                
+        
+        #bool(sym.diff(new_eqn, 'u'+comp_name, 2).is_zero)
 
 
 class FormContainer(ObjectContainer):
@@ -1182,6 +1188,9 @@ class Form(ObjectInstance):
     'diffusion'
     'domain_reaction'
     'boundary_reaction'
+
+    Differentiating using ufl doesn't seem to get it right when using vector functions. Luckily we have all fluxes as sympy objects
+    and mass/diffusive forms are always linear w.r.t components.
     """
     name: str
     form_: ufl.Form
@@ -1189,6 +1198,7 @@ class Form(ObjectInstance):
     form_type: str
     units: pint.Unit
     is_lhs: bool
+    linear_wrt_comp: dict = dataclasses.field(default_factory=dict)
     form_scaling: float = 1.0
     
     def set_scaling(self, form_scaling=1.0, print_scaling=True):
