@@ -80,89 +80,270 @@ class stubsSNESProblem():
     assembler.assemble(A, a);
     """
 
+    def __init__(self, model):
+        self.u = model.u['u']#._functions
+        self.Jforms_linear = model.Jblocks_linear
+        self.Jforms_nonlinear = model.Jblocks_nonlinear
+        self.Jforms_all = model.Jblocks_all
+        self.Fforms = model.Fblocks_all
+        self.Jpetsc_nest_linear = None
+        # self.Jpetsc_nest_linear = dict()
 
-    def __init__(self, u, Fforms, Jforms, active_compartments, all_compartments, stopwatches, print_assembly, mpi_comm_world):
-        self.u = u
-        self.Fforms = Fforms
-        self.Jforms = Jforms
-
+        
         # List of lists (lists partitioned by integration domains)
-        assert isinstance(Fforms, list)
-        assert isinstance(Fforms[0], list)
-        assert isinstance(Jforms, list)
-        assert isinstance(Jforms[0], list)
-        assert isinstance(self.Jforms[0][0], (ufl.Form, d.Form))
+        assert isinstance(self.Fforms, list)
+        assert isinstance(self.Fforms[0], list)
         assert isinstance(self.Fforms[0][0], (ufl.Form,d.Form))
-
-        self.dim = len(Fforms)
-        assert len(Jforms) == self.dim**2
-
-        self.mpi_comm_world = mpi_comm_world
+        # assert isinstance(self.Jforms_linear, list)
+        # assert isinstance(self.Jforms_linear[0], list)
+        # assert isinstance(self.Jforms_linear[0][0], (ufl.Form, d.Form))
+        assert isinstance(self.Jforms_nonlinear, list)
+        assert isinstance(self.Jforms_nonlinear[0], list)
+        # assert isinstance(self.Jforms_nonlinear[0][0], (ufl.Form, d.Form))
+        
+        self.dim=len(self.Fforms)
+        assert len(self.Jforms_all) == self.dim**2
+        self.mpi_comm_world = model.mpi_comm_world
 
         # save sparsity patterns of block matrices
-        self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms]
+        # self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms_all]
+        self.tensors_linear = [[None]*len(Jij_list) for Jij_list in self.Jforms_linear]
+        self.tensors_nonlinear = [[None]*len(Jij_list) for Jij_list in self.Jforms_nonlinear]
 
         # Need block sizes because some forms may be empty
-        self.block_sizes = [c._num_dofs for c in active_compartments]
+        self.block_sizes = [c._num_dofs for c in model._active_compartments]
         self.is_single_domain = len(self.block_sizes) == 1
 
-        self.active_compartment_names = [c.name for c in active_compartments]
-        self.mesh_id_to_name = {c.mesh_id:c.name for c in all_compartments}
+        self.active_compartment_names = [c.name for c in model._active_compartments]
+        self.mesh_id_to_name = {c.mesh_id:c.name for c in model._all_compartments}
     
         # Should we print assembly info (can get very verbose)
-        self.print_assembly = print_assembly
+        self.print_assembly = model.config.solver['print_assembly']
 
         # Timings
-        self.stopwatches = stopwatches
+        self.stopwatches = model.stopwatches
 
-    def initialize_petsc_matnest(self):
+
+    # def __init__(self, u, Fforms, Jforms, active_compartments, all_compartments, stopwatches, print_assembly, mpi_comm_world):
+    #     self.u = u
+    #     self.Fforms = Fforms
+    #     self.Jforms = Jforms
+
+    #     # List of lists (lists partitioned by integration domains)
+    #     assert isinstance(Fforms, list)
+    #     assert isinstance(Fforms[0], list)
+    #     assert isinstance(Jforms, list)
+    #     assert isinstance(Jforms[0], list)
+    #     assert isinstance(self.Jforms[0][0], (ufl.Form, d.Form))
+    #     assert isinstance(self.Fforms[0][0], (ufl.Form,d.Form))
+
+    #     self.dim = len(Fforms)
+    #     assert len(Jforms) == self.dim**2
+
+    #     self.mpi_comm_world = mpi_comm_world
+
+    #     # save sparsity patterns of block matrices
+    #     self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms]
+
+    #     # Need block sizes because some forms may be empty
+    #     self.block_sizes = [c._num_dofs for c in active_compartments]
+    #     self.is_single_domain = len(self.block_sizes) == 1
+
+    #     self.active_compartment_names = [c.name for c in active_compartments]
+    #     self.mesh_id_to_name = {c.mesh_id:c.name for c in all_compartments}
+    
+    #     # Should we print assembly info (can get very verbose)
+    #     self.print_assembly = print_assembly
+
+    #     # Timings
+    #     self.stopwatches = stopwatches
+    def Jforms_to_petsc_matnest(self, Jforms, tensors=None):
         dim = self.dim
-        if self.print_assembly:
-            fancy_print(f"Initializing block Jacobian", format_type='assembly')
-
-        #Jdpetsc = [[None]*dim]*dim
         Jpetsc = []
+        if tensors is None:
+            tensors = [[None]*len(Jij_list) for Jij_list in Jforms]
         for i in range(dim):
             for j in range(dim):
                 ij = i*dim + j
 
                 Jsum = None
-                for k in range(len(self.Jforms[ij])):
-                    # compartment names for indices
-                    if self.Jforms[ij][k].function_space(0) is None:
+                for k in range(len(Jforms[ij])):
+                    # print(f"ij={ij}, k={k}")
+                    if Jforms[ij][k].function_space(0) is None:
                         if self.print_assembly:
                             fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
                         continue
 
                     # initialize the tensor
-                    if self.tensors[ij][k] is None:
-                        self.tensors[ij][k] = d.PETScMatrix()
+                    if tensors[ij][k] is None:
+                        tensors[ij][k] = d.PETScMatrix()
                     if Jsum is None:
-                        Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
+                        Jsum = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
                     else:
-                        Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
-
+                        Jsum += d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                    
                     if self.print_assembly:
                         fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
                 if Jsum is None:
                     if self.print_assembly:
                         fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
                     Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
-                    #raise AssertionError()
-                    # tensor = d.PETScMatrix(Jsum.size(0))
+                
+                Jpetsc.append(Jsum)
 
-                #Jsum.mat().assemble() 
-                Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
-
-        if self.is_single_domain == 1:
+        if self.is_single_domain:
             # We can't use a nest matrix
-            self.Jpetsc_nest = Jpetsc[0].mat() #d.PETScMatrix(Jpetsc[0]).mat()
+            Jpetsc_nest = Jpetsc[0].mat() 
         else:
-            self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
-        self.Jpetsc_nest.assemble()
-        # debugging
-        # self.Jpetsc_init = Jpetsc
-        # return Jpetsc
+            Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
+        Jpetsc_nest.assemble()
+        print(f"Jpetsc_nest assembled, sizes = {Jpetsc_nest.sizes}")
+        return Jpetsc_nest, Jpetsc
+    
+    def initialize_petsc_matnest_new(self):
+        self.Jpetsc_nest_linear = self.Jforms_to_petsc_matnest(self.Jforms_linear, self.tensors_linear)
+        self.Jpetsc_nest_nonlinear = self.Jforms_to_petsc_matnest(self.Jforms_nonlinear, self.tensors_nonlinear)
+        self.Jpetsc_nest = self.Jforms_to_petsc_matnest(self.Jforms_all)
+        # self.Jpetsc_nest.axpy(1, self.Jpetsc_nest_linear)
+        # self.Jpetsc_nest.assemble()
+        # self.Jpetsc_nest = self.Jforms_to_petsc_matnest(self.Jforms_all, self.tensors)
+
+        # dim = self.dim
+        # if self.print_assembly:
+        #     fancy_print(f"Initializing linear + non-linear components of block Jacobian", format_type='assembly')
+
+        # Jpetsc = []
+        # for i in range(dim):
+        #     for j in range(dim):
+        #         ij = i*dim + j
+
+        #         Jsum = None
+        #         # max_k = max(len(self.Jforms_linear[ij]), len(self.Jforms_nonlinear[ij]))
+        #         # for k in :range(max_k):#range(len(self.Jforms_linear[ij])):
+        #         for k in range(len(self.Jforms_all[ij])):
+        #             print(f"ij={ij}, k={k}")
+        #             if self.Jforms_all[ij][k].function_space(0) is None:
+        #                 if self.print_assembly:
+        #                     fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
+        #                 continue
+
+        #             # initialize the tensor
+        #             if self.tensors[ij][k] is None:
+        #                 self.tensors[ij][k] = d.PETScMatrix()
+        #             if Jsum is None:
+        #                 Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms_all[ij][k], tensor=self.tensors[ij][k]))#, tensor=d.PETScMatrix()))
+        #             else:
+        #                 Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms_all[ij][k], tensor=self.tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                    
+        #             if self.print_assembly:
+        #                 fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
+
+        #         if Jsum is None:
+        #             if self.print_assembly:
+        #                 fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
+        #             Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
+                
+        #         # if self.Jpetsc_nest_linear[ij] is not None:
+        #         #     print("pre segfault?  ")
+        #         #     Jsum += self.Jpetsc_nest_linear[ij]
+        #         #     print("post segfault?  ")
+        #         #     if self.print_assembly:
+        #         #         fancy_print(f"{self.Jijk_name(i,j)} - adding linear component of jacobian.", format_type='log')
+
+        #         #Jsum.mat().assemble() 
+        #         Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
+                            
+
+        # if self.is_single_domain:
+        #     # We can't use a nest matrix
+        #     self.Jpetsc_nest = Jpetsc[0].mat() #d.PETScMatrix(Jpetsc[0]).mat()
+        # else:
+        #     self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
+        # self.Jpetsc_nest.assemble()
+        # print(f"Jpetsc_nest assembled, sizes = {self.Jpetsc_nest.sizes}")
+
+        # If we separated the linear components of the jacobian, add them now                 
+
+                # hold off on assembling for now
+                # self.Jpetsc_nest_linear[ij] = Jsum.mat()
+                # self.Jpetsc_nest_linear[ij].assemble()
+
+                # Jpetsc.append(Jsum)
+
+        # if self.is_single_domain:
+        #     self.Jpetsc_nest_linear = Jpetsc[0].mat() #d.PETScMatrix(Jpetsc[0]).mat()
+        # else:
+        #     self.Jpetsc_nest_linear = d.PETScNestMatrix(Jpetsc).mat()
+        # self.Jpetsc_nest_linear.assemble()
+
+    # def initialize_petsc_matnest(self):
+    #     dim = self.dim
+    #     if self.print_assembly:
+    #         fancy_print(f"Initializing block Jacobian", format_type='assembly')
+
+    #     #Jdpetsc = [[None]*dim]*dim
+    #     Jpetsc = []
+    #     for i in range(dim):
+    #         for j in range(dim):
+    #             ij = i*dim + j
+
+    #             Jsum = None
+    #             for k in range(len(self.Jforms_nonlinear[ij])):
+    #                 # compartment names for indices
+    #                 if self.Jforms_nonlinear[ij][k].function_space(0) is None:
+    #                     if self.print_assembly:
+    #                         fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
+    #                     continue
+
+    #                 # initialize the tensor
+    #                 if self.tensors[ij][k] is None:
+    #                     self.tensors[ij][k] = d.PETScMatrix()
+    #                 if Jsum is None:
+    #                     Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms_nonlinear[ij][k], tensor=self.tensors[ij][k]))
+    #                 else:
+    #                     Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms_nonlinear[ij][k], tensor=self.tensors[ij][k]))
+                    
+    #                 if self.print_assembly:
+    #                     fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
+    #             if Jsum is None:
+    #                 if self.print_assembly:
+    #                     fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
+    #                 Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
+    #                 #raise AssertionError()
+    #                 # tensor = d.PETScMatrix(Jsum.size(0))
+                
+    #             if self.Jpetsc_nest_linear[ij] is not None:
+    #                 print("pre segfault?  ")
+    #                 Jsum += self.Jpetsc_nest_linear[ij]
+    #                 print("post segfault?  ")
+    #                 if self.print_assembly:
+    #                     fancy_print(f"{self.Jijk_name(i,j)} - adding linear component of jacobian.", format_type='log')
+
+    #             #Jsum.mat().assemble() 
+    #             Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
+
+    #     if self.is_single_domain:
+    #         # We can't use a nest matrix
+    #         self.Jpetsc_nest = Jpetsc[0].mat() #d.PETScMatrix(Jpetsc[0]).mat()
+    #     else:
+    #         self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
+    #     self.Jpetsc_nest.assemble()
+    #     print(f"Jpetsc_nest assembled, sizes = {self.Jpetsc_nest.sizes}")
+    #     # If we separated the linear components of the jacobian, add them now 
+
+    #     # if self.Jpetsc_nest_linear is not None:
+    #     #     if self.print_assembly:
+    #     #         fancy_print(f"Adding linear components of Jacobian to non-linear components.", format_type='log')
+    #     #     for i in range(dim):
+    #     #         for j in range(dim):
+    #     #             ij = i*dim + j
+    #     #             print(ij)
+    #     #             if self.Jpetsc_nest_linear[ij] is not None:
+    #     #                 self.Jpetsc_nest.axpy(1, self.Jpetsc_nest_linear[ij])#, structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
+        
+    #     # debugging
+    #     # self.Jpetsc_init = Jpetsc
+    #     # return Jpetsc
 
     def initialize_petsc_vecnest(self):
         dim = self.dim
@@ -194,7 +375,7 @@ class stubsSNESProblem():
             # Fsum.vec().assemble()
             Fpetsc.append(Fsum.vec())
         
-        if self.is_single_domain == 1:
+        if self.is_single_domain:
             # We can't use a nest vector
             self.Fpetsc_nest = d.PETScVector(Fpetsc[0]).vec()
         else:
@@ -222,67 +403,81 @@ class stubsSNESProblem():
         for i in range(dim):
             for j in range(dim):
                 ij = i*dim+j
-                if all(self.Jforms[ij][k].function_space(0) is None for k in range(len(self.Jforms[ij]))):
+                if all(self.Jforms_nonlinear[ij][k].function_space(0) is None for k in range(len(self.Jforms_nonlinear[ij]))):
                     empty_forms.append((i,j))
         if len(empty_forms) > 0:
             if self.print_assembly:
-                fancy_print(f"Forms {empty_forms} are empty. Skipping assembly.", format_type='data')
+                fancy_print(f"Forms {empty_forms} are empty (or only linear). Skipping assembly.", format_type='data')
 
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using dolfin wrapper as tensor
-        #for ij, Jij_forms in enumerate(self.Jforms):
+        #for ij, Jij_forms in enumerate(self.Jforms_nonlinear):
         for i in range(dim):
             for j in range(dim):
                 if (i,j) in empty_forms:
                     continue
                 ij = i*dim+j
-                num_subforms = len(self.Jforms[ij])
-                
+                num_subforms = len(self.Jforms_nonlinear[ij])
+
+                # Get the linear part of jacobian if available
+                if self.Jpetsc_nest_linear is not None:
+                    if self.is_single_domain:
+                        Jij_petsc_linear = self.Jpetsc_nest_linear
+                    else:
+                        Jij_petsc_linear = self.Jpetsc_nest_linear.getNestSubMatrix(i,j)
+                else:
+                    Jij_petsc_linear = None
+
                 # Extract petsc submatrix
-                if self.is_single_domain == 1:
+                if self.is_single_domain:
                     Jij_petsc = Jnest
                 else:
                     Jij_petsc = Jnest.getNestSubMatrix(i,j)
 
-                if num_subforms==1 and self.Jforms[ij][0].function_space(0) is None:
+                if num_subforms==1 and self.Jforms_nonlinear[ij][0].function_space(0) is None:
+                    raise AssertionError("I dont think this should happen with the empty form check")
                     continue
                 if self.print_assembly:
                     fancy_print(f"Assembling {self.Jijk_name(i,j)}:", format_type='assembly_sub')
 
                 # Assemble the form
-                if num_subforms==1:
+                # if num_subforms==1:
+                #     # Check for empty form
+                #     if self.Jforms_nonlinear[ij][0].function_space(0) is not None:
+                #         d.assemble_mixed(self.Jforms_nonlinear[ij][0], tensor=d.PETScMatrix(Jij_petsc))
+                #         self.print_Jijk_info(i,j,k=None,tensor=Jij_petsc)
+                #         continue
+                #     else:
+                #         raise AssertionError()
+                # else:
+                Jmats=[]
+                # Jijk == dFi/duj(Omega_k)
+                for k in range(num_subforms):
                     # Check for empty form
-                    if self.Jforms[ij][0].function_space(0) is not None:
-                        d.assemble_mixed(self.Jforms[ij][0], tensor=d.PETScMatrix(Jij_petsc))
-                        self.print_Jijk_info(i,j,k=None,tensor=Jij_petsc)
+                    if self.Jforms_nonlinear[ij][k].function_space(0) is None:
+                        if self.print_assembly:
+                            fancy_print(f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.", format_type='data')
                         continue
+                    # if we have the sparsity pattern re-use it, if not save it for next time
+                    # single domain can't re-use the tensor for some reason
+                    if self.tensors_nonlinear[ij][k] is None or self.is_single_domain: 
+                        self.tensors_nonlinear[ij][k] = d.PETScMatrix()
                     else:
-                        raise AssertionError()
-                else:
-                    Jmats=[]
-                    # Jijk == dFi/duj(Omega_k)
-                    for k in range(num_subforms):
-                        # Check for empty form
-                        if self.Jforms[ij][k].function_space(0) is None:
-                            if self.print_assembly:
-                                fancy_print(f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.", format_type='data')
-                            continue
-                        # if we have the sparsity pattern re-use it, if not save it for next time
-                        # single domain can't re-use the tensor for some reason
-                        if self.tensors[ij][k] is None or self.is_single_domain: 
-                            self.tensors[ij][k] = d.PETScMatrix()
-                        else:
-                            if self.print_assembly:
-                                fancy_print(f"Reusing tensor for {self.Jijk_name(i,j,k)}", format_type='data')
-                        # Assemble and append to the list of subforms
-                        Jmats.append(d.assemble_mixed(self.Jforms[ij][k], tensor=self.tensors[ij][k]))
-                        # Print some useful info on assembled Jijk
-                        self.print_Jijk_info(i,j,k,tensor=self.tensors[ij][k].mat())
+                        if self.print_assembly:
+                            fancy_print(f"Reusing tensor for {self.Jijk_name(i,j,k)}", format_type='data')
+                    # Assemble and append to the list of subforms
+                    Jmats.append(d.assemble_mixed(self.Jforms_nonlinear[ij][k], tensor=self.tensors_nonlinear[ij][k]))
+                    # Print some useful info on assembled Jijk
+                    self.print_Jijk_info(i,j,k,tensor=self.tensors_nonlinear[ij][k].mat())
 
                 # Sum the assembled forms
                 Jij_petsc.zeroEntries() # this maintains sparse (non-zeros) structure
                 for Jmat in Jmats:
                     # structure options: SAME_NONZERO_PATTERN, DIFFERENT_NONZERO_PATTERN, SUBSET_NONZERO_PATTERN, UNKNOWN_NONZERO_PATTERN 
                     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat(), structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN) 
+
+                # add in linear part of jacobian
+                if Jij_petsc_linear is not None:
+                    Jij_petsc.axpy(1, Jij_petsc_linear, structure=Jij_petsc.Structure.SUBSET_NONZERO_PATTERN)
                 #Jij_petsc.assemble()    
 
                 self.print_Jijk_info(i,j,k=None,tensor=Jij_petsc)
@@ -338,7 +533,7 @@ class stubsSNESProblem():
         self.copy_u(u)
         self.assemble_Jnest(Jnest)
 
-    def init_zero_petsc_matrix(self, dim0, dim1):
+    def init_zero_petsc_matrix(self, dim0, dim1, assemble=True):
         """Initialize a dolfin wrapped PETSc matrix with all zeros
 
         Parameters
@@ -352,7 +547,8 @@ class stubsSNESProblem():
         # M.setUp()
         self.stopwatches['snes initialize zero matrices'].start()
         M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
-        M.assemble()
+        if assemble:
+            M.assemble()
         self.stopwatches['snes initialize zero matrices'].pause()
         return d.PETScMatrix(M)
 
@@ -374,7 +570,7 @@ class stubsSNESProblem():
         if k is None:
             return f"J{i}{j} = dF[{self.active_compartment_names[i]}]/du[{self.active_compartment_names[j]}]"
         else:
-            domain_name = self.mesh_id_to_name[self.Jforms[ij][k].function_space(0).mesh().id()]
+            domain_name = self.mesh_id_to_name[self.Jforms_all[ij][k].function_space(0).mesh().id()]
             return f"J{i}{j}{k} = dF[{self.active_compartment_names[i]}]/du[{self.active_compartment_names[j]}] (domain={domain_name})"
     
     def Fjk_name(self, j, k=None):

@@ -26,6 +26,7 @@ class Config:
     def __init__(self):
         self.solver             = {'final_t': None,
                                    'use_snes': True,
+                                   'snes_preassemble_linear_system': True,
                                    'initial_dt': None,
                                    'adjust_dt': None,
                                    'time_precision': 6,
