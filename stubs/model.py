@@ -879,7 +879,7 @@ class Model:
                                                           self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
             # self.problem = stubs.solvers.stubsSNESProblem(self)
             # if self.config.solver['snes_preassemble_linear_system']:
-            self.problem.initialize_petsc_matnest_new()
+            self.problem.initialize_petsc_matnest()
                 # self.problem.initialize_petsc_linear_jacobian()
             # self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
