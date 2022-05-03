@@ -792,7 +792,7 @@ class Model:
                 Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
                 Dform_units = species.diffusion_units * species.concentration_units * species.compartment.compartment_units**(species.compartment.dimensionality-2)
-                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True, nonlinear_wrt_comp))
+                self.forms.add(stubs.model_assembly.Form(f"diffusion_{species.name}", Dform, species, 'diffusion', Dform_units, True, linear_wrt_comp))
             # mass (time derivative) terms
             Muform = (u) * v / self.dT * dx
             mass_form_units = species.concentration_units/unit.s * species.compartment.compartment_units**species.compartment.dimensionality
@@ -823,17 +823,36 @@ class Model:
         #we are only going to separate fluxes that are linear with respect to all compartments
         self.Fsum_all       = sum([f.lhs for f in self.forms]) # Sum of all forms
         if self.config.solver['snes_preassemble_linear_system']:
-            self.Fsum_linear    = sum([f.form for f in self.forms if all(z==True for z in f.linear_wrt_comp.values())])
-            self.Fsum_nonlinear = sum([f.form for f in self.forms if not all(z==True for z in f.linear_wrt_comp.values())])
+            # self.Fsum_linear = None
+            # self.Fsum_nonlinear = None
+            # for f in self.forms:
+            #     is_linear = int(all(z==True for z in f.linear_wrt_comp.values()))
+            #     is_nonlinear = int(not all(z==True for z in f.linear_wrt_comp.values()))
+            #     if self.Fsum_linear is None:
+            #         self.Fsum_linear = is_linear*f.lhs
+            #     else:
+            #         self.Fsum_linear += is_linear*f.lhs
+            #     if self.Fsum_nonlinear is None:
+            #         self.Fsum_nonlinear = is_nonlinear*f.lhs
+            #     else:
+            #         self.Fsum_nonlinear += is_nonlinear*f.lhs
+            
+            self.Fsum_linear    = sum([f.lhs for f in self.forms if all(z==True for z in f.linear_wrt_comp.values())])
+            self.Fsum_nonlinear = sum([f.lhs for f in self.forms if not all(z==True for z in f.linear_wrt_comp.values())])
             # self.Fsum_all       = self.Fsum_linear + self.Fsum_nonlinear
 
-            # Separating linear/non-linear Jacobian components
-            fancy_print("Getting linear block Jacobian components", format_type='log')
-            self.Jblocks_linear    = self.get_block_J(self.Fsum_linear, u)
-            fancy_print("Getting non-linear block Jacobian components", format_type='log')
-            self.Jblocks_nonlinear = self.get_block_J(self.Fsum_nonlinear, u)
-            self.Fblocks_all       = self.get_block_F(self.Fsum_all, u)
-            self.Jblocks_all       = self.get_block_J(self.Fsum_all, u)
+            # # Separating linear/non-linear Jacobian components
+            # fancy_print("Getting linear block Jacobian components", format_type='log')
+            # self.Jblocks_linear    = self.get_block_J(self.Fsum_linear, u)
+            # fancy_print("Getting non-linear block Jacobian components", format_type='log')
+            # self.Jblocks_nonlinear = self.get_block_J(self.Fsum_nonlinear, u)
+            # self.Fblocks_all       = self.get_block_F(self.Fsum_all, u)
+            # self.Jblocks_all       = self.get_block_J(self.Fsum_all, u)
+
+            # debug attempt
+            _, self.Jblocks_linear, _ = self.get_block_system(self.Fsum_linear, u)
+            _, self.Jblocks_nonlinear, _ = self.get_block_system(self.Fsum_nonlinear, u)
+            self.Fblocks_all, self.Jblocks_all, _ = self.get_block_system(self.Fsum_all, u)
 
         # Not separating linear/non-linear components (everything assumed non-linear)
         else:
@@ -842,8 +861,6 @@ class Model:
             self.Jblocks_linear    = None
             self.Jblocks_nonlinear = self.get_block_J(self.Fsum_all, u)
             self.Jblocks_all       = self.Jblocks_nonlinear
-            
-
         
         # Print the residuals per compartment
         for compartment in self._active_compartments:
@@ -861,8 +878,8 @@ class Model:
             self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks_all, self.Jblocks_all, self.Jblocks_linear, self.Jblocks_nonlinear,
                                                           self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
             # self.problem = stubs.solvers.stubsSNESProblem(self)
-            if self.config.solver['snes_preassemble_linear_system']:
-                self.problem.initialize_petsc_matnest_new()
+            # if self.config.solver['snes_preassemble_linear_system']:
+            self.problem.initialize_petsc_matnest_new()
                 # self.problem.initialize_petsc_linear_jacobian()
             # self.problem.initialize_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
@@ -934,79 +951,79 @@ class Model:
         I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
 
-        Fblocks = self.get_block_F(Fsum, u)
-        Jblocks = self.get_block_J(Fsum, u)
-        block_sizes = self.get_block_sizes(u)
-        return Fblocks, Jblocks, block_sizes
+        # Fblocks = self.get_block_F(Fsum, u)
+        # Jblocks = self.get_block_J(Fsum, u)
+        # block_sizes = self.get_block_sizes(u)
+        # return Fblocks, Jblocks, block_sizes
 
-        # # =====================================================================
-        # # doflin.fem.solving._solve_varproblem()
-        # # =====================================================================
-        # Fblock = d.extract_blocks(Fsum) # blocks/partitions are by compartment, not species
-        # J = []
-        # for Fi in Fblock:
-        #     for uj in u:
-        #         dFdu = expand_derivatives(d.derivative(Fi, uj))
-        #         J.append(dFdu)
+        # =====================================================================
+        # doflin.fem.solving._solve_varproblem()
+        # =====================================================================
+        Fblock = d.extract_blocks(Fsum) # blocks/partitions are by compartment, not species
+        J = []
+        for Fi in Fblock:
+            for uj in u:
+                dFdu = expand_derivatives(d.derivative(Fi, uj))
+                J.append(dFdu)
     
-        # # =====================================================================
-        # # doflin.fem.problem.MixedNonlinearVariationalProblem()
-        # # =====================================================================
-        # # basically is a wrapper around the cpp class that finalizes preparing F and J into the right format
-        # # TODO: add dirichlet BCs
+        # =====================================================================
+        # doflin.fem.problem.MixedNonlinearVariationalProblem()
+        # =====================================================================
+        # basically is a wrapper around the cpp class that finalizes preparing F and J into the right format
+        # TODO: add dirichlet BCs
 
-        # # Add in placeholders for empty blocks of F
-        # if len(Fblock) != len(u):
-        #     Ftemp = [None for i in range(len(u))]
-        #     for Fi in Fblock:
-        #         Ftemp[Fi.arguments()[0].part()] = Fi
-        #     Fblock = Ftemp
+        # Add in placeholders for empty blocks of F
+        if len(Fblock) != len(u):
+            Ftemp = [None for i in range(len(u))]
+            for Fi in Fblock:
+                Ftemp[Fi.arguments()[0].part()] = Fi
+            Fblock = Ftemp
 
-        # # Check number of blocks in the residual and solution are coherent
-        # assert(len(J) == len(u) * len(u))
-        # assert(len(Fblock) == len(u))
+        # Check number of blocks in the residual and solution are coherent
+        assert(len(J) == len(u) * len(u))
+        assert(len(Fblock) == len(u))
 
-        # # Decompose F blocks into subforms based on domain of integration
-        # # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
-        # # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]] If a form has integrals on multiple domains, they are split into a list
-        # Flist = list()
-        # for idx, Fi in enumerate(Fblock):
-        #     if Fi is None or Fi.empty():
-        #         fancy_print(f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty", format_type='warning')
-        #         Flist.append([d.cpp.fem.Form(1, 0)])
-        #     else:
-        #         Fs = []
-        #         for Fsub in sub_forms_by_domain(Fi):
-        #             if Fsub is None or Fsub.empty():
-        #                 domain = self.get_mesh_by_id(Fsub.mesh().id()).name
-        #                 fancy_print(f"F{idx} = F[{self.cc.get_index(idx).name}] is empty on integration domain {domain}", format_type='logred')
-        #                 Fs.append(d.cpp.fem.Form(1, 0))
-        #             else:
-        #                 Fs.append(d.Form(Fsub))
-        #         Flist.append(Fs)
-        # #fancy_print("[problem] create list of residual forms OK", format_type='log')
+        # Decompose F blocks into subforms based on domain of integration
+        # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
+        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]] If a form has integrals on multiple domains, they are split into a list
+        Flist = list()
+        for idx, Fi in enumerate(Fblock):
+            if Fi is None or Fi.empty():
+                fancy_print(f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty", format_type='warning')
+                Flist.append([d.cpp.fem.Form(1, 0)])
+            else:
+                Fs = []
+                for Fsub in sub_forms_by_domain(Fi):
+                    if Fsub is None or Fsub.empty():
+                        domain = self.get_mesh_by_id(Fsub.mesh().id()).name
+                        fancy_print(f"F{idx} = F[{self.cc.get_index(idx).name}] is empty on integration domain {domain}", format_type='logred')
+                        Fs.append(d.cpp.fem.Form(1, 0))
+                    else:
+                        Fs.append(d.Form(Fsub))
+                Flist.append(Fs)
+        #fancy_print("[problem] create list of residual forms OK", format_type='log')
 
-        # # Decompose J blocks into subforms based on domain of integration
-        # Jlist = list()
-        # for idx, Ji in enumerate(J):
-        #     idx_i, idx_j = divmod(idx, len(u))
-        #     if Ji is None or Ji.empty():
-        #         fancy_print(f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}] is empty", format_type='logred')
-        #         Jlist.append([d.cpp.fem.Form(2, 0)])
-        #     else:
-        #         Js = []
-        #         for Jsub in sub_forms_by_domain(Ji):
-        #             if Jsub is None or Jsub.empty():
-        #                 domain = self.get_mesh_by_id(Jsub.mesh().id()).name
-        #                 fancy_print(f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}]"\
-        #                             f"is empty on integration domain {domain}", format_type='logred')
-        #             Js.append(d.Form(Jsub))
-        #         Jlist.append(Js)
+        # Decompose J blocks into subforms based on domain of integration
+        Jlist = list()
+        for idx, Ji in enumerate(J):
+            idx_i, idx_j = divmod(idx, len(u))
+            if Ji is None or Ji.empty():
+                fancy_print(f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}] is empty", format_type='logred')
+                Jlist.append([d.cpp.fem.Form(2, 0)])
+            else:
+                Js = []
+                for Jsub in sub_forms_by_domain(Ji):
+                    if Jsub is None or Jsub.empty():
+                        domain = self.get_mesh_by_id(Jsub.mesh().id()).name
+                        fancy_print(f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}]"\
+                                    f"is empty on integration domain {domain}", format_type='logred')
+                    Js.append(d.Form(Jsub))
+                Jlist.append(Js)
         
-        # block_sizes = [uj.function_space().dim() for uj in u]
+        block_sizes = [uj.function_space().dim() for uj in u]
 
-        # #return Flist, Jlist
-        # return Flist, Jlist, block_sizes
+        #return Flist, Jlist
+        return Flist, Jlist, block_sizes
     
     def get_block_sizes(self, u):
         return [uj.function_space().dim() for uj in u]
