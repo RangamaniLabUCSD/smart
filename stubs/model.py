@@ -922,7 +922,7 @@ class Model:
         else:
             fancy_print(f"Using dolfin MixedNonlinearVariationalSolver", format_type='log')
             self._ubackend = [u[i]._cpp_object for i in range(len(u))] 
-            self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(self.Fblocks_all, self._ubackend, [], self.Jblocks)
+            self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(self.Fblocks_all, self._ubackend, [], self.Jblocks_all)
             #self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)
             self.solver = d.MixedNonlinearVariationalSolver(self.problem)
     
@@ -1105,7 +1105,7 @@ class Model:
         for form in self.forms:
             if form.compartment.name == compartment_name:
                 form.set_scaling(scaling, print_scaling)
-  
+    
     #===============================================================================
     # Model - Solving
     # Hierarchy:
@@ -1296,15 +1296,15 @@ class Model:
             fancy_print(f"KSP converged reason: {self.solver.ksp.getConvergedReason()}", format_type='log')
             fancy_print(f"KSP residual norm: {self.solver.ksp.getResidualNorm()}", format_type='log')
 
-            fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
-            residuals = dict()
-            for compartment in self._active_compartments:
-                residuals[compartment.name] = self.get_compartment_residual(compartment, norm=2)
-                fancy_print(f"L2-norm of compartment {compartment.name} is {residuals[compartment.name]}", format_type='log')
-                if residuals[compartment.name] > 1:
-                    fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {residuals[compartment.name]} (possibly too large).", format_type='log_urgent')
+            # fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
+            # residuals = dict()
+            # for compartment in self._active_compartments:
+            #     residuals[compartment.name] = self.get_compartment_residual(compartment, norm=2)
+            #     fancy_print(f"L2-norm of compartment {compartment.name} is {residuals[compartment.name]}", format_type='log')
+            #     if residuals[compartment.name] > 1:
+            #         fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {residuals[compartment.name]} (possibly too large).", format_type='log_urgent')
 
-            self.residuals.append(residuals)
+            # self.residuals.append(residuals)
 
             if not self.solver.converged:
                 if not self.config.solver['attempt_timestep_restart_on_divergence']:
@@ -1326,6 +1326,18 @@ class Model:
         else:
             fancy_print(f'Solving using dolfin.MixedNonlinearVariationalSolver()', format_type='log')
             self.solver.solve()
+
+            fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
+            residuals = dict()
+            for compartment in self._active_compartments:
+                residuals[compartment.name] = self.get_compartment_residual(compartment, norm=2)
+                fancy_print(f"L2-norm of compartment {compartment.name} is {residuals[compartment.name]}", format_type='log')
+                if residuals[compartment.name] > 1:
+                    fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {residuals[compartment.name]} (possibly too large).", format_type='log_urgent')
+
+            self.residuals.append(residuals)
+
+
 
         #self.data['nl_idx'].append(nl_idx)
         #self.data['success'].append(success)

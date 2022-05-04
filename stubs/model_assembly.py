@@ -733,6 +733,11 @@ class Compartment(ObjectInstance):
             self._num_dofs = self.V.dim()
         return self._num_dofs
 
+    # def petsc_get_dof_map(self, V):
+
+    #     self.mpi_comm_world = d.MPI.comm_world
+  
+
 
 class ReactionContainer(ObjectContainer):
     def __init__(self):
