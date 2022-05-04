@@ -960,11 +960,11 @@ class Model:
         # doflin.fem.solving._solve_varproblem()
         # =====================================================================
         Fblock = d.extract_blocks(Fsum) # blocks/partitions are by compartment, not species
-        J = []
-        for Fi in Fblock:
-            for uj in u:
-                dFdu = expand_derivatives(d.derivative(Fi, uj))
-                J.append(dFdu)
+        # J = []
+        # for Fi in Fblock:
+        #     for uj in u:
+        #         dFdu = expand_derivatives(d.derivative(Fi, uj))
+        #         J.append(dFdu)
     
         # =====================================================================
         # doflin.fem.problem.MixedNonlinearVariationalProblem()
@@ -978,6 +978,17 @@ class Model:
             for Fi in Fblock:
                 Ftemp[Fi.arguments()[0].part()] = Fi
             Fblock = Ftemp
+        
+        # debug attempt
+        J = []
+        for Fi in Fblock:
+            for uj in u:
+                if Fi is None:
+                    # pass
+                    J.append(None)
+                else:
+                    dFdu = expand_derivatives(d.derivative(Fi, uj))
+                    J.append(dFdu)
 
         # Check number of blocks in the residual and solution are coherent
         assert(len(J) == len(u) * len(u))

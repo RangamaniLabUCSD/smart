@@ -173,6 +173,8 @@ class stubsSNESProblem():
         if self.Jforms_linear is not None:
             self.Jpetsc_nest_linear = self.Jforms_to_petsc_matnest(self.Jforms_linear, self.tensors_linear)
             self.Jpetsc_nest = self.Jforms_to_petsc_matnest(self.Jforms_nonlinear, self.tensors)
+            print(f"Jpetsc_nest_linear size = {self.Jpetsc_nest_linear.size}")
+            print(f"Jpetsc_nest size = {self.Jpetsc_nest.size}")
             self.Jpetsc_nest.axpy(1, self.Jpetsc_nest_linear)
         else:
             self.Jpetsc_nest = self.Jforms_to_petsc_matnest(self.Jforms_all, self.tensors)
