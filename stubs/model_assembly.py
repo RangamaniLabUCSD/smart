@@ -3,6 +3,7 @@ Classes for parameters, species, compartments, reactions, fluxes, and forms
 Model class contains functions to efficiently solve a system
 """
 from ast import parse
+import numbers
 import pdb
 import sys
 import re
@@ -761,6 +762,7 @@ class Reaction(ObjectInstance):
     rhs: list
     param_map: dict
     species_map: dict = dataclasses.field(default_factory=dict)
+    species_scaling: dict = dataclasses.field(default_factory=dict)
     reaction_type: str='mass_action'
     explicit_restriction_to_domain: str=''
     track_value: bool=False
@@ -770,7 +772,7 @@ class Reaction(ObjectInstance):
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
-        keys_to_keep = ['name', 'lhs', 'rhs', 'param_map', 'species_map', 'reaction_type',
+        keys_to_keep = ['name', 'lhs', 'rhs', 'param_map', 'species_map', 'species_scaling', 'reaction_type',
                         'explicit_restriction_to_domain', 'track_value', 'eqn_f_str', 'eqn_r_str', 'group']
         return {key: self.__dict__[key] for key in keys_to_keep}
         
@@ -790,6 +792,26 @@ class Reaction(ObjectInstance):
         for species_name in set(self.lhs + self.rhs):
             if species_name not in self.species_map:
                 self.species_map[species_name] = species_name
+        
+        # Finish initializing the species scaling
+        for species_name in set(self.lhs + self.rhs):
+            if species_name not in self.species_scaling:
+                self.species_scaling[species_name] = 1 
+
+        # use species_scaling if available
+        print(self.species_scaling.items())
+        print(self.species_map.items())
+        self.species_scaling_map = dict()
+        for key, name in self.species_map.items():
+            if name in self.species_scaling:
+                if self.species_scaling[name] != 1:
+                    self.species_scaling_map[key] = f"{str(self.species_scaling[name])}*{name}"
+            else:
+                self.species_scaling_map[key] = name
+            
+            FINISH SCALING REACTION IMPLEMENTATION
+        # self.species_scaling_map = {key: f"{str(self.species_scaling[name])}*{name}"
+        #                             for key, name in self.species_map.items() if self.species_scaling[name]!=1}
 
     def check_validity(self):
         # Type checking
@@ -802,10 +824,17 @@ class Reaction(ObjectInstance):
         if self.species_map:
             if not all([isinstance(k,str) and isinstance(v,str) for (k,v) in self.species_map.items()]):
                 raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for species_map.")
+        if self.species_scaling:
+            if not all([isinstance(k,str) and isinstance(v,numbers.Number) for (k,v) in self.species_scaling.items()]):
+                raise TypeError(f"Reaction {self.name} requires a dict of str:number as input for species_scaling.")
+            
             
     def _parse_custom_reaction(self, reaction_eqn_str):
         reaction_expr = parse_expr(reaction_eqn_str)
         reaction_expr = reaction_expr.subs(self.param_map)
+        # # use species_scaling if available
+        # #
+        # for species_name in self.species_scaling:
         reaction_expr = reaction_expr.subs(self.species_map)
         return str(reaction_expr)
 
