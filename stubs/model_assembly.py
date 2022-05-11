@@ -505,13 +505,14 @@ class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
         #self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
-        self.properties_to_print = ['compartment_name', 'dof_index', '_Initial_Concentration', '_Diffusion']
+        #self.properties_to_print = ['compartment_name', 'dof_index', '_Initial_Concentration', '_Diffusion']
+        self.properties_to_print = ['compartment_name', 'dof_index', '_Diffusion']
 
     def print(self, tablefmt='fancy_grid', properties_to_print=None,
                     filename=None, max_col_width=50):
         for s in self:
             s.D_quantity
-            s.initial_condition_quantity
+            # s.initial_condition_quantity
             s.latex_name
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
     
@@ -637,7 +638,7 @@ class CompartmentContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Compartment)
 
-        self.properties_to_print = ['_mesh_id', 'dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_cells', 'cell_marker', '_nvolume']
+        self.properties_to_print = ['_mesh_id', 'dimensionality', 'num_species', '_num_vertices', '_num_dofs', '_num_dofs_local', '_num_cells', 'cell_marker', '_nvolume']
     
     def print(self, tablefmt='fancy_grid', properties_to_print=None,
                     filename=None, max_col_width=50):
@@ -646,6 +647,7 @@ class CompartmentContainer(ObjectContainer):
             c.nvolume
             c.num_vertices
             c.num_dofs
+            c.num_dofs_local
             c.num_cells
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
@@ -733,6 +735,16 @@ class Compartment(ObjectInstance):
         else:
             self._num_dofs = self.V.dim()
         return self._num_dofs
+
+    @property
+    def num_dofs_local(self):
+        "Number of degrees of freedom for this compartment, local to this process"
+        if self.V is None:
+            self._num_dofs_local = 0
+        else:
+            self._ownership_range = self.V.dofmap().ownership_range()
+            self._num_dofs_local = self._ownership_range[1] - self._ownership_range[0]
+        return self._num_dofs_local
 
     # def petsc_get_dof_map(self, V):
 

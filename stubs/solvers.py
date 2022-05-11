@@ -102,8 +102,9 @@ class stubsSNESProblem():
 
 
         # Need block sizes because some forms may be empty
-        self.block_sizes = [c._num_dofs for c in active_compartments]
-        self.is_single_domain = len(self.block_sizes) == 1
+        self.local_block_sizes = [c._num_dofs_local for c in active_compartments]
+        self.global_block_sizes = [c._num_dofs for c in active_compartments]
+        self.is_single_domain = len(self.global_block_sizes) == 1
 
         self.active_compartment_names = [c.name for c in active_compartments]
         self.mesh_id_to_name = {c.mesh_id:c.name for c in all_compartments}
@@ -155,8 +156,9 @@ class stubsSNESProblem():
                         fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
                 if Jsum is None:
                     if self.print_assembly:
-                        fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with size {self.block_sizes[i]}, {self.block_sizes[j]}", format_type='log')
-                    Jsum = self.init_zero_petsc_matrix(self.block_sizes[i], self.block_sizes[j])
+                        fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with LOCAL size {self.local_block_sizes[i]}, {self.local_block_sizes[j]} "
+                                    f"and GLOBAL size {self.global_block_sizes[i]}, {self.global_block_sizes[j]}", format_type='log')
+                    Jsum = self.init_zero_petsc_matrix(self.local_block_sizes[i], self.local_block_sizes[j], self.global_block_sizes[i], self.global_block_sizes[j])
                 
                 Jpetsc.append(Jsum)
 
@@ -208,8 +210,9 @@ class stubsSNESProblem():
                     Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
             if Fsum is None:
                 if self.print_assembly:
-                    fancy_print(f"{self.Fjk_name(j)} is empty - initializing as empty PETSc Vector with size {self.block_sizes[j]}", format_type='log')
-                Fsum = self.init_zero_petsc_vector(self.block_sizes[j])
+                    fancy_print(f"{self.Fjk_name(j)} is empty - initializing as empty PETSc Vector with LOCAL size {self.local_block_sizes[j]} "
+                                f"and GLOBAL size {self.global_block_sizes[j]}", format_type='log')
+                Fsum = self.init_zero_petsc_vector(self.local_block_sizes[j], self.global_block_sizes[j])
                 #raise AssertionError()
 
             # Fsum.vec().assemble()
@@ -356,7 +359,8 @@ class stubsSNESProblem():
         # self.Jpetsc_nest_nonlinear = self.Jforms_to_petsc_matnest(self.Jforms_nonlinear, self.tensors_nonlinear)
         # self.Jpetsc_nest = self.Jforms_to_petsc_matnest(self.Jforms_all, self.tensors)
 
-    def init_zero_petsc_matrix(self, dim0, dim1, assemble=True):
+    #def init_zero_petsc_matrix(self, dim0, dim1, assemble=True):
+    def init_zero_petsc_matrix(self, lnrow, lncol, gnrow=None, gncol=None, assemble=True):
         """Initialize a dolfin wrapped PETSc matrix with all zeros
 
         Parameters
@@ -364,18 +368,29 @@ class stubsSNESProblem():
         dim : int
             Size of matrix
         """
-        # M = PETSc.Mat().create()
-        # M.setSizes([dim, dim])
-        # M.setType("aij")
-        # M.setUp()
         self.stopwatches['snes initialize zero matrices'].start()
-        M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
+        if gnrow is None:
+            gnrow = lnrow
+        if gncol is None:
+            gncol = lncol
+
+        M = PETSc.Mat().create(comm=self.mpi_comm_world)
+        # ((local_nrows, global_nrows), (local_ncols, global_ncols))
+        M.setSizes(((lnrow, gnrow), (lncol, gncol)))
+        M.setType("aij")
+        M.setUp()
         if assemble:
             M.assemble()
         self.stopwatches['snes initialize zero matrices'].pause()
+
+        # self.stopwatches['snes initialize zero matrices'].start()
+        # M = PETSc.Mat().createAIJ(size=(dim0,dim1), nnz=0, comm=self.mpi_comm_world)
+        # if assemble:
+        #     M.assemble()
+        # self.stopwatches['snes initialize zero matrices'].pause()
         return d.PETScMatrix(M)
 
-    def init_zero_petsc_vector(self, dim0):
+    def init_zero_petsc_vector(self, lnrow, gnrow):
         """Initialize a dolfin wrapped PETSc vector with all zeros
 
         Parameters
@@ -383,8 +398,10 @@ class stubsSNESProblem():
         dim0 : int
             Size of vector
         """
+        V = PETSc.Vec().create(comm=self.mpi_comm_world)
+        V.setSizes((lnrow, gnrow))
 
-        V = PETSc.Vec().createSeq(dim0, comm=self.mpi_comm_world)
+        # V = PETSc.Vec().createSeq(dim0, comm=self.mpi_comm_world)
         V.assemble()
         return d.PETScVector(V)
 
