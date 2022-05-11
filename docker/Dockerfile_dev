@@ -67,6 +67,16 @@ RUN python3 -m pip install bpython
 RUN python3 -m pip install gmsh
 RUN python3 -m pip install vedo
 RUN python3 -m pip install termplotlib
+
+# for testing parallel stuff in ipython (~/.ipython/profile_mpi)
+#RUN python3 -m pip install ipyparallel
+# https://ipython.org/ipython-doc/3/parallel/parallel_process.html#using-ipcluster-in-mpiexec-mpirun-mode
+# ipython profile create --parallel --profile=mpi
+# ~/.ipython/profile_mpi/ipcluster_config.py
+# Add line : c.IPClusterEngines.engine_launcher_class = 'MPIEngineSetLauncher'
+# run with : $ ipcluster start -n 2 --profile=mpi
+
+
 # PyQt5 for matplotlib
 RUN python3 -m pip install PyQt5==5.12.2
 ENV MPLBACKEND=QT5Agg

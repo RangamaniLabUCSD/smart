@@ -850,8 +850,11 @@ class Model:
             # self.Jblocks_all       = self.get_block_J(self.Fsum_all, u)
 
             # debug attempt
+            fancy_print("Getting linear block Jacobian components", format_type='log')
             _, self.Jblocks_linear, _ = self.get_block_system(self.Fsum_linear, u)
+            fancy_print("Getting non-linear block Jacobian components", format_type='log')
             _, self.Jblocks_nonlinear, _ = self.get_block_system(self.Fsum_nonlinear, u)
+            fancy_print("Getting linear+non-linear block Jacobian components", format_type='log')
             self.Fblocks_all, self.Jblocks_all, _ = self.get_block_system(self.Fsum_all, u)
 
         # Not separating linear/non-linear components (everything assumed non-linear)

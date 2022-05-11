@@ -762,7 +762,7 @@ class Reaction(ObjectInstance):
     rhs: list
     param_map: dict
     species_map: dict = dataclasses.field(default_factory=dict)
-    species_scaling: dict = dataclasses.field(default_factory=dict)
+    flux_scaling: dict = dataclasses.field(default_factory=dict)
     reaction_type: str='mass_action'
     explicit_restriction_to_domain: str=''
     track_value: bool=False
@@ -772,7 +772,7 @@ class Reaction(ObjectInstance):
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
-        keys_to_keep = ['name', 'lhs', 'rhs', 'param_map', 'species_map', 'species_scaling', 'reaction_type',
+        keys_to_keep = ['name', 'lhs', 'rhs', 'param_map', 'species_map', 'flux_scaling', 'reaction_type',
                         'explicit_restriction_to_domain', 'track_value', 'eqn_f_str', 'eqn_r_str', 'group']
         return {key: self.__dict__[key] for key in keys_to_keep}
         
@@ -793,23 +793,22 @@ class Reaction(ObjectInstance):
             if species_name not in self.species_map:
                 self.species_map[species_name] = species_name
         
-        # Finish initializing the species scaling
+        # Finish initializing the species flux scaling
         for species_name in set(self.lhs + self.rhs):
-            if species_name not in self.species_scaling:
-                self.species_scaling[species_name] = 1 
+            if species_name not in self.flux_scaling:
+                self.flux_scaling[species_name] = None
 
-        # use species_scaling if available
-        print(self.species_scaling.items())
-        print(self.species_map.items())
-        self.species_scaling_map = dict()
-        for key, name in self.species_map.items():
-            if name in self.species_scaling:
-                if self.species_scaling[name] != 1:
-                    self.species_scaling_map[key] = f"{str(self.species_scaling[name])}*{name}"
-            else:
-                self.species_scaling_map[key] = name
+        # # species_scaling_map combines species_scaling and species_map
+        # print(self.species_scaling.items())
+        # print(self.species_map.items())
+        # self._species_scaling_map = dict()
+        # for key, name in self.species_map.items():
+        #     if name in self.species_scaling:
+        #         if self.species_scaling[name] != 1:
+        #             self._species_scaling_map[key] = f"({str(self.species_scaling[name])}*{name})"
+            # else:
+            #     self._species_scaling_map[key] = name
             
-            FINISH SCALING REACTION IMPLEMENTATION
         # self.species_scaling_map = {key: f"{str(self.species_scaling[name])}*{name}"
         #                             for key, name in self.species_map.items() if self.species_scaling[name]!=1}
 
@@ -824,27 +823,35 @@ class Reaction(ObjectInstance):
         if self.species_map:
             if not all([isinstance(k,str) and isinstance(v,str) for (k,v) in self.species_map.items()]):
                 raise TypeError(f"Reaction {self.name} requires a dict of str:str as input for species_map.")
-        if self.species_scaling:
-            if not all([isinstance(k,str) and isinstance(v,numbers.Number) for (k,v) in self.species_scaling.items()]):
-                raise TypeError(f"Reaction {self.name} requires a dict of str:number as input for species_scaling.")
+        if self.flux_scaling:
+            if not all([isinstance(k,str) and isinstance(v,(numbers.Number,None)) for (k,v) in self.flux_scaling.items()]):
+                raise TypeError(f"Reaction {self.name} requires a dict of str:number as input for flux_scaling.")
             
             
     def _parse_custom_reaction(self, reaction_eqn_str):
         reaction_expr = parse_expr(reaction_eqn_str)
         reaction_expr = reaction_expr.subs(self.param_map)
         # # use species_scaling if available
-        # #
-        # for species_name in self.species_scaling:
+        # reaction_expr = reaction_expr.subs(self._species_scaling_map)
         reaction_expr = reaction_expr.subs(self.species_map)
         return str(reaction_expr)
 
     def reaction_to_fluxes(self):
         fancy_print(f"Getting fluxes for reaction {self.name}", format_type='log')
         # set of 2-tuples. (species_name, signed stoichiometry)
-        species_stoich      = {(species_name, -1*self.lhs.count(species_name)) for species_name in self.lhs}
-        species_stoich.update({(species_name,  1*self.rhs.count(species_name)) for species_name in self.rhs})
+        self.species_stoich      = {(species_name, -1*self.lhs.count(species_name)) for species_name in self.lhs}
+        self.species_stoich.update({(species_name,  1*self.rhs.count(species_name)) for species_name in self.rhs})
+        # convert to dict
+        self.species_stoich = dict(self.species_stoich)
+        # combine with user-defined flux scaling
+        for species_name in self.species_stoich.keys():
+            if self.flux_scaling[species_name] is not None:
+                fancy_print(f"Flux {self.name}: stoichiometry/flux for species {species_name} "
+                            f"scaled by {self.flux_scaling[species_name]}", format_type='log')
+                self.species_stoich[species_name] *= self.flux_scaling[species_name]
+            
 
-        for species_name, stoich in species_stoich:
+        for species_name, stoich in self.species_stoich.items():
             species = self.species[species_name]
             if self.eqn_f_str:
                 flux_name     = self.name + f" [{species_name} (f)]"
