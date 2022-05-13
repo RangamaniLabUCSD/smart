@@ -38,7 +38,8 @@ class Config:
 
         # initialize with default values
         self.flags              = {'store_solutions': True,
-                                   'allow_unused_components': False}
+                                   'allow_unused_components': False,
+                                   'print_verbose_info': True,}
 
         self.directory          = {'solutions': 'solutions',
                                    'plots': 'plots'}

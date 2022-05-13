@@ -115,7 +115,7 @@ class Model:
         self.residuals = list() # list of dicts
 
         # Timers
-        stopwatch_names = ["Total time step", "Total simulation",
+        stopwatch_names = ["Total time step", "Total simulation", "loading mesh", "Total initialization",
                            "snes all", "snes total solve",
                            "snes total assemble", "snes jacobian assemble",
                            "snes residual assemble", "snes initialize zero matrices",]
@@ -204,11 +204,12 @@ class Model:
         self._init_5(initialize_solver)
 
         fancy_print(f"Model finished initialization!", format_type='title')
-        self.pc.print()
-        self.sc.print()
-        self.cc.print()
-        self.print_meshes()
-        self.rc.print()
+        if self.config.flags['print_verbose_info']:
+            self.pc.print()
+            self.sc.print()
+            self.cc.print()
+            self.print_meshes()
+            self.rc.print()
 
     def _init_1(self):
         "Checking validity of model"
@@ -721,9 +722,13 @@ class Model:
         # sanity check
         for compartment in self._active_compartments:#self.cc:
             idx = compartment.dof_index
+            compartment.num_dofs
+            compartment.num_dofs_local
             # function size == dofs
             if self.mpi_size == 1:
-                assert compartment.u['u'].vector().size() == compartment.num_dofs
+                assert compartment.u['u'].vector().size() == compartment._num_dofs
+            if self.mpi_size >= 1:
+                assert compartment.u['u'].vector().get_local().size == compartment._num_dofs_local
 
             # number of sub spaces == number of species
             if compartment.num_species == 1:

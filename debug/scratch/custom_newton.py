@@ -4,7 +4,7 @@
 import dolfin as d
 import numpy as np
 
-d.parameters["form_compiler"]["quadrature_degree"]=4
+d.parameters["form_compiler"]["quadrature_degree"]=3
 
 mu = d.Constant(1)
 lmbda = d.Constant(1)
