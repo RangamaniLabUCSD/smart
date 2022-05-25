@@ -176,7 +176,7 @@ class ParentMesh(_Mesh):
         #mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh()
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, 'r')
-        hdf5.read(self.dolfin_mesh, '/mesh', False)
+        hdf5.read(self.dolfin_mesh, '/mesh', True)
 
         self.dolfin_mesh.init()
         self.dimensionality = self.dolfin_mesh.topology().dim()
