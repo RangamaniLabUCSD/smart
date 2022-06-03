@@ -150,7 +150,9 @@ class stubsSNESProblem():
                     if Jsum is None:
                         Jsum = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
                     else:
-                        Jsum += d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                        #Jsum += d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                        # 060322 changing to unknown nonzero (for dolfin wrapped axpy, last argument is bool, same non-zero pattern or not)
+                        Jsum.axpy(1, d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k])), 0) 
                     
                     if self.print_assembly:
                         fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
