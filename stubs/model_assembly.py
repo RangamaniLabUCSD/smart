@@ -693,6 +693,16 @@ class Compartment(ObjectInstance):
         if not self.compartment_units.check('[length]'):
             raise ValueError(f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length].")
     
+    def specify_nonadjacency(self, nonadjacent_compartment_list=None):
+        """
+        Specify if this compartment is NOT adjacent to another compartment. Not necessary, but will speed-up initialization of very large problems.
+        Only needs to be specified for surface meshes as those are the ones that MeshViews are built on.
+        """
+        if nonadjacent_compartment_list is None:
+            self.nonadjacent_compartment_list = []
+        self.nonadjacent_compartment_list = nonadjacent_compartment_list
+
+    
     @property
     def measure_units(self):
         return self.compartment_units**self.dimensionality

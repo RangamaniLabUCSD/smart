@@ -244,6 +244,8 @@ class ChildMesh(_Mesh):
         # Alias
         marker = compartment.cell_marker
 
+        self.compartment = compartment
+
         # child mesh must be associated with a parent mesh
         self.parent_mesh = None
         assert isinstance(parent_mesh, ParentMesh)

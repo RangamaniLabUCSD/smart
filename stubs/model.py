@@ -506,6 +506,9 @@ class Model:
         # with common._stdout_redirected():
         for child_mesh in self.parent_mesh.child_surface_meshes:
             for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
+                if hasattr(child_mesh.compartment, 'nonadjacent_compartment_list'):
+                    if sibling_volume_mesh.compartment.name in child_mesh.compartment.nonadjacent_compartment_list:
+                        continue
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
 
     def _init_3_5_get_child_mesh_intersections(self):
