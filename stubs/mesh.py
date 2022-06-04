@@ -141,8 +141,9 @@ class ParentMesh(_Mesh):
     Mesh loaded in from data. Submeshes are extracted from the ParentMesh based 
     on marker values from the .xml file.
     """
-    def __init__(self, mesh_filename, mesh_filetype='xml', name='parent_mesh'):
+    def __init__(self, mesh_filename, mesh_filetype='xml', name='parent_mesh', use_partition=False):
         super().__init__(name)
+        self.use_partition = use_partition
         if mesh_filetype == 'xml':
             self.load_mesh_from_xml(mesh_filename)
         elif mesh_filetype == 'hdf5':
@@ -176,7 +177,7 @@ class ParentMesh(_Mesh):
         #mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh()
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, 'r')
-        hdf5.read(self.dolfin_mesh, '/mesh', True)
+        hdf5.read(self.dolfin_mesh, '/mesh', self.use_partition)
 
         self.dolfin_mesh.init()
         self.dimensionality = self.dolfin_mesh.topology().dim()

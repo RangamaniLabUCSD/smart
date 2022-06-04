@@ -6,6 +6,8 @@ from stubs.common import _fancy_print as fancy_print
 import time
 
 
+debug_060322 = True
+
 class stubsSNESProblem():
     """To interface with PETSc SNES solver
         
@@ -137,6 +139,7 @@ class stubsSNESProblem():
                 ij = i*dim + j
 
                 Jsum = None
+                # Jsum = self.init_zero_petsc_matrix(self.local_block_sizes[i], self.local_block_sizes[j], self.global_block_sizes[i], self.global_block_sizes[j], False).mat()
                 for k in range(len(Jforms[ij])):
                     # print(f"ij={ij}, k={k}")
                     if Jforms[ij][k].function_space(0) is None:
@@ -144,25 +147,86 @@ class stubsSNESProblem():
                             fancy_print(f"{self.Jijk_name(i,j,k=None)} has no function space", format_type='log')
                         continue
 
+                    # function space 0 and 1 are the same since we are using standard bubnov galerkin (both are linear lagrangian)
+                    dolfin_map = PETSc.LGMap().create(Jforms[ij][k].function_space(0).dofmap().dofs(), comm=self.mpi_comm_world)
+                    fancy_print(f'cpu {self.mpi_comm_world.rank}: dolfin_map.indices {dolfin_map.indices}', format_type='log')
                     # initialize the tensor
+                    fancy_print(f'cpu {self.mpi_comm_world.rank}: a', format_type='log')
                     if tensors[ij][k] is None:
-                        tensors[ij][k] = d.PETScMatrix()
-                    if Jsum is None:
-                        Jsum = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                        if debug_060322:
+                            # 060322 - trying to use petsc instead of dolfin wrapped petsc. (need to wrap with dolfin before appending to Jpetsc list)
+                            tensors[ij][k] = self.init_zero_petsc_matrix(self.local_block_sizes[i], self.local_block_sizes[j],
+                                                                         self.global_block_sizes[i], self.global_block_sizes[j], assemble=True)
+                        else:
+                            # tensors[ij][k] = self.init_zero_petsc_matrix(self.local_block_sizes[i], self.local_block_sizes[j],
+                            #                                                         self.global_block_sizes[i], self.global_block_sizes[j], assemble=False)
+                            tensors[ij][k] = d.PETScMatrix()
+
+
+                    fancy_print(f"cpu {self.mpi_comm_world.rank}: (ijk)={(i,j,k)} "
+                                f"{(self.local_block_sizes[i], self.local_block_sizes[j], self.global_block_sizes[i], self.global_block_sizes[j])}"
+                                , format_type='log')
+
+                    if debug_060322:
+                        # 060322 - trying to use petsc instead of dolfin wrapped petsc. (need to wrap with dolfin before appending to Jpetsc list)
+                        if Jsum is None:
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: b', format_type='log')
+                            Jsum = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k])).mat()
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: b2', format_type='log')
+                        else:
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: c', format_type='log')
+                            Jsum.axpy(1, d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k])).mat(), structure=Jsum.Structure.UNKNOWN_NONZERO_PATTERN)
                     else:
-                        #Jsum += d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
-                        # 060322 changing to unknown nonzero (for dolfin wrapped axpy, last argument is bool, same non-zero pattern or not)
-                        Jsum.axpy(1, d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k])), 0) 
+                        if Jsum is None:
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: b', format_type='log')
+                            Jsum = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=d.PETScMatrix()))
+                            # Jsum = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: b2', format_type='log')
+                        else:
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: c', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: tensor ijk {tensors[ij][k]}', format_type='log')
+
+                            Jnew = d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jnew local range {Jnew.local_range(0)}', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jnew.mat() ownershiprange {Jnew.mat().getOwnershipRange()}', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jnew.mat().getLGMap()[0].indices {Jnew.mat().getLGMap()[0].indices}', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jnew.mat().getLGMap()[0].indices len {len(Jnew.mat().getLGMap()[0].indices)}', format_type='log')
+
+                            Jnew.mat().setLGMap(dolfin_map, dolfin_map)
+                            Jsum.mat().setLGMap(dolfin_map, dolfin_map)
+
+                            fancy_print(f"==============", format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jnew.mat().getLGMap()[0].indices {Jnew.mat().getLGMap()[0].indices}', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jnew.mat().getLGMap()[0].indices len {len(Jnew.mat().getLGMap()[0].indices)}', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jsum.mat().getLGMap()[0].indices {Jsum.mat().getLGMap()[0].indices}', format_type='log')
+                            fancy_print(f'cpu {self.mpi_comm_world.rank}: Jsum.mat().getLGMap()[0].indices len {len(Jsum.mat().getLGMap()[0].indices)}', format_type='log')
+
+                            fancy_print(f"cpu {self.mpi_comm_world.rank}: d", format_type='log')
+                            Jsum.axpy(1, Jnew.mat(), structure=Jsum.Structure.DIFFERENT_NONZERO_PATTERN)
+                            # Jsum += Jnew
+
+                            # Jsum.axpy(1, Jnew, 0)
+                            # Jsum += d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k]))#, tensor=d.PETScMatrix()))
+                        # # 060322 changing to unknown nonzero (for dolfin wrapped axpy, last argument is bool, same non-zero pattern or not)
+                        # Jsum.axpy(1, d.as_backend_type(d.assemble_mixed(Jforms[ij][k], tensor=tensors[ij][k])), 0) 
                     
-                    if self.print_assembly:
-                        fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
+                    # 060322 - trying to use petsc instead of dolfin wrapped petsc. (need to wrap with dolfin before appending to Jpetsc list)
+                    if debug_060322:
+                        pass
+                    else:
+                        if self.print_assembly:
+                            fancy_print(f"Initialized {self.Jijk_name(i,j,k)}, tensor size = {Jsum.size(0), Jsum.size(1)}", format_type='log')
                 if Jsum is None:
                     if self.print_assembly:
                         fancy_print(f"{self.Jijk_name(i,j)} is empty - initializing as empty PETSc Matrix with LOCAL size {self.local_block_sizes[i]}, {self.local_block_sizes[j]} "
                                     f"and GLOBAL size {self.global_block_sizes[i]}, {self.global_block_sizes[j]}", format_type='log')
                     Jsum = self.init_zero_petsc_matrix(self.local_block_sizes[i], self.local_block_sizes[j], self.global_block_sizes[i], self.global_block_sizes[j])
                 
-                Jpetsc.append(Jsum)
+                # 060322 - trying to use petsc instead of dolfin wrapped petsc. (need to wrap with dolfin before appending to Jpetsc list)
+                if debug_060322:
+                    Jpetsc.append(d.PETScMatrix(Jsum))
+                else:
+                    Jpetsc.append(Jsum)
 
         if self.is_single_domain:
             # We can't use a nest matrix
@@ -206,10 +270,19 @@ class stubsSNESProblem():
                     if self.print_assembly:
                         fancy_print(f"{self.Fjk_name(j,k)}] has no function space", format_type='log')
                     continue
-                if Fsum is None:
-                    Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
+
+                if debug_060322:
+                    tensor = self.init_zero_petsc_vector(self.local_block_sizes[j], self.global_block_sizes[j])
+                    if Fsum is None:
+                        Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=tensor)).vec()
+                    else:
+                        Fsum.axpy(1, d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=tensor)).vec(), structure=Fsum.Structure.UNKNOWN_NONZERO_PATTERN)
                 else:
-                    Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
+                    if Fsum is None:
+                        Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
+                    else:
+                        Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k], tensor=d.PETScVector()))
+
             if Fsum is None:
                 if self.print_assembly:
                     fancy_print(f"{self.Fjk_name(j)} is empty - initializing as empty PETSc Vector with LOCAL size {self.local_block_sizes[j]} "
@@ -218,7 +291,12 @@ class stubsSNESProblem():
                 #raise AssertionError()
 
             # Fsum.vec().assemble()
-            Fpetsc.append(Fsum.vec())
+
+            if debug_060322:
+                Fpetsc.append(Fsum)
+            else:
+                Fpetsc.append(Fsum.vec())
+            
         
         if self.is_single_domain:
             # We can't use a nest vector
@@ -362,7 +440,7 @@ class stubsSNESProblem():
         # self.Jpetsc_nest = self.Jforms_to_petsc_matnest(self.Jforms_all, self.tensors)
 
     #def init_zero_petsc_matrix(self, dim0, dim1, assemble=True):
-    def init_zero_petsc_matrix(self, lnrow, lncol, gnrow=None, gncol=None, assemble=True):
+    def init_zero_petsc_matrix(self, lnrow, lncol, gnrow=None, gncol=None, lgmap=None, assemble=False):
         """Initialize a dolfin wrapped PETSc matrix with all zeros
 
         Parameters
@@ -381,6 +459,8 @@ class stubsSNESProblem():
         M.setSizes(((lnrow, gnrow), (lncol, gncol)))
         M.setType("aij")
         M.setUp()
+        if lgmap is not None:
+            M.setLGMap(lgmap, lgmap)
         if assemble:
             M.assemble()
         self.stopwatches['snes initialize zero matrices'].pause()
@@ -390,9 +470,12 @@ class stubsSNESProblem():
         # if assemble:
         #     M.assemble()
         # self.stopwatches['snes initialize zero matrices'].pause()
-        return d.PETScMatrix(M)
 
-    def init_zero_petsc_vector(self, lnrow, gnrow):
+        # 060422 - changing this to just return the PETSc matrix, not the dolfin-wrapped one
+        return M
+        #return d.PETScMatrix(M)
+
+    def init_zero_petsc_vector(self, lnrow, gnrow=None, lgmap=None, assemble=False):
         """Initialize a dolfin wrapped PETSc vector with all zeros
 
         Parameters
@@ -401,11 +484,19 @@ class stubsSNESProblem():
             Size of vector
         """
         V = PETSc.Vec().create(comm=self.mpi_comm_world)
+        if gnrow is None:
+            gnrow = lnrow
         V.setSizes((lnrow, gnrow))
 
+        if lgmap is not None:
+            V.setLGMap(lgmap)
+
         # V = PETSc.Vec().createSeq(dim0, comm=self.mpi_comm_world)
-        V.assemble()
-        return d.PETScVector(V)
+        if assemble:
+            V.assemble()
+        # 060422 - changing this to just return the PETSc vector, not the dolfin-wrapped one
+        return V
+        #return d.PETScVector(V)
 
     def Jijk_name(self, i, j, k=None):
         ij = i*self.dim + j
