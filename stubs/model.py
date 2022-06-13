@@ -869,9 +869,9 @@ class Model:
         else:
             # self.Fsum_all          = sum([f.lhs for f in self.forms]) # Sum of all forms
             self.Fblocks_all       = self.get_block_F(self.Fsum_all, u)
-            self.Jblocks_linear    = None
-            self.Jblocks_nonlinear = self.get_block_J(self.Fsum_all, u)
-            self.Jblocks_all       = self.Jblocks_nonlinear
+            # self.Jblocks_linear    = None
+            # self.Jblocks_nonlinear = self.get_block_J(self.Fsum_all, u)
+            self.Jblocks_all       = self.get_block_J(self.Fsum_all, u)
         
         # Print the residuals per compartment
         for compartment in self._active_compartments:
@@ -884,15 +884,11 @@ class Model:
         # if use snes
         if self.config.solver['use_snes']:
             fancy_print(f"Using SNES solver", format_type='log')
-            # self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks, self.Jblocks,
-            #                                               self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
-            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks_all, self.Jblocks_all, self.Jblocks_linear, self.Jblocks_nonlinear,
-                                                          self._active_compartments, self._all_compartments, self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
+            self.problem = stubs.solvers.stubsSNESProblem(self.u['u'], self.Fblocks_all, self.Jblocks_all, self._active_compartments, self._all_compartments,
+                                                          self.stopwatches, self.config.solver['print_assembly'], self.mpi_comm_world)
             # self.problem = stubs.solvers.stubsSNESProblem(self)
-            # if self.config.solver['snes_preassemble_linear_system']:
-            self.problem.initialize_petsc_matnest()
-                # self.problem.initialize_petsc_linear_jacobian()
-            # self.problem.initialize_petsc_matnest()
+
+            self.problem.init_petsc_matnest()
             self.problem.initialize_petsc_vecnest()
             if len(self.problem.global_block_sizes) == 1:
                 self._ubackend = u[0].vector().vec().copy()
@@ -1041,6 +1037,7 @@ class Model:
                                     f"is empty on integration domain {domain}", format_type='logred')
                     Js.append(d.Form(Jsub))
                 Jlist.append(Js)
+
         
         global_block_sizes = [uj.function_space().dim() for uj in u]
 
