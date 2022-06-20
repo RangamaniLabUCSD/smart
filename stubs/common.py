@@ -14,6 +14,8 @@ import pint
 from termcolor import colored
 import stubs
 from stubs import unit
+from datetime import datetime
+from pytz import timezone
 gset = stubs.config.global_settings
 from pandas import read_json
 from contextlib import contextmanager as _contextmanager
@@ -249,7 +251,7 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
 # ====================================================
 def _fancy_print(title_text, buffer_color=None, text_color=None, filler_char=None,
                              num_banners=None, new_lines=None, left_justify=None,
-                             format_type='default', filename=None):
+                             format_type='default', include_timestamp=True, filename=None):
     "Formatted text to stand out."
 
     # Initialize with the default options
@@ -298,6 +300,9 @@ def _fancy_print(title_text, buffer_color=None, text_color=None, filler_char=Non
     # include MPI rank in message
     if size > 1:
         title_text = f"CPU {rank}: {title_text}"
+    if include_timestamp:
+        timestamp = datetime.now(timezone('US/Pacific')).strftime('[%Y-%m-%d time=%H:%M:%S]')
+        title_text = f"{timestamp} {title_text}"
 
     # calculate optimal buffer size
     min_buffer_size = 5
