@@ -64,6 +64,7 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip install meshio
 RUN python3 -m pip install pygmsh
 RUN python3 -m pip install bpython
+RUN python3 -m pip install numba
 RUN python3 -m pip install gmsh
 RUN python3 -m pip install vedo
 RUN python3 -m pip install termplotlib

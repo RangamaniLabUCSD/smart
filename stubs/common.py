@@ -639,7 +639,7 @@ def data_path():
 
 class Stopwatch():
     "Basic stopwatch class with inner/outer timings (pause and stop)"
-    def __init__(self, name=None, time_unit='s', print_buffer=0, filename=None):
+    def __init__(self, name=None, time_unit='s', print_buffer=0, filename=None, start=False):
         self.name = name
         self.time_unit = time_unit
         self.stop_timings = []  # length = number of stops
@@ -651,6 +651,8 @@ class Stopwatch():
         self._print_name = f"{str(self.name): <{self.print_buffer}}"
         #self.start()
         self.filename=filename
+        if start:
+            self.start()
     def start(self):
         self._times.append(time.time())
         self.is_paused = False
