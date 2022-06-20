@@ -508,6 +508,7 @@ class Model:
             for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
                 if hasattr(child_mesh.compartment, 'nonadjacent_compartment_list'):
                     if sibling_volume_mesh.compartment.name in child_mesh.compartment.nonadjacent_compartment_list:
+                        fancy_print("Skipping mapping between {} and {}".format(child_mesh.compartment.name, sibling_volume_mesh.compartment.name), format_type='log')
                         continue
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
 
@@ -825,7 +826,7 @@ class Model:
         # self.problem = d.NonlinearVariationalProblem(self.all_forms, self.u['u'], bcs=None)
         # Aliases
         u                = self.u['u']._functions
-        self.global_block_sizes = self.get_global_block_sizes(u)
+        self.global_sizes = self.get_global_sizes(u)
 
         #Because it is a little tricky (see comment on d.extract_blocks(F) in model.get_block_system()), 
         #we are only going to separate fluxes that are linear with respect to all compartments
@@ -889,8 +890,8 @@ class Model:
             # self.problem = stubs.solvers.stubsSNESProblem(self)
 
             self.problem.init_petsc_matnest()
-            self.problem.initialize_petsc_vecnest()
-            if len(self.problem.global_block_sizes) == 1:
+            self.problem.init_petsc_vecnest()
+            if len(self.problem.global_sizes) == 1:
                 self._ubackend = u[0].vector().vec().copy()
             else:
                 self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
@@ -1039,12 +1040,12 @@ class Model:
                 Jlist.append(Js)
 
         
-        global_block_sizes = [uj.function_space().dim() for uj in u]
+        global_sizes = [uj.function_space().dim() for uj in u]
 
         #return Flist, Jlist
-        return Flist, Jlist, global_block_sizes
+        return Flist, Jlist, global_sizes
     
-    def get_global_block_sizes(self, u):
+    def get_global_sizes(self, u):
         return [uj.function_space().dim() for uj in u]
     
     def get_block_F(self, Fsum, u):
@@ -1323,7 +1324,7 @@ class Model:
                 self.reset_timestep()
                 # Re-initialize SNES solver
                 #self.initialize_discrete_variational_problem_and_solver()
-                if len(self.problem.global_block_sizes) == 1:
+                if len(self.problem.global_sizes) == 1:
                     self._ubackend = self.u['u']._functions[0].vector().vec().copy()
                 else:
                     self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in self.u['u']._functions])

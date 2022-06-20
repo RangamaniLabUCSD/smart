@@ -81,8 +81,15 @@ void MixedAssemblerTemp::assemble(GenericTensor& A, const Form& a)
   // Initialize global tensor
   // init_global_tensor(A, a);
 
+  // Print some useful information
+  // number of ufc coefficients
+  std::cout << "Number of coefficients: " << ufc.form.num_coefficients() << std::endl;
+  // size of cell_domains
+  // std::cout << "Number of cell domains: " << cell_domains.size() << std::endl;
+
   // Assemble over cells
   assemble_cells(A, a, ufc, cell_domains, NULL);
+  std::cout << "MixedAssemblerTemp(): Finished assembling over cells" << std::endl;
 
   // Assemble over exterior facets
   assemble_exterior_facets(A, a, ufc, exterior_facet_domains, NULL);
@@ -298,10 +305,11 @@ void MixedAssemblerTemp::assemble_cells(
 	  (*values)[cell->index()] = ufc.A[0];
 	else
 	  A.add_local(ufc.A.data(), dofs);
-      }
-    }
+      } // end for local_facets
+    } // end if mixed-dimensional
     p++;
-  }
+  } // end of loop over cells
+  std::cout << "MixedAssemblerTemp.assemble_cells(): END OF CELL LOOP" << std::endl;
   timer.stop();
 }
 //-----------------------------------------------------------------------------

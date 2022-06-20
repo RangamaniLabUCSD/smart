@@ -141,13 +141,13 @@ class ParentMesh(_Mesh):
     Mesh loaded in from data. Submeshes are extracted from the ParentMesh based 
     on marker values from the .xml file.
     """
-    def __init__(self, mesh_filename, mesh_filetype='xml', name='parent_mesh', use_partition=False):
+    def __init__(self, mesh_filename, mesh_filetype, name, use_partition=False):
         super().__init__(name)
         self.use_partition = use_partition
         if mesh_filetype == 'xml':
             self.load_mesh_from_xml(mesh_filename)
         elif mesh_filetype == 'hdf5':
-            self.load_mesh_from_hdf5(mesh_filename)
+            self.load_mesh_from_hdf5(mesh_filename, use_partition)
         self.mesh_filename = mesh_filename
         self.mesh_filetype = mesh_filetype
         
@@ -169,27 +169,40 @@ class ParentMesh(_Mesh):
     def load_mesh_from_xml(self, mesh_filename):
         self.dolfin_mesh = d.Mesh(mesh_filename)
 
-        self.dolfin_mesh.init()
         self.dimensionality = self.dolfin_mesh.topology().dim()
+        self.dolfin_mesh.init(self.dimensionality-1)
+        self.dolfin_mesh.init(self.dimensionality-1, self.dimensionality)
+        self.dolfin_mesh.init(self.dimensionality-1, self.dimensionality)
+
         print(f"XML mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
 
-    def load_mesh_from_hdf5(self, mesh_filename):
+    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
         #mesh, mfs = common.read_hdf5(hdf5_filename)
-        self.dolfin_mesh = d.Mesh()
+        self.dolfin_mesh = d.Mesh(comm)
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, 'r')
-        hdf5.read(self.dolfin_mesh, '/mesh', self.use_partition)
+        hdf5.read(self.dolfin_mesh, '/mesh', use_partition)
+        
+        d.MPI.comm_world.Barrier()
+        hdf5.close()
 
-        self.dolfin_mesh.init()
         self.dimensionality = self.dolfin_mesh.topology().dim()
+        self.dolfin_mesh.init(self.dimensionality-1)
+        self.dolfin_mesh.init(self.dimensionality-1, self.dimensionality)
+        self.dolfin_mesh.init(self.dimensionality-1, self.dimensionality)
+
         print(f"HDF5 mesh, \"{self.name}\", successfully loaded from file: {mesh_filename}!")
 
     def _read_parent_mesh_function_from_file(self, dim):
         if self.mesh_filetype == 'xml':
             mf = d.MeshFunction('size_t', self.dolfin_mesh, dim, value=self.dolfin_mesh.domains())
         elif self.mesh_filetype == 'hdf5':
-            hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, 'r')
             mf = d.MeshFunction('size_t', self.dolfin_mesh, dim, value=0)
+            # with d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, 'r') as hdf5:
+                # hdf5.read(mf, f'/mesh/{dim}')
+            hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, 'r')
             hdf5.read(mf, f"/mf{dim}")
+            d.MPI.comm_world.Barrier()
+            hdf5.close()
         return mf
 
     def read_parent_mesh_functions_from_file(self):
@@ -378,7 +391,8 @@ class ChildMesh(_Mesh):
     def extract_submesh(self):
         mf_type = 'cells' if self.is_volume else 'facets'
         self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
-        self.dolfin_mesh.init()
+        # self.dolfin_mesh.init()
+
 
     def init_marker_list_mesh_function(self):
         "Child mesh functions require transfering data from parent mesh functions"
