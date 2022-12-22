@@ -1,5 +1,5 @@
-import sys 
-from setuptools import setup, find_packages
+from setuptools import setup
+# from setuptools import find_packages
 
 with open("README.md", "r") as handle:
     long_description = handle.read()
@@ -21,13 +21,13 @@ setup(
     # Which Python importable modules should be included when your package is installed
     # Handled automatically by setuptools. Use 'exclude' to prevent some specific
     # subpackage(s) from being added, if needed
-    #packages=find_packages(),
+    # packages=find_packages(),
     packages=['stubs'],
 
     # Optional include package data to ship with your package
     # Customize MANIFEST.in if the general case does not suit your needs
     # Comment out this line to prevent the files from being packaged with your software
-    #include_package_data=True,
+    # include_package_data=True,
 
     # Additional entries you may want simply uncomment the lines you want and fill in the data
     install_requires=[
@@ -44,7 +44,8 @@ setup(
         'termcolor',
         'pytest',
         'sphinx==4.3.0',
-        ],              # Required packages, pulls from pip if needed; do not use for Conda deployment
+        'termplotlib'
+    ],              # Required packages, pulls from pip if needed; do not use for Conda deployment
     # python_requires=">=3.5",          # Python version restrictions
 
     # Manual control if final package is compressible or not, set False to prevent the .egg from being made
