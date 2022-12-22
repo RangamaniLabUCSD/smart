@@ -2,7 +2,7 @@
 import dolfin as d
 import os
 import petsc4py.PETSc as p
-from stubs.common import _fancy_print as fancy_print
+from .common import _fancy_print as fancy_print
 
 
 class stubsSNESProblem:

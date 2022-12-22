@@ -3,7 +3,7 @@ import math
 
 import stubs
 from stubs.model_assembly import Parameter, Species, Compartment, Reaction
-from stubs.common import empty_sbmodel
+from stubs.utils import empty_sbmodel
 
 # Fixtures
 

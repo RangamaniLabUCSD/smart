@@ -2,36 +2,34 @@
 Classes for parameters, species, compartments, reactions, fluxes, and forms
 Model class contains functions to efficiently solve a system
 """
-from dataclasses import dataclass
 import dataclasses
-from stubs import unit
-from stubs.common import _fancy_print as fancy_print
-from stubs.common import sub
-import stubs.common as common
-import stubs
-from tabulate import tabulate
-
-from sympy.parsing.sympy_parser import parse_expr
-from sympy import Symbol, integrate
-import sympy as sym
-import pint
-import numpy as np
-from pprint import pprint
 import numbers
 import sys
 from collections import OrderedDict as odict
-from cached_property import cached_property
+from dataclasses import dataclass
+from pprint import pprint
 from textwrap import wrap
+from typing import Any
 
 import dolfin as d
-import ufl
+import numpy as np
 import pandas
 import petsc4py.PETSc as PETSc
+import pint
+import sympy as sym
+import ufl
+from cached_property import cached_property
+from sympy import Symbol, integrate
+from sympy.parsing.sympy_parser import parse_expr
+from tabulate import tabulate
+
+from .common import (np_smart_hstack, pint_quantity_to_unit,
+                     pint_unit_to_quantity, sub)
+from .common import _fancy_print as fancy_print
+from .config import global_settings as gset
+from .units import unit
 
 Print = PETSc.Sys.Print
-
-
-gset = stubs.config.global_settings
 
 
 comm = d.MPI.comm_world
@@ -332,7 +330,7 @@ class ObjectInstance:
         # strip the magnitude and keep the units. Warn if magnitude!=1
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Quantity):
-                setattr(self, name, common.pint_quantity_to_unit(attr))
+                setattr(self, name, pint_quantity_to_unit(attr))
 
     def _check_input_type_validity(self):
         "Check that the inputs have the same type (or are convertible) to the type hint."
@@ -353,7 +351,7 @@ class ObjectInstance:
         # convert pint units to quantity
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Unit):
-                setattr(self, name, common.pint_unit_to_quantity(attr))
+                setattr(self, name, pint_unit_to_quantity(attr))
 
     def get_pandas_series(self, properties_to_print=None, idx=None):
         if properties_to_print:
@@ -487,7 +485,7 @@ class Parameter(ObjectInstance):
             # preintegrate sampling data
             int_data = cumtrapz(sampling_data[:, 1], x=sampling_data[:, 0], initial=0)
             # concatenate time vector
-            preint_sampling_data = common.np_smart_hstack(sampling_data[:, 0], int_data)
+            preint_sampling_data = np_smart_hstack(sampling_data[:, 0], int_data)
             parameter.preint_sampling_data = preint_sampling_data
 
         # initialize instance

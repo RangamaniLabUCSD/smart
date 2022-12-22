@@ -1,25 +1,20 @@
 """
 Functions to help with managing solutions / post-processing
 """
-from stubs import unit as unit
-from stubs.model_assembly import (
-    Parameter,
-    Species,
-    Compartment,
-    Reaction,
-    Flux,
-    FieldVariable,
-)
-from stubs.common import _fancy_print as fancy_print
-from stubs.common import round_to_n
-import dolfin as d
-import numpy as np
-import matplotlib.pyplot as plt
-import pickle
 import os
-import termplotlib as tpl
-import petsc4py.PETSc as PETSc
+import pickle
 from collections import defaultdict as ddict
+
+import dolfin as d
+import matplotlib.pyplot as plt
+import numpy as np
+import petsc4py.PETSc as PETSc
+import termplotlib as tpl
+
+from .common import round_to_n
+from .model_assembly import FieldVariable, Flux, Parameter, Species
+from .units import unit
+from .common import _fancy_print as fancy_print
 
 Print = PETSc.Sys.Print
 
@@ -30,7 +25,6 @@ rank = comm.rank
 root = 0
 
 # import networkx as nx
-# import stubs.model_assembly as model_assembly
 
 # # matplotlib settings
 # lwsmall = 1.5

@@ -2,24 +2,27 @@
 General functions: array manipulation, data i/o, etc
 """
 import time
+from datetime import datetime
 from pathlib import Path
-from pandas import read_json
-import pandas
-import dolfin as d
 
+import dolfin as d
 # import trimesh
 import numpy as np
-import sympy
-import scipy.interpolate as interp
-import os
 import pint
-from termcolor import colored
-import stubs
-from stubs import unit
-from datetime import datetime
+import scipy.interpolate as interp
+import sympy
 from pytz import timezone
+from termcolor import colored
 
-gset = stubs.config.global_settings
+from .config import global_settings as gset
+from .units import unit
+
+__all__ = ["stubs_expression", "sub", "ref", "insert_dataframe_col", "nan_to_none", "submesh_dof_to_mesh_dof",
+           "submesh_dof_to_vertex", "submesh_to_bmesh", "bmesh_to_parent", "mesh_vertex_to_dof", "round_to_n",
+           "interp_limit_dy", "sum_discrete_signals", "np_smart_hstack", "append_meshfunction_to_meshdomains",
+           "pint_unit_to_quantity", "pint_quantity_to_unit", "convert_xml_to_hdf5",
+           "read_hdf5", "data_path", "Stopwatch", "find_steady_state"
+           ]
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -284,9 +287,251 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
 #             else:
 #                 print(colored(text, color=color))
 
-# ====================================================
-# fancy printing
-# ====================================================
+
+def pint_unit_to_quantity(pint_unit):
+    if not isinstance(pint_unit, pint.Unit):
+        raise TypeError("Input must be a pint unit")
+    # returning pint.Quantity(1, pint_unit) changes the unit registry which we do NOT want
+    return 1.0 * pint_unit
+
+
+def pint_quantity_to_unit(pint_quantity):
+    if not isinstance(pint_quantity, pint.Quantity):
+        raise TypeError("Input must be a pint quantity")
+    if pint_quantity.magnitude != 1.0:
+        raise ValueError(
+            "Trying to convert a pint quantity into a unit with magnitude != 1"
+        )
+    return pint_quantity.units
+
+
+# # Some stack exchange code to redirect/suppress c++ stdout
+# # https://stackoverflow.com/questions/4675728/redirect-stdout-to-a-file-in-python/22434262#22434262
+# def _fileno(file_or_fd):
+#     fd = getattr(file_or_fd, 'fileno', lambda: file_or_fd)()
+#     if not isinstance(fd, int):
+#         raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
+#     return fd
+
+# @_contextmanager
+# def _stdout_redirected(to=os.devnull, stdout=None):
+#     if stdout is None:
+#        stdout = sys.stdout
+
+#     stdout_fd = _fileno(stdout)
+#     # copy stdout_fd before it is overwritten
+#     #NOTE: `copied` is inheritable on Windows when duplicating a standard stream
+#     with os.fdopen(os.dup(stdout_fd), 'wb') as copied:
+#         stdout.flush()  # flush library buffers that dup2 knows nothing about
+#         try:
+#             os.dup2(_fileno(to), stdout_fd)  # $ exec >&to
+#         except ValueError:  # filename
+#             with open(to, 'wb') as to_file:
+#                 os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
+#         try:
+#             yield stdout # allow code to be run with the redirected stdout
+#         finally:
+#             # restore stdout to its previous value
+#             #NOTE: dup2 makes stdout_fd inheritable unconditionally
+#             stdout.flush()
+#             os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
+
+
+def convert_xml_to_hdf5(xml_filename, hdf5_filename, metadata_dims=None):
+    if metadata_dims is None:
+        metadata_dims = []
+    else:
+        assert all([dim in [0, 1, 2, 3] for dim in metadata_dims])
+
+    # write
+    mesh = d.Mesh(xml_filename)
+    hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, "w")
+    hdf5.write(mesh, "/mesh")
+    # write mesh functions
+    for dim in metadata_dims:
+        mf = d.MeshFunction("size_t", mesh, dim, value=mesh.domains())
+        hdf5.write(mf, f"/mf{dim}")
+    hdf5.close()
+
+
+def read_hdf5(hdf5_filename, metadata_dims=None):
+    if metadata_dims is None:
+        metadata_dims = []
+    else:
+        assert all([dim in [0, 1, 2, 3] for dim in metadata_dims])
+
+    # read
+    mesh = d.Mesh()
+    hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, "r")
+    hdf5.read(mesh, "/mesh", False)
+
+    mfs = dict()
+    for dim in metadata_dims:
+        mfs[dim] = d.MeshFunction("size_t", mesh, dim)
+        hdf5.read(mfs[dim], f"/mf{dim}")
+
+    return mesh, mfs
+
+
+# def fix_mesh_normals(dolfin_mesh):
+#     assert isinstance(dolfin_mesh, d.Mesh)
+#     tdim = dolfin_mesh.topology().dim()
+#     assert tdim in [2,3]
+#     if tdim == 3:
+#         print(f"Input mesh has topological dimension 3. Fixing normals of boundary mesh instead.")
+#         mesh = d.BoundaryMesh(dolfin_mesh, 'exterior')
+#     else:
+#         mesh = dolfin_mesh
+
+#     triangles = mesh.cells()
+#     vertices  = mesh.vertices()
+#     tmesh = trimesh.Trimesh(vertices, triangles, process=False)
+#     tmesh.fix_normals()
+#     tmesh.export()
+
+
+def data_path():
+    "data path for stubs directory"
+    path = Path(".").resolve()
+    subdir = "data"
+    while True:
+        if path.parts[-1] == "stubs" and path.joinpath(subdir).is_dir():
+            path = path.joinpath(subdir)
+            break
+        path = path.parent
+    return path
+
+
+# Write a stopwatch class to measure time elapsed with a start, stop, and pause methods
+# Keep track of timings in a list of lists called self.timings, each time the timer is paused,
+# the time elapsed since the last pause is added to the sublist. Using stop resets the timer to zero
+# and beings a new list of timings.
+
+class Stopwatch:
+    "Basic stopwatch class with inner/outer timings (pause and stop)"
+
+    def __init__(
+        self, name=None, time_unit="s", print_buffer=0, filename=None, start=False
+    ):
+        self.name = name
+        self.time_unit = time_unit
+        self.stop_timings = []  # length = number of stops
+        self.pause_timings = []  # length = number of stops (list of lists)
+        self._pause_timings = []  # length = number of pauses (reset on stop)
+        self._times = []
+        self.is_paused = True
+        self.print_buffer = print_buffer
+        self._print_name = f"{str(self.name): <{self.print_buffer}}"
+        # self.start()
+        self.filename = filename
+        if start:
+            self.start()
+
+    def start(self):
+        self._times.append(time.time())
+        self.is_paused = False
+
+    def pause(self):
+        if self.is_paused:
+            return
+        else:
+            self._times.append(time.time())
+            self._pause_timings.append(self._times[-1] - self._times[-2])
+            self.is_paused = True
+            _fancy_print(
+                f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}",
+                format_type="logred",
+                filename=self.filename,
+            )
+
+    def stop(self, print_result=True):
+        self._times.append(time.time())
+        if self.is_paused:
+            final_time = 0
+        else:
+            final_time = self._times[-1] - self._times[-2]
+            self.is_paused = True
+        total_time = sum(self._pause_timings) + final_time
+        self.stop_timings.append(total_time)
+        if print_result:
+            _fancy_print(
+                f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}",
+                format_type="logred",
+                filename=self.filename,
+            )
+
+        # for idx, t in enumerate(self._pause_timings):
+        #     _fancy_print(f"{self.name} pause timings:", format_type='logred')
+        #     _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='logred')
+
+        # reset
+        self.pause_timings.append(self._pause_timings)
+        self._pause_timings = []
+        self._times = []
+
+    def set_timing(self, timing):
+        self.stop_timings.append(timing)
+        _fancy_print(
+            f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}",
+            format_type="logred",
+            filename=self.filename,
+        )
+
+    def print_last_stop(self):
+        _fancy_print(
+            f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}",
+            format_type="logred",
+            filename=self.filename,
+        )
+
+    def time_str(self, t):
+        return str({"us": 1e6, "ms": 1e3, "s": 1, "min": 1 / 60}[self.time_unit] * t)[
+            0:8
+        ]
+
+
+def find_steady_state(
+    reaction_list, constraints=None, return_equations=False, filename=None
+):
+    """
+    Find the steady state of a list of reactions + constraints.
+    """
+    all_equations = list()
+    all_species = set()
+    for r in reaction_list:
+        eqn = r.get_steady_state_equation()
+        all_equations.append(eqn)
+        all_species = all_species.union(eqn.free_symbols)
+
+    num_eqns = len(all_equations)
+    num_unknowns = len(all_species)
+    num_constraints_nom = num_unknowns - num_eqns
+    if constraints is None:
+        constraints = list()
+    if not isinstance(constraints, list):
+        constraints = [constraints]
+    _fancy_print(
+        f"System has {num_eqns} equations and {num_unknowns} unknowns.",
+        filename=filename,
+    )
+    _fancy_print(
+        f"{len(constraints)} constraints provided. Requires {num_constraints_nom} constraints to be determined",
+        format_type="log",
+        filename=filename,
+    )
+    if num_constraints_nom != len(constraints):
+        _fancy_print(
+            f"Warning: system may be under or overdetermined.",
+            format_type="log",
+            filename=filename,
+        )
+
+    all_equations.extend(constraints)
+
+    if return_equations:
+        return all_equations, all_species
+    else:
+        return sympy.solve(all_equations, all_species)
 
 
 def _fancy_print(
@@ -428,8 +673,8 @@ def _fancy_print(
         if filename is not None:
             with open(filename, "a") as f:
                 f.write(text + "\n")
-        elif stubs.config.global_settings["log_filename"] is not None:
-            with open(stubs.config.global_settings["log_filename"], "a") as f:
+        elif gset["log_filename"] is not None:
+            with open(gset["log_filename"], "a") as f:
                 f.write(text + "\n")
         print(text)
 
@@ -447,447 +692,3 @@ def _fancy_print(
     # end spacing
     if new_lines[1] > 0:
         print_out("\n" * (new_lines[1] - 1), filename)
-
-
-# # demonstrate built in options
-# def _fancy_print_options():
-#     for format_type in ['title', 'subtitle', 'log', 'log_important', 'log_urgent', 'timestep', 'solverstep']:
-#         _fancy_print(format_type, format_type=format_type)
-
-# ====================================================
-# I/O
-# ====================================================
-
-
-def json_to_ObjectContainer(json_str, data_type=None):
-    """
-    Converts a json_str (either a string of the json itself, or a filepath to
-    the json)
-    """
-    if not data_type:
-        raise Exception(
-            "Please include the type of data this is (parameters, species, compartments, reactions)."
-        )
-
-    if json_str[-5:] == ".json":
-        if not os.path.exists(json_str):
-            raise Exception("Cannot find JSON file, %s" % json_str)
-
-    df = read_json(json_str).sort_index()
-    df = nan_to_none(df)
-    if data_type in ["parameters", "parameter", "param", "p"]:
-        return stubs.model_assembly.ParameterContainer(df)
-    elif data_type in ["species", "sp", "spec", "s"]:
-        return stubs.model_assembly.SpeciesContainer(df)
-    elif data_type in ["compartments", "compartment", "comp", "c"]:
-        return stubs.model_assembly.CompartmentContainer(df)
-    elif data_type in ["reactions", "reaction", "r", "rxn"]:
-        return stubs.model_assembly.ReactionContainer(df)
-    else:
-        raise Exception(
-            "I don't know what kind of ObjectContainer this .json file should be"
-        )
-
-
-# def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
-#     """
-#     Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
-#     a .sbmodel file (a convenient concatenation of .json files with syntax
-#     similar to .xml)
-#     """
-#     f = open(filepath, "w")
-
-#     f.write("<sbmodel>\n")
-#     # parameters
-#     f.write("<parameters>\n")
-#     pdf.df.to_json(f)
-#     f.write("\n</parameters>\n")
-#     # species
-#     f.write("<species>\n")
-#     sdf.df.to_json(f)
-#     f.write("\n</species>\n")
-#     # compartments
-#     f.write("<compartments>\n")
-#     cdf.df.to_json(f)
-#     f.write("\n</compartments>\n")
-#     # reactions
-#     f.write("<reactions>\n")
-#     rdf.df.to_json(f)
-#     f.write("\n</reactions>\n")
-
-#     f.write("</sbmodel>\n")
-#     f.close()
-#     print(f"sbmodel file saved successfully as {filepath}!")
-
-
-def write_sbmodel(filepath, pc, sc, cc, rc):
-    """
-    Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
-    a .sbmodel file (a convenient concatenation of .json files with syntax
-    similar to .xml)
-    """
-    f = open(filepath, "w")
-
-    f.write("<sbmodel>\n")
-    # parameters
-    f.write("<parameters>\n")
-    pdf.df.to_json(f)
-    f.write("\n</parameters>\n")
-    # species
-    f.write("<species>\n")
-    sdf.df.to_json(f)
-    f.write("\n</species>\n")
-    # compartments
-    f.write("<compartments>\n")
-    cdf.df.to_json(f)
-    f.write("\n</compartments>\n")
-    # reactions
-    f.write("<reactions>\n")
-    rdf.df.to_json(f)
-    f.write("\n</reactions>\n")
-
-    f.write("</sbmodel>\n")
-    f.close()
-    print(f"sbmodel file saved successfully as {filepath}!")
-
-
-def read_sbmodel(filepath, output_type=dict):
-    f = open(filepath, "r")
-    lines = f.read().splitlines()
-    if lines[0] != "<sbmodel>":
-        raise Exception(f"Is {filepath} a valid .sbmodel file?")
-
-    p_string = []
-    c_string = []
-    s_string = []
-    r_string = []
-    line_idx = 0
-
-    while True:
-        if line_idx >= len(lines):
-            break
-        line = lines[line_idx]
-        if line == "</sbmodel>":
-            print("Finished reading in sbmodel file")
-            break
-
-        if line == "<parameters>":
-            print("Reading in parameters")
-            while True:
-                line_idx += 1
-                if lines[line_idx] == "</parameters>":
-                    break
-                p_string.append(lines[line_idx])
-
-        if line == "<species>":
-            print("Reading in species")
-            while True:
-                line_idx += 1
-                if lines[line_idx] == "</species>":
-                    break
-                s_string.append(lines[line_idx])
-
-        if line == "<compartments>":
-            print("Reading in compartments")
-            while True:
-                line_idx += 1
-                if lines[line_idx] == "</compartments>":
-                    break
-                c_string.append(lines[line_idx])
-
-        if line == "<reactions>":
-            print("Reading in reactions")
-            while True:
-                line_idx += 1
-                if lines[line_idx] == "</reactions>":
-                    break
-                r_string.append(lines[line_idx])
-
-        line_idx += 1
-
-    pdf = pandas.read_json("".join(p_string)).sort_index()
-    sdf = pandas.read_json("".join(s_string)).sort_index()
-    cdf = pandas.read_json("".join(c_string)).sort_index()
-    rdf = pandas.read_json("".join(r_string)).sort_index()
-    pc = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
-    sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
-    cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
-    rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
-
-    if output_type == dict:
-        return {
-            "parameter_container": pc,
-            "species_container": sc,
-            "compartment_container": cc,
-            "reaction_container": rc,
-        }
-    elif output_type == tuple:
-        return (pc, sc, cc, rc)
-
-
-# def create_sbmodel(p, s, c, r, output_type=dict):
-#     pc = stubs.model_assembly.ParameterContainer(p)
-#     sc = stubs.model_assembly.SpeciesContainer(s)
-#     cc = stubs.model_assembly.CompartmentContainer(c)
-#     rc = stubs.model_assembly.ReactionContainer(r)
-
-#     if output_type==dict:
-#         return {'parameter_container': pc,   'species_container': sc,
-#                 'compartment_container': cc, 'reaction_container': rc}
-#     elif output_type==tuple:
-#         return (pc, sc, cc, rc)
-
-
-def empty_sbmodel():
-    pc = stubs.model_assembly.ParameterContainer()
-    sc = stubs.model_assembly.SpeciesContainer()
-    cc = stubs.model_assembly.CompartmentContainer()
-    rc = stubs.model_assembly.ReactionContainer()
-    return pc, sc, cc, rc
-
-
-def pint_unit_to_quantity(pint_unit):
-    if not isinstance(pint_unit, pint.Unit):
-        raise TypeError("Input must be a pint unit")
-    # returning pint.Quantity(1, pint_unit) changes the unit registry which we do NOT want
-    return 1.0 * pint_unit
-
-
-def pint_quantity_to_unit(pint_quantity):
-    if not isinstance(pint_quantity, pint.Quantity):
-        raise TypeError("Input must be a pint quantity")
-    if pint_quantity.magnitude != 1.0:
-        raise ValueError(
-            "Trying to convert a pint quantity into a unit with magnitude != 1"
-        )
-    return pint_quantity.units
-
-
-# # Some stack exchange code to redirect/suppress c++ stdout
-# # https://stackoverflow.com/questions/4675728/redirect-stdout-to-a-file-in-python/22434262#22434262
-# def _fileno(file_or_fd):
-#     fd = getattr(file_or_fd, 'fileno', lambda: file_or_fd)()
-#     if not isinstance(fd, int):
-#         raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
-#     return fd
-
-# @_contextmanager
-# def _stdout_redirected(to=os.devnull, stdout=None):
-#     if stdout is None:
-#        stdout = sys.stdout
-
-#     stdout_fd = _fileno(stdout)
-#     # copy stdout_fd before it is overwritten
-#     #NOTE: `copied` is inheritable on Windows when duplicating a standard stream
-#     with os.fdopen(os.dup(stdout_fd), 'wb') as copied:
-#         stdout.flush()  # flush library buffers that dup2 knows nothing about
-#         try:
-#             os.dup2(_fileno(to), stdout_fd)  # $ exec >&to
-#         except ValueError:  # filename
-#             with open(to, 'wb') as to_file:
-#                 os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
-#         try:
-#             yield stdout # allow code to be run with the redirected stdout
-#         finally:
-#             # restore stdout to its previous value
-#             #NOTE: dup2 makes stdout_fd inheritable unconditionally
-#             stdout.flush()
-#             os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
-
-
-def convert_xml_to_hdf5(xml_filename, hdf5_filename, metadata_dims=None):
-    if metadata_dims is None:
-        metadata_dims = []
-    else:
-        assert all([dim in [0, 1, 2, 3] for dim in metadata_dims])
-
-    # write
-    mesh = d.Mesh(xml_filename)
-    hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, "w")
-    hdf5.write(mesh, "/mesh")
-    # write mesh functions
-    for dim in metadata_dims:
-        mf = d.MeshFunction("size_t", mesh, dim, value=mesh.domains())
-        hdf5.write(mf, f"/mf{dim}")
-    hdf5.close()
-
-
-def read_hdf5(hdf5_filename, metadata_dims=None):
-    if metadata_dims is None:
-        metadata_dims = []
-    else:
-        assert all([dim in [0, 1, 2, 3] for dim in metadata_dims])
-
-    # read
-    mesh = d.Mesh()
-    hdf5 = d.HDF5File(mesh.mpi_comm(), hdf5_filename, "r")
-    hdf5.read(mesh, "/mesh", False)
-
-    mfs = dict()
-    for dim in metadata_dims:
-        mfs[dim] = d.MeshFunction("size_t", mesh, dim)
-        hdf5.read(mfs[dim], f"/mf{dim}")
-
-    return mesh, mfs
-
-
-# def fix_mesh_normals(dolfin_mesh):
-#     assert isinstance(dolfin_mesh, d.Mesh)
-#     tdim = dolfin_mesh.topology().dim()
-#     assert tdim in [2,3]
-#     if tdim == 3:
-#         print(f"Input mesh has topological dimension 3. Fixing normals of boundary mesh instead.")
-#         mesh = d.BoundaryMesh(dolfin_mesh, 'exterior')
-#     else:
-#         mesh = dolfin_mesh
-
-#     triangles = mesh.cells()
-#     vertices  = mesh.vertices()
-#     tmesh = trimesh.Trimesh(vertices, triangles, process=False)
-#     tmesh.fix_normals()
-#     tmesh.export()
-
-
-def data_path():
-    "data path for stubs directory"
-    path = Path(".").resolve()
-    subdir = "data"
-    while True:
-        if path.parts[-1] == "stubs" and path.joinpath(subdir).is_dir():
-            path = path.joinpath(subdir)
-            break
-        path = path.parent
-    return path
-
-
-# Write a stopwatch class to measure time elapsed with a start, stop, and pause methods
-# Keep track of timings in a list of lists called self.timings, each time the timer is paused,
-# the time elapsed since the last pause is added to the sublist. Using stop resets the timer to zero
-# and beings a new list of timings.
-
-
-class Stopwatch:
-    "Basic stopwatch class with inner/outer timings (pause and stop)"
-
-    def __init__(
-        self, name=None, time_unit="s", print_buffer=0, filename=None, start=False
-    ):
-        self.name = name
-        self.time_unit = time_unit
-        self.stop_timings = []  # length = number of stops
-        self.pause_timings = []  # length = number of stops (list of lists)
-        self._pause_timings = []  # length = number of pauses (reset on stop)
-        self._times = []
-        self.is_paused = True
-        self.print_buffer = print_buffer
-        self._print_name = f"{str(self.name): <{self.print_buffer}}"
-        # self.start()
-        self.filename = filename
-        if start:
-            self.start()
-
-    def start(self):
-        self._times.append(time.time())
-        self.is_paused = False
-
-    def pause(self):
-        if self.is_paused:
-            return
-        else:
-            self._times.append(time.time())
-            self._pause_timings.append(self._times[-1] - self._times[-2])
-            self.is_paused = True
-            _fancy_print(
-                f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}",
-                format_type="logred",
-                filename=self.filename,
-            )
-
-    def stop(self, print_result=True):
-        self._times.append(time.time())
-        if self.is_paused:
-            final_time = 0
-        else:
-            final_time = self._times[-1] - self._times[-2]
-            self.is_paused = True
-        total_time = sum(self._pause_timings) + final_time
-        self.stop_timings.append(total_time)
-        if print_result:
-            _fancy_print(
-                f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}",
-                format_type="logred",
-                filename=self.filename,
-            )
-
-        # for idx, t in enumerate(self._pause_timings):
-        #     _fancy_print(f"{self.name} pause timings:", format_type='logred')
-        #     _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='logred')
-
-        # reset
-        self.pause_timings.append(self._pause_timings)
-        self._pause_timings = []
-        self._times = []
-
-    def set_timing(self, timing):
-        self.stop_timings.append(timing)
-        _fancy_print(
-            f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}",
-            format_type="logred",
-            filename=self.filename,
-        )
-
-    def print_last_stop(self):
-        _fancy_print(
-            f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}",
-            format_type="logred",
-            filename=self.filename,
-        )
-
-    def time_str(self, t):
-        return str({"us": 1e6, "ms": 1e3, "s": 1, "min": 1 / 60}[self.time_unit] * t)[
-            0:8
-        ]
-
-
-def find_steady_state(
-    reaction_list, constraints=None, return_equations=False, filename=None
-):
-    """
-    Find the steady state of a list of reactions + constraints.
-    """
-    all_equations = list()
-    all_species = set()
-    for r in reaction_list:
-        eqn = r.get_steady_state_equation()
-        all_equations.append(eqn)
-        all_species = all_species.union(eqn.free_symbols)
-
-    num_eqns = len(all_equations)
-    num_unknowns = len(all_species)
-    num_constraints_nom = num_unknowns - num_eqns
-    if constraints is None:
-        constraints = list()
-    if not isinstance(constraints, list):
-        constraints = [constraints]
-    _fancy_print(
-        f"System has {num_eqns} equations and {num_unknowns} unknowns.",
-        filename=filename,
-    )
-    _fancy_print(
-        f"{len(constraints)} constraints provided. Requires {num_constraints_nom} constraints to be determined",
-        format_type="log",
-        filename=filename,
-    )
-    if num_constraints_nom != len(constraints):
-        _fancy_print(
-            f"Warning: system may be under or overdetermined.",
-            format_type="log",
-            filename=filename,
-        )
-
-    all_equations.extend(constraints)
-
-    if return_equations:
-        return all_equations, all_species
-    else:
-        return sympy.solve(all_equations, all_species)

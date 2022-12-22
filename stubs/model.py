@@ -1,29 +1,35 @@
 """
 Model class. Consists of parameters, species, etc. and is used for simulation
 """
-from stubs.common import sub
-from stubs.common import _fancy_print as fancy_print
-from stubs import unit
-from stubs.mesh import ChildMesh
-import stubs.model_assembly
-import stubs
-from tabulate import tabulate
-import pandas
-from sympy.parsing.sympy_parser import parse_expr
-import sympy as sym
-import numpy as np
 import pickle
-from dataclasses import dataclass
-from cached_property import cached_property
-from itertools import chain, combinations
 from collections import OrderedDict as odict
+from dataclasses import dataclass
 from decimal import Decimal
+from itertools import chain, combinations
 
 import dolfin as d
+import numpy as np
+import pandas
+import petsc4py.PETSc as PETSc
+import sympy as sym
+from cached_property import cached_property
+from sympy.parsing.sympy_parser import parse_expr
+from tabulate import tabulate
 from ufl.algorithms.ad import expand_derivatives
 from ufl.form import sub_forms_by_domain
 
-import petsc4py.PETSc as PETSc
+from .common import Stopwatch
+from .common import _fancy_print as fancy_print
+from .common import sub
+from .utils import empty_sbmodel
+from .config import Config
+from .mesh import ChildMesh, ParentMesh
+from .model_assembly import (Compartment, CompartmentContainer, FluxContainer,
+                             Form, FormContainer, Parameter,
+                             ParameterContainer, Reaction, ReactionContainer,
+                             Species, SpeciesContainer)
+from .solvers import stubsSNESProblem
+from .units import unit
 
 Print = PETSc.Sys.Print
 
@@ -34,13 +40,13 @@ class Model:
     Main stubs class. Consists of parameters, species, compartments, reactions, and can be simulated.
     """
 
-    pc: stubs.model_assembly.ParameterContainer
-    sc: stubs.model_assembly.SpeciesContainer
-    cc: stubs.model_assembly.CompartmentContainer
-    rc: stubs.model_assembly.ReactionContainer
-    config: stubs.config.Config
+    pc: ParameterContainer
+    sc: SpeciesContainer
+    cc: CompartmentContainer
+    rc: ReactionContainer
+    config: Config
     # solver_system: stubs.solvers.SolverSystem
-    parent_mesh: stubs.mesh.ParentMesh
+    parent_mesh: ParentMesh
     name: str = ""
 
     def to_dict(self):
@@ -61,34 +67,34 @@ class Model:
 
     @classmethod
     def from_dict(cls, input_dict):
-        pc, sc, cc, rc = stubs.common.empty_sbmodel()
+        pc, sc, cc, rc = empty_sbmodel()
         pc.add(
             [
-                stubs.model_assembly.Parameter.from_dict(parameter)
+                Parameter.from_dict(parameter)
                 for parameter in input_dict["parameters"]
             ]
         )
         sc.add(
             [
-                stubs.model_assembly.Species.from_dict(species)
+                Species.from_dict(species)
                 for species in input_dict["species"]
             ]
         )
         cc.add(
             [
-                stubs.model_assembly.Compartment.from_dict(compartment)
+                Compartment.from_dict(compartment)
                 for compartment in input_dict["compartments"]
             ]
         )
         rc.add(
             [
-                stubs.model_assembly.Reaction.from_dict(reaction)
+                Reaction.from_dict(reaction)
                 for reaction in input_dict["reactions"]
             ]
         )
-        config = stubs.config.Config()
+        config = Config()
         config.__dict__ = input_dict["config"]
-        parent_mesh = stubs.mesh.ParentMesh(
+        parent_mesh = ParentMesh(
             input_dict["parent_mesh_filename"], input_dict["parent_mesh_filetype"]
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
@@ -114,7 +120,7 @@ class Model:
         self.V = dict()
         self.u = dict()
 
-        self.fc = stubs.model_assembly.FluxContainer()
+        self.fc = FluxContainer()
 
         # Solver related parameters
         self.idx = 0
@@ -154,7 +160,7 @@ class Model:
         # nicer printing for timers
         print_buffer = max([len(stopwatch_name) for stopwatch_name in stopwatch_names])
         self.stopwatches = {
-            stopwatch_name: stubs.common.Stopwatch(
+            stopwatch_name: Stopwatch(
                 stopwatch_name, print_buffer=print_buffer
             )
             for stopwatch_name in stopwatch_names
@@ -163,7 +169,7 @@ class Model:
         # self.timers = {} self.timings = ddict(list)
 
         # Functional forms
-        self.forms = stubs.model_assembly.FormContainer()
+        self.forms = FormContainer()
         # self.a = {}
         # self.L = {}
         # self.F = {}
@@ -599,7 +605,7 @@ class Model:
     def _init_3_1_define_child_meshes(self):
         fancy_print(f"Defining child meshes", format_type="log")
         # Check that there is a parent mesh loaded
-        if not isinstance(self.parent_mesh, stubs.mesh.ParentMesh):
+        if not isinstance(self.parent_mesh, ParentMesh):
             raise ValueError("There is no parent mesh.")
 
         # Define child meshes
@@ -984,7 +990,7 @@ class Model:
             }
             # linearity_dict = nonlinear_wrt_comp#{k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
             self.forms.add(
-                stubs.model_assembly.Form(
+                Form(
                     f"{flux.name}",
                     flux.form,
                     flux.destination_species,
@@ -1019,7 +1025,7 @@ class Model:
                     ** (species.compartment.dimensionality - 2)
                 )
                 self.forms.add(
-                    stubs.model_assembly.Form(
+                    Form(
                         f"diffusion_{species.name}",
                         Dform,
                         species,
@@ -1038,7 +1044,7 @@ class Model:
                 ** species.compartment.dimensionality
             )
             self.forms.add(
-                stubs.model_assembly.Form(
+                Form(
                     f"mass_u_{species.name}",
                     Muform,
                     species,
@@ -1050,7 +1056,7 @@ class Model:
             )
             Munform = (-un) * v / self.dT * dx
             self.forms.add(
-                stubs.model_assembly.Form(
+                Form(
                     f"mass_un_{species.name}",
                     Munform,
                     species,
@@ -1169,7 +1175,7 @@ class Model:
         # if use snes
         if self.config.solver["use_snes"]:
             fancy_print(f"Using SNES solver", format_type="log")
-            self.problem = stubs.solvers.stubsSNESProblem(
+            self.problem = stubsSNESProblem(
                 self.u["u"],
                 self.Fblocks_all,
                 self.Jblocks_all,
@@ -1179,7 +1185,7 @@ class Model:
                 self.config.solver["print_assembly"],
                 self.mpi_comm_world,
             )
-            # self.problem = stubs.solvers.stubsSNESProblem(self)
+            # self.problem = stubsSNESProblem(self)
 
             self.problem.init_petsc_matnest()
             self.problem.init_petsc_vecnest()

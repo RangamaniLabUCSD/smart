@@ -4,7 +4,7 @@ Wrapper around dolfin mesh class (originally for submesh implementation - possib
 import dolfin as d
 import numpy as np
 from cached_property import cached_property
-from stubs.common import _fancy_print as fancy_print
+from .common import _fancy_print as fancy_print
 
 comm = d.MPI.comm_world
 rank = comm.rank
