@@ -1,0 +1,17 @@
+name: Pre-commit
+
+on: [push]
+
+
+jobs:
+  check-code:
+    runs-on: ubuntu-22.04
+    steps:
+      # This action sets the current path to the root of your github repo
+      - uses: actions/checkout@v3
+
+      - name: Install pre-commit
+        run: python3 -m pip install pre-commit
+
+      - name: Run hooks
+        run: pre-commit run --all

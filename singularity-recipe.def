@@ -1,13 +1,13 @@
 ####### Notes #######
 #
-# This is a Singularity recipe that adds STUBS to a Docker container 
+# This is a Singularity recipe that adds STUBS to a Docker container
 # with the current development version of FEniCS.
 #
 # Assuming you have Singularity already installed: to build an image from this recipe,
 # use the following command (on a system where you have sudo access):
 # $ sudo singularity build stubs.sif singularity-recipe.def
 #
-# If you do not have Singularity installed, follow the instructions at 
+# If you do not have Singularity installed, follow the instructions at
 # https://sylabs.io/guides/latest/admin-guide/installation.html
 #
 # For convenience the instructions to install version 3.8.0 of Singularity on Linux

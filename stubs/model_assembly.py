@@ -19,13 +19,16 @@ import pint
 import sympy as sym
 import ufl
 from cached_property import cached_property
-from sympy import Symbol, integrate
+from sympy import integrate
+from sympy import Symbol
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
 
-from .common import (np_smart_hstack, pint_quantity_to_unit,
-                     pint_unit_to_quantity, sub)
 from .common import _fancy_print as fancy_print
+from .common import np_smart_hstack
+from .common import pint_quantity_to_unit
+from .common import pint_unit_to_quantity
+from .common import sub
 from .config import global_settings as gset
 from .units import unit
 
@@ -109,7 +112,7 @@ class ObjectContainer:
                     iterator = iter(data)
                 except:
                     raise TypeError(
-                        "Data being added to ObjectContainer must be either the ObjectClass or an iterator."
+                        "Data being added to ObjectContainer must be either the ObjectClass or an iterator.",
                     )
                 else:
                     if isinstance(data, dict):
@@ -176,13 +179,14 @@ class ObjectContainer:
             for idx, (name, instance) in enumerate(self.items):
                 df = df.append(
                     instance.get_pandas_series(
-                        properties_to_print=properties_to_print, idx=idx
-                    )
+                        properties_to_print=properties_to_print,
+                        idx=idx,
+                    ),
                 )
         else:
             for idx, (name, instance) in enumerate(self.items):
                 df = df.append(
-                    instance.get_pandas_series(properties_to_print=properties_to_print)
+                    instance.get_pandas_series(properties_to_print=properties_to_print),
                 )
         # # sometimes types are recast. change entries into their original types
         # for dtypeName, dtype in self.dtypes.items():
@@ -199,7 +203,7 @@ class ObjectContainer:
         latex_name_map=None,
         return_df=True,
     ):
-        """Requires latex packages \siunitx and \longtable"""
+        r"""Requires latex packages \siunitx and \longtable"""
 
         df = self.get_pandas_dataframe_formatted(
             properties_to_print=properties_to_print,
@@ -224,7 +228,10 @@ class ObjectContainer:
                 print(df.to_latex(escape=False, longtable=True, index=False))
 
     def get_pandas_dataframe_formatted(
-        self, properties_to_print=None, max_col_width=50, sig_figs=2
+        self,
+        properties_to_print=None,
+        max_col_width=50,
+        sig_figs=2,
     ):
         # Get the pandas dataframe with the properties we want to print
         if properties_to_print:
@@ -233,7 +240,8 @@ class ObjectContainer:
         elif hasattr(self, "properties_to_print"):
             properties_to_print = self.properties_to_print
         df = self.get_pandas_dataframe(
-            properties_to_print=properties_to_print, include_idx=False
+            properties_to_print=properties_to_print,
+            include_idx=False,
         )
         if properties_to_print:
             df = df[properties_to_print]
@@ -344,7 +352,7 @@ class ObjectInstance:
                 except:
                     raise TypeError(
                         f'Object "{self.name}" type error: the attribute "{field.name}" is expected to be {field.type}, got {type(value)} instead. '
-                        f"Conversion to the expected type was attempted but unsuccessful."
+                        f"Conversion to the expected type was attempted but unsuccessful.",
                     )
 
     def _convert_pint_unit_to_quantity(self):
@@ -362,8 +370,8 @@ class ObjectInstance:
                         (key, val)
                         for (key, val) in self.__dict__.items()
                         if key in properties_to_print
-                    ]
-                )
+                    ],
+                ),
             )
         else:
             dict_to_convert = self.__dict__
@@ -375,13 +383,11 @@ class ObjectInstance:
             print("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
             if properties_to_print:
-                dict_to_print = dict(
-                    [
-                        (key, val)
-                        for (key, val) in self.__dict__.items()
-                        if key in properties_to_print
-                    ]
-                )
+                dict_to_print = {
+                    key: val
+                    for (key, val) in self.__dict__.items()
+                    if key in properties_to_print
+                }
             else:
                 dict_to_print = self.__dict__
             pprint(dict_to_print, width=240)
@@ -459,7 +465,13 @@ class Parameter(ObjectInstance):
 
     @classmethod
     def from_file(
-        cls, name, sampling_file, unit, group="", notes="", use_preintegration=False
+        cls,
+        name,
+        sampling_file,
+        unit,
+        group="",
+        notes="",
+        use_preintegration=False,
     ):
         "Load in a purely time-dependent scalar function from data"
         # load in sampling data file
@@ -495,7 +507,8 @@ class Parameter(ObjectInstance):
         parameter.type = "from_file"
         parameter.__post_init__()
         fancy_print(
-            f"Time-dependent parameter {name} loaded from file.", format_type="log"
+            f"Time-dependent parameter {name} loaded from file.",
+            format_type="log",
         )
 
         return parameter
@@ -544,7 +557,7 @@ class Parameter(ObjectInstance):
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
                 preint_sym_expr = preint_sym_expr.subs(
-                    {"x": "x[0]", "y": "x[1]", "z": "x[2]"}
+                    {"x": "x[0]", "y": "x[1]", "z": "x[2]"},
                 )
             else:
                 # try to integrate
@@ -621,10 +634,10 @@ class Parameter(ObjectInstance):
                 [
                     x in ("", None)
                     for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]
-                ]
+                ],
             ):
                 raise ValueError(
-                    f"Parameter {self.name} is marked as time dependent but is not defined in terms of time."
+                    f"Parameter {self.name} is marked as time dependent but is not defined in terms of time.",
                 )
 
 
@@ -659,7 +672,11 @@ class SpeciesContainer(ObjectContainer):
         properties_to_print = ["_latex_name"]
         properties_to_print.extend(self.properties_to_print)
         df = super().print_to_latex(
-            properties_to_print, max_col_width, sig_figs, latex_name_map, return_df=True
+            properties_to_print,
+            max_col_width,
+            sig_figs,
+            latex_name_map,
+            return_df=True,
         )
         # fix dof_index
         for col in df.columns:
@@ -723,7 +740,7 @@ class Species(ObjectInstance):
         elif isinstance(self.initial_condition, str):
             # Parse the given string to create a sympy expression
             sym_expr = parse_expr(self.initial_condition).subs(
-                {"x": "x[0]", "y": "x[1]", "z": "x[2]"}
+                {"x": "x[0]", "y": "x[1]", "z": "x[2]"},
             )
 
             # Check if expression is space dependent
@@ -735,7 +752,8 @@ class Species(ObjectInstance):
                 format_type="log",
             )
             self.initial_condition_expression = d.Expression(
-                sym.printing.ccode(sym_expr), degree=1
+                sym.printing.ccode(sym_expr),
+                degree=1,
             )
         else:
             raise TypeError(f"initial_condition must be a float or string.")
@@ -749,16 +767,16 @@ class Species(ObjectInstance):
         # checking values
         if isinstance(self.initial_condition, float) and self.initial_condition < 0.0:
             raise ValueError(
-                f"Initial condition for species {self.name} must be greater or equal to 0."
+                f"Initial condition for species {self.name} must be greater or equal to 0.",
             )
         if self.D < 0.0:
             raise ValueError(
-                f"Diffusion coefficient for species {self.name} must be greater or equal to 0."
+                f"Diffusion coefficient for species {self.name} must be greater or equal to 0.",
             )
         # checking units
         if not self.diffusion_units.check("[length]^2/[time]"):
             raise ValueError(
-                f"Units of diffusion coefficient for species {self.name} must be dimensionally equivalent to [length]^2/[time]."
+                f"Units of diffusion coefficient for species {self.name} must be dimensionally equivalent to [length]^2/[time].",
             )
         # if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
         #     raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
@@ -868,12 +886,12 @@ class Compartment(ObjectInstance):
     def check_validity(self):
         if self.dimensionality not in [1, 2, 3]:
             raise ValueError(
-                f"Compartment {self.name} has dimensionality {self.dimensionality}. Dimensionality must be in [1,2,3]."
+                f"Compartment {self.name} has dimensionality {self.dimensionality}. Dimensionality must be in [1,2,3].",
             )
         # checking units
         if not self.compartment_units.check("[length]"):
             raise ValueError(
-                f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length]."
+                f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length].",
             )
 
     def specify_nonadjacency(self, nonadjacent_compartment_list=None):
@@ -1045,37 +1063,37 @@ class Reaction(ObjectInstance):
         # Type checking
         if not all([isinstance(x, str) for x in self.lhs]):
             raise TypeError(
-                f"Reaction {self.name} requires a list of strings as input for lhs."
+                f"Reaction {self.name} requires a list of strings as input for lhs.",
             )
         if not all([isinstance(x, str) for x in self.rhs]):
             raise TypeError(
-                f"Reaction {self.name} requires a list of strings as input for rhs."
+                f"Reaction {self.name} requires a list of strings as input for rhs.",
             )
         if not all(
-            [type(k) == str and type(v) == str for (k, v) in self.param_map.items()]
+            [type(k) == str and type(v) == str for (k, v) in self.param_map.items()],
         ):
             raise TypeError(
-                f"Reaction {self.name} requires a dict of str:str as input for param_map."
+                f"Reaction {self.name} requires a dict of str:str as input for param_map.",
             )
         if self.species_map:
             if not all(
                 [
                     isinstance(k, str) and isinstance(v, str)
                     for (k, v) in self.species_map.items()
-                ]
+                ],
             ):
                 raise TypeError(
-                    f"Reaction {self.name} requires a dict of str:str as input for species_map."
+                    f"Reaction {self.name} requires a dict of str:str as input for species_map.",
                 )
         if self.flux_scaling:
             if not all(
                 [
                     isinstance(k, str) and isinstance(v, (numbers.Number, None))
                     for (k, v) in self.flux_scaling.items()
-                ]
+                ],
             ):
                 raise TypeError(
-                    f"Reaction {self.name} requires a dict of str:number as input for flux_scaling."
+                    f"Reaction {self.name} requires a dict of str:number as input for flux_scaling.",
                 )
 
     def _parse_custom_reaction(self, reaction_eqn_str):
@@ -1097,7 +1115,7 @@ class Reaction(ObjectInstance):
             {
                 (species_name, 1 * self.rhs.count(species_name))
                 for species_name in self.rhs
-            }
+            },
         )
         # convert to dict
         self.species_stoich = dict(self.species_stoich)
@@ -1125,7 +1143,7 @@ class Reaction(ObjectInstance):
     def get_steady_state_equation(self):
         if len(self.fluxes) == 0:
             raise ValueError(
-                f"Reaction {self.name} has no fluxes (maybe run model.initialize()?)"
+                f"Reaction {self.name} has no fluxes (maybe run model.initialize()?)",
             )
         # choose the first flux of reaction, and use its destination species to find its paired flux (forward-reverse)
         # it doesnt matter which destination species is chosen since the flux is always the same
@@ -1140,7 +1158,7 @@ class Reaction(ObjectInstance):
         for flux in r_fluxes:
             # substitute the parameter and unit scale factor magnitudes
             flux_equation = flux.equation.subs(
-                {"unit_scale_factor": flux.unit_scale_factor.magnitude}
+                {"unit_scale_factor": flux.unit_scale_factor.magnitude},
             )
             parameter_value_dict = {
                 parameter.name: parameter.value
@@ -1283,7 +1301,7 @@ class Flux(ObjectInstance):
         # 2 or 3 compartment flux
         elif self.reaction.topology in ["volume_surface", "volume_surface_volume"]:
             source_compartments = set(self.compartments.keys()).difference(
-                {self.destination_compartment.name}
+                {self.destination_compartment.name},
             )
 
             if self.reaction.topology == "volume_surface":
@@ -1313,10 +1331,10 @@ class Flux(ObjectInstance):
             self.surface = None
         self.volumes = [c for c in self.compartments.values() if c.mesh.is_volume]
         self.surface_id = frozenset(
-            [c.mesh.id for c in self.compartments.values() if c.mesh.is_surface]
+            [c.mesh.id for c in self.compartments.values() if c.mesh.is_surface],
         )
         self.volume_ids = frozenset(
-            [c.mesh.id for c in self.compartments.values() if c.mesh.is_volume]
+            [c.mesh.id for c in self.compartments.values() if c.mesh.is_volume],
         )
 
         # Based on topology we know if it is a boundary condition or RHS term
@@ -1359,7 +1377,7 @@ class Flux(ObjectInstance):
         ):
             print(self.unit_scale_factor)
             raise ValueError(
-                f"Flux {self.name} has wrong units (cannot be converted) - expected {self._expected_flux_units}, got {initial_equation_units}."
+                f"Flux {self.name} has wrong units (cannot be converted) - expected {self._expected_flux_units}, got {initial_equation_units}.",
             )
         # Fix scaling
         else:
@@ -1369,7 +1387,7 @@ class Flux(ObjectInstance):
                 / initial_equation_units
             )
             self.equation_units = self.equation_lambda_eval(
-                "units"
+                "units",
             )  # these should now be the proper units
 
             # should be redundant with previous checks, but just in case
@@ -1425,7 +1443,7 @@ class Flux(ObjectInstance):
             # assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
             # self.measure = self.surface.mesh.intersection_dx[self.volume_ids]
             print(
-                "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
+                "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)",
             )
             self.measure = self.surface.mesh.dx
             self.measure_units = (
@@ -1680,7 +1698,7 @@ class FieldVariable(ObjectInstance):
 
         # Parse the equation string and replace equation variables. Multiply by unit_scale_factor
         self.equation = parse_expr(self.equation_str).subs(
-            self.variables_dict
+            self.variables_dict,
         ) * Symbol("unit_scale_factor")
 
         # Get equation lambda expression
@@ -1714,7 +1732,7 @@ class FieldVariable(ObjectInstance):
         if self.desired_units.dimensionality != initial_equation_units.dimensionality:
             raise ValueError(
                 f"FieldVariable {self.name} has wrong units (cannot be converted)"
-                f" - expected {self.desired_units}, got {initial_equation_units}."
+                f" - expected {self.desired_units}, got {initial_equation_units}.",
             )
         # Fix scaling
         else:
@@ -1723,7 +1741,7 @@ class FieldVariable(ObjectInstance):
                 initial_equation_units.to(self.desired_units) / initial_equation_units
             )
             self.equation_units = self.equation_lambda_eval(
-                "units"
+                "units",
             )  # these should now be the proper units
 
             # should be redundant with previous checks, but just in case

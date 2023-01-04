@@ -11,10 +11,13 @@ import numpy as np
 import petsc4py.PETSc as PETSc
 import termplotlib as tpl
 
-from .common import round_to_n
-from .model_assembly import FieldVariable, Flux, Parameter, Species
-from .units import unit
 from .common import _fancy_print as fancy_print
+from .common import round_to_n
+from .model_assembly import FieldVariable
+from .model_assembly import Flux
+from .model_assembly import Parameter
+from .model_assembly import Species
+from .units import unit
 
 Print = PETSc.Sys.Print
 
@@ -51,7 +54,13 @@ class Probe:
     # def __init__(self, model, probe_type, var_type, var_name, expression=None, unit_total=None, x_probe=None, filename=None):
 
     def __init__(
-        self, model, probe_type, var, unit_total=None, x_probe=None, filename=None
+        self,
+        model,
+        probe_type,
+        var,
+        unit_total=None,
+        x_probe=None,
+        filename=None,
     ):
         self.model = model
         self.probe_type = probe_type
@@ -128,7 +137,8 @@ class Probe:
         probevar_type = (self.probe_type, self.var_type)
         if probevar_type == ("point", "concentration"):
             value = self.model.dolfin_get_function_values_at_point(
-                self.var, self.x_probe
+                self.var,
+                self.x_probe,
             )
         elif probevar_type == ("sum", "concentration"):
             value = self.model.get_mass(self.var)
@@ -161,7 +171,7 @@ class Probe:
             value = d.assemble(
                 self.var._equation_quantity.magnitude
                 * self.var.vscalar
-                * self.var.measure
+                * self.var.measure,
             ).get_local()
         elif probevar_type == ("stats", "flux"):
             all_values = -1 * d.assemble(self.var.scalar_form).get_local()
@@ -181,7 +191,7 @@ class Probe:
             all_values = d.assemble(
                 self.var._equation_quantity.magnitude
                 * self.var.vscalar
-                * self.var.measure
+                * self.var.measure,
             ).get_local()
             mean_value = (
                 self.var.assembled_quantity.magnitude
@@ -318,11 +328,11 @@ class Probe:
 
         if stat_keys is not None:
             a.set_title(
-                f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={plot_name}"
+                f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={plot_name}",
             )
         else:
             a.set_title(
-                f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}"
+                f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}",
             )
 
         # f.set_tight_layout(1)
@@ -422,7 +432,10 @@ class Data:
                     # with d.XDMFFile(file_str) as xdmf:
                     #    xdmf.write(u[comp_name]['u'], t)
                     self.solutions[sp_name][output_type].write_checkpoint(
-                        u[comp_name]["u"], "u", t, append=self.append_flag
+                        u[comp_name]["u"],
+                        "u",
+                        t,
+                        append=self.append_flag,
                     )
                     self.solutions[sp_name][output_type].close()
                 else:
@@ -505,9 +518,9 @@ class Data:
                     summed_flux_indices.add((i, j))
 
         def flatten(tuple_set):
-            return set(
-                [item for sublist in [list(i) for i in tuple_set] for item in sublist]
-            )  # flattens a set of tuples into a set
+            return {
+                item for sublist in [list(i) for i in tuple_set] for item in sublist
+            }  # flattens a set of tuples into a set
 
         flux_indices = set(range(len(temp)))
         flux_indices = flux_indices.difference(flatten(summed_flux_indices))
@@ -611,7 +624,7 @@ class Data:
         self.errors[comp_name][errorNormKey]["abs"].append(abs_err)
         Print(
             "Absolute error [%s] in the %s norm: %f"
-            % (comp_name, errorNormKey, abs_err)
+            % (comp_name, errorNormKey, abs_err),
         )
 
         return abs_err
@@ -627,7 +640,7 @@ class Data:
 
         maxCols = 3
         # solution plots
-        self.groups = list(set([p.group for p in sc]))
+        self.groups = list({p.group for p in sc})
         if "Null" in self.groups:
             self.groups.remove("Null")
         numPlots = len(self.groups)
@@ -689,7 +702,7 @@ class Data:
                 plt.setp(ax.get_xticklabels(), fontsize=plot_settings["fontsize_small"])
                 plt.setp(ax.get_yticklabels(), fontsize=plot_settings["fontsize_small"])
                 ax.yaxis.get_offset_text().set_fontsize(
-                    fontsize=plot_settings["fontsize_small"]
+                    fontsize=plot_settings["fontsize_small"],
                 )
 
             self.plots["parameters"].tight_layout()
@@ -716,7 +729,10 @@ class Data:
                 subplot = self.plots["fluxes"].get_axes()[idx]
                 subplot.clear()
                 subplot.plot(
-                    self.tvec, flux, linewidth=plot_settings["linewidth_med"], color="b"
+                    self.tvec,
+                    flux,
+                    linewidth=plot_settings["linewidth_med"],
+                    color="b",
                 )
 
                 subplot = self.plots["fluxes"].get_axes()[idx]
@@ -727,11 +743,12 @@ class Data:
                 plt.setp(ax.get_xticklabels(), fontsize=plot_settings["fontsize_small"])
                 plt.setp(ax.get_yticklabels(), fontsize=plot_settings["fontsize_small"])
                 ax.yaxis.get_offset_text().set_fontsize(
-                    fontsize=plot_settings["fontsize_small"]
+                    fontsize=plot_settings["fontsize_small"],
                 )
 
             self.plots["fluxes"].suptitle(
-                "Fluxes [molecules/s]", fontsize=plot_settings["fontsize_med"]
+                "Fluxes [molecules/s]",
+                fontsize=plot_settings["fontsize_med"],
             )
             self.plots["fluxes"].tight_layout()
             # plt.tight_layout()
@@ -776,7 +793,7 @@ class Data:
                     )
 
                     unitStr = "{:P}".format(
-                        self.solutions[param_name]["concentration_units"].units
+                        self.solutions[param_name]["concentration_units"].units,
                     )
                     sidx += 1
             subplot = self.plots["solutions"].get_axes()[idx]
@@ -790,7 +807,7 @@ class Data:
             plt.setp(ax.get_xticklabels(), fontsize=plot_settings["fontsize_small"])
             plt.setp(ax.get_yticklabels(), fontsize=plot_settings["fontsize_small"])
             ax.yaxis.get_offset_text().set_fontsize(
-                fontsize=plot_settings["fontsize_small"]
+                fontsize=plot_settings["fontsize_small"],
             )
 
         self.plots["solutions"].tight_layout()
@@ -822,18 +839,22 @@ class Data:
         axes = self.plots["solver_status"].axes
 
         axes[0].set_ylabel(
-            "$\Delta$t [ms]", fontsize=plot_settings["fontsize_med"] * 2, color="blue"
+            r"$\Delta$t [ms]",
+            fontsize=plot_settings["fontsize_med"] * 2,
+            color="blue",
         )
         axes[0].plot([dt * 1000 for dt in self.dtvec], color="blue")
         dt_ticks = np.geomspace(min(self.dtvec), max(self.dtvec), nticks)
         dt_ticks = [round_to_n(dt * 1000, nround) for dt in dt_ticks]
         axes[0].set_yscale("log")
         axes[0].set_xlabel(
-            "Solver Iteration", fontsize=plot_settings["fontsize_med"] * 2
+            "Solver Iteration",
+            fontsize=plot_settings["fontsize_med"] * 2,
         )
         axes[0].set_yticks(dt_ticks)
         axes[0].set_yticklabels(
-            [str(dt) for dt in dt_ticks], fontsize=plot_settings["fontsize_small"] * 2
+            [str(dt) for dt in dt_ticks],
+            fontsize=plot_settings["fontsize_small"] * 2,
         )
         axes[1].set_ylabel(
             "Newton iterations",
@@ -846,13 +867,15 @@ class Data:
         indices = [int(x) for x in np.linspace(0, len(self.tvec) - 1, nticks)]
         axes[0].set_xticks(indices)
         axes[0].set_xticklabels(
-            [str(idx) for idx in indices], fontsize=plot_settings["fontsize_small"] * 2
+            [str(idx) for idx in indices],
+            fontsize=plot_settings["fontsize_small"] * 2,
         )
         time_ticks = [np.around(self.tvec[idx] * 1000, 1) for idx in indices]
         # axes[2].clear()
         axes[2].set_xticks(indices)
         axes[2].set_xticklabels(
-            [str(t) for t in time_ticks], fontsize=plot_settings["fontsize_small"] * 2
+            [str(t) for t in time_ticks],
+            fontsize=plot_settings["fontsize_small"] * 2,
         )
 
         plt.minorticks_off()
@@ -935,7 +958,8 @@ class Data:
                 elif len(coord) == 3:
                     coord_str = (
                         "({coord[0]:.3f}_{coord[1]:.3f}_{coord[2]:.3f})".replace(
-                            ".", ","
+                            ".",
+                            ",",
                         )
                     )
                 else:

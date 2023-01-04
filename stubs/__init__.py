@@ -3,13 +3,13 @@ stubs
 """
 # Add imports here
 # import config first
+from . import common
 from . import config
 from . import data_manipulation
+from . import mesh
+from . import model
 from . import model_assembly
 from . import solvers
-from . import model
-from . import common
-from . import mesh
 from .units import unit
 
 __all__ = [
@@ -20,5 +20,5 @@ __all__ = [
     "model",
     "common",
     "mesh",
-    "unit"
+    "unit",
 ]

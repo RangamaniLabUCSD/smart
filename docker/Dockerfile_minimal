@@ -24,4 +24,3 @@ alias python='python3'" >> $FENICS_HOME/.bash_aliases
 
 # source bashrc
 RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]
-

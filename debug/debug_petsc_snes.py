@@ -1,29 +1,32 @@
 # testing petsc snes
 # https://fenicsproject.discourse.group/t/using-petsc4py-petsc-snes-directly/2368/12
-
 # ====================
 # stubs
 # ===================
 from copy import deepcopy
-import stubs
+
 import dolfin as d
+
+import stubs
+
 rank = d.MPI.comm_world.rank
 print(f"rank = {rank}")
 
 from pathlib import Path
-path    = Path('.').resolve()
-subdir  = 'data'
+
+path = Path(".").resolve()
+subdir = "data"
 while True:
-    if path.parts[-1]=='stubs' and path.joinpath(subdir).is_dir():
+    if path.parts[-1] == "stubs" and path.joinpath(subdir).is_dir():
         path = path.joinpath(subdir)
         break
     path = path.parent
 
-#adjacent_cubes_mesh = stubs.mesh.ParentMesh(str(path / 'adjacent_cubes_refined.h5'), 'hdf5')
+# adjacent_cubes_mesh = stubs.mesh.ParentMesh(str(path / 'adjacent_cubes_refined.h5'), 'hdf5')
 
 # dolfin adjacent_cubes_mesh
-print('loading mesh')
-#mesh_path = str(path/'adjacent_cubes_refined2.h5')
+print("loading mesh")
+# mesh_path = str(path/'adjacent_cubes_refined2.h5')
 # mesh_path = str(path/'unit_cube_mesh_16.h5')
 mesh = d.UnitCubeMesh(24, 24, 24)
 # mesh0 = d.Mesh()
@@ -39,25 +42,25 @@ print(mesh.num_vertices())
 # hdf5.write(mesh, '/mesh')
 # hdf5.close()
 
-#self.dolfin_mesh.init()
+# self.dolfin_mesh.init()
 
 mf3_ = d.MeshFunction("size_t", mesh, 3, 0)
 mf2_ = d.MeshFunction("size_t", mesh, 2, 0)
 for c in d.cells(mesh):
-    mf3_[c] = 11+( c.midpoint().z() < 0.5 )*1
+    mf3_[c] = 11 + (c.midpoint().z() < 0.5) * 1
 
 for f in d.facets(mesh):
-    mf2_[f] = 4*(0.5-d.DOLFIN_EPS <= f.midpoint().z() <= 0.5+d.DOLFIN_EPS)
+    mf2_[f] = 4 * (0.5 - d.DOLFIN_EPS <= f.midpoint().z() <= 0.5 + d.DOLFIN_EPS)
 
 
-# import stubs_model 
+# import stubs_model
 # model = stubs_model.make_model(refined_mesh=True)
 
 # # init model
 # model._init_1()
 # model._init_2()
 # model._init_3()
-# model._init_4()                 
+# model._init_4()
 # model._init_5_1_reactions_to_fluxes()
 # model._init_5_2_create_variational_forms()
 # model._init_5_3_create_variational_problem()
@@ -66,6 +69,7 @@ for f in d.facets(mesh):
 # petsc snes
 # ===================
 import petsc4py, sys
+
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
 import numpy as np
@@ -83,16 +87,16 @@ def get_nestmat_from_Jlist(Jlist):
         Jsub = [d.assemble_mixed(J) for J in Jsublist]
         J = Jsub[0]
         if len(Jsub) > 1:
-            for i in range(1,len(Jsub)):
+            for i in range(1, len(Jsub)):
                 J += Jsub[i]
-            
+
         new_Jlist.append(J)
-    
+
     return new_Jlist
 
 
-class mySNESProblem():
-    def __init__(self, F, u, J): #Jlist):
+class mySNESProblem:
+    def __init__(self, F, u, J):  # Jlist):
         self.L = F
         self.a = J
         # because this is from a mixedfunctionspace
@@ -101,22 +105,22 @@ class mySNESProblem():
         # self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jlist]
 
     def F(self, snes, x, F):
-        x = d.PETScVector(x) # convert petsc.Vec -> d.PETScVector
-        F  = d.PETScVector(F)
+        x = d.PETScVector(x)  # convert petsc.Vec -> d.PETScVector
+        F = d.PETScVector(F)
         x.vec().copy(self.u.vector().vec())
         self.u.vector().apply("")
         d.assemble(self.L, tensor=F)
 
     def J(self, snes, x, J, P):
-        x = d.PETScVector(x) # convert petsc.Vec -> d.PETScVector
+        x = d.PETScVector(x)  # convert petsc.Vec -> d.PETScVector
         # convert from petsc4py type to dolfin wrapper
-        #J = d.PETScNestMatrix(J)
+        # J = d.PETScNestMatrix(J)
         J = d.PETScMatrix(J)
-        # copy values of x -> u 
+        # copy values of x -> u
         x.vec().copy(self.u.vector().vec())
         self.u.vector().apply("")
         d.assemble(self.a, tensor=J)
-        
+
         # Alist = list()
         # Aij_list = [[None]*len(Jij_list) for Jij_list in self.Jlist]
         # for ij, Jij_list in enumerate(self.Jlist):
@@ -131,12 +135,13 @@ class mySNESProblem():
         #     Aij = Aij_list[ij][0]
         #     for k in range(1, len(Aij_list[ij])):
         #         Aij += Aij_list[ij][k]
-            
+
         #     Alist.append(Aij)
 
         # J = d.PETScNestMatrix(Alist)
 
-class mySNESProblem_nest():
+
+class mySNESProblem_nest:
     def __init__(self, u, Fforms, Jforms):
         self.u = u
         self.Fforms = Fforms
@@ -152,7 +157,7 @@ class mySNESProblem_nest():
         assert len(Jforms) == self.dim**2
 
         # save sparsity patterns of block matrices
-        self.tensors = [[None]*len(Jij_list) for Jij_list in self.Jforms]
+        self.tensors = [[None] * len(Jij_list) for Jij_list in self.Jforms]
 
     def initialize_petsc_matnest(self):
         assert isinstance(self.Jforms[0][0], (ufl.Form, d.Form))
@@ -160,48 +165,56 @@ class mySNESProblem_nest():
         # assert dim**2 == len(Forms)
         dim = self.dim
 
-        #Jdpetsc = [[None]*dim]*dim
+        # Jdpetsc = [[None]*dim]*dim
         Jpetsc = []
         for i in range(dim):
             for j in range(dim):
-                ij = i*dim + j
-                #Jdpetsc[i][j] = d.PETScMatrix()
-                Jsum = d.as_backend_type(d.assemble_mixed(self.Jforms[ij][0]))#, tensor=Jdpetsc[i][j])
-                for k in range(1,len(self.Jforms[ij])):
-                    Jsum += d.as_backend_type(d.assemble_mixed(self.Jforms[ij][k]))#, tensor=Jdpetsc[i][j])
+                ij = i * dim + j
+                # Jdpetsc[i][j] = d.PETScMatrix()
+                Jsum = d.as_backend_type(
+                    d.assemble_mixed(self.Jforms[ij][0]),
+                )  # , tensor=Jdpetsc[i][j])
+                for k in range(1, len(self.Jforms[ij])):
+                    Jsum += d.as_backend_type(
+                        d.assemble_mixed(self.Jforms[ij][k]),
+                    )  # , tensor=Jdpetsc[i][j])
 
-                Jpetsc.append(Jsum)#Jdpetsc[i][j].mat()
-                #Jpetsc[i][j] = Jsum.mat()#Jdpetsc[i][j].mat()
-                #Jdpetsc[i][j] = Jsum#Jdpetsc[i][j].mat()
-                #print(f"init i={i}, j={j}: size={Jpetsc[ij].size}")
+                Jpetsc.append(Jsum)  # Jdpetsc[i][j].mat()
+                # Jpetsc[i][j] = Jsum.mat()#Jdpetsc[i][j].mat()
+                # Jdpetsc[i][j] = Jsum#Jdpetsc[i][j].mat()
+                # print(f"init i={i}, j={j}: size={Jpetsc[ij].size}")
 
-        #Jdpetsc_nest =  d.PETScNestMatrix([Jdpetsc[0][0], Jdpetsc[0][1], Jdpetsc[1][0], Jdpetsc[1][1]])
-        #Jpetsc_nest =  PETSc.Mat().createNest(Jpetsc)
-        Jpetsc_nest =  d.PETScNestMatrix(Jpetsc).mat()
-        
+        # Jdpetsc_nest =  d.PETScNestMatrix([Jdpetsc[0][0], Jdpetsc[0][1], Jdpetsc[1][0], Jdpetsc[1][1]])
+        # Jpetsc_nest =  PETSc.Mat().createNest(Jpetsc)
+        Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
+
         return Jpetsc_nest
 
     def initialize_petsc_vecnest(self):
-        assert isinstance(self.Fforms[0][0], (ufl.Form,d.Form))
+        assert isinstance(self.Fforms[0][0], (ufl.Form, d.Form))
         # dim = len(Forms)
         dim = self.dim
 
-        #Fdpetsc = [None]*dim
+        # Fdpetsc = [None]*dim
         Fpetsc = []
         for j in range(dim):
-            #Fdpetsc[j] = d.PETScVector()
-            Fsum = d.as_backend_type(d.assemble_mixed(self.Fforms[j][0]))#, tensor=Fdpetsc[j])
-            for k in range(1,len(self.Fforms[j])):
-                Fsum += d.as_backend_type(d.assemble_mixed(self.Fforms[j][k]))#, tensor=Fdpetsc[j])
+            # Fdpetsc[j] = d.PETScVector()
+            Fsum = d.as_backend_type(
+                d.assemble_mixed(self.Fforms[j][0]),
+            )  # , tensor=Fdpetsc[j])
+            for k in range(1, len(self.Fforms[j])):
+                Fsum += d.as_backend_type(
+                    d.assemble_mixed(self.Fforms[j][k]),
+                )  # , tensor=Fdpetsc[j])
 
             Fpetsc.append(Fsum.vec())
-        
+
         Fpetsc_nest = PETSc.Vec().createNest(Fpetsc)
         # # also return a zero vector for the block structure
         # upetsc = Fpetsc_nest.copy()
         # upetsc.zeroEntries()
 
-        return Fpetsc_nest#, upetsc
+        return Fpetsc_nest  # , upetsc
 
     def assemble_Jnest(self, Jnest):
         """Assemble Jacobian nest matrix
@@ -214,26 +227,28 @@ class mySNESProblem_nest():
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
         dim = self.dim
-        #Jmats = [[None]*dim]*dim #list of two lists
+        # Jmats = [[None]*dim]*dim #list of two lists
         Jmats = []
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using dolfin wrapper as tensor
-        #for ij, Jij_forms in enumerate(self.Jforms):
+        # for ij, Jij_forms in enumerate(self.Jforms):
         for i in range(dim):
             for j in range(dim):
-                ij = i*dim+j
-                Jij_petsc = Jnest.getNestSubMatrix(i,j)
+                ij = i * dim + j
+                Jij_petsc = Jnest.getNestSubMatrix(i, j)
                 Jmats.append([])
                 # Jijk == dFi/duj(Omega_k)
                 for k, Jijk_form in enumerate(self.Jforms[ij]):
                     # if we have the sparsity pattern re-use it, if not save it for next time
-                    #Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=self.tensors[ij][k]))
-                    Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=d.PETScMatrix()))
+                    # Jmats[ij].append(d.assemble_mixed(Jijk_form, tensor=self.tensors[ij][k]))
+                    Jmats[ij].append(
+                        d.assemble_mixed(Jijk_form, tensor=d.PETScMatrix()),
+                    )
                     if self.tensors[ij][k] is None:
                         self.tensors[ij][k] = Jmats[ij]
 
                 # sum the matrices
                 Jij_petsc.zeroEntries()
-                #for k in range(1, len(Jmats[ij])):
+                # for k in range(1, len(Jmats[ij])):
                 for Jmat in Jmats[ij]:
                     Jij_petsc.axpy(1, d.as_backend_type(Jmat).mat())
                 # try assembling here in loop
@@ -259,12 +274,14 @@ class mySNESProblem_nest():
         for j in range(dim):
             Fvecs.append([])
             for k in range(len(self.Fforms[j])):
-                Fvecs[j].append(d.as_backend_type(d.assemble_mixed(self.Fforms[j][k])))#, tensor=d.PETScVector(Fvecs[idx]))
+                Fvecs[j].append(
+                    d.as_backend_type(d.assemble_mixed(self.Fforms[j][k])),
+                )  # , tensor=d.PETScVector(Fvecs[idx]))
             # sum the vectors
             Fi_petsc[j].zeroEntries()
             for k in range(len(self.Fforms[j])):
                 Fi_petsc[j].axpy(1, Fvecs[j][k].vec())
-        
+
         for j in range(dim):
             Fi_petsc[j].assemble()
         # Fvecs = Fnest.getNestSubVecs()
@@ -272,15 +289,14 @@ class mySNESProblem_nest():
         #     d.assemble(self.Fforms[idx][0], tensor=d.PETScVector(Fvecs[idx]))
         # for idx in range(dim):
         #     Fvecs[idx].assemble()
-    
-            
+
     def copy_u(self, xnest):
         uvecs = xnest.getNestSubVecs()
-        duvecs = [None]*self.dim
+        duvecs = [None] * self.dim
         for idx, uvec in enumerate(uvecs):
-            duvecs[idx] = d.PETScVector(uvec)   # convert petsc.Vec -> d.PETScVector
+            duvecs[idx] = d.PETScVector(uvec)  # convert petsc.Vec -> d.PETScVector
             duvecs[idx].vec().copy(self.u.sub(idx).vector().vec())
-            self.u.sub(idx).vector().apply("")            
+            self.u.sub(idx).vector().apply("")
 
     def F(self, snes, x, Fnest):
         self.copy_u(x)
@@ -291,77 +307,108 @@ class mySNESProblem_nest():
     def J(self, snes, x, Jnest, P):
         self.copy_u(x)
         self.assemble_Jnest(Jnest)
-        #d.assemble(self.a, tensor=d.PETScMatrix(J00))
-#====================================
+        # d.assemble(self.a, tensor=d.PETScMatrix(J00))
+
+
+# ====================================
 # sub problem (pure diffusion)
-#====================================
+# ====================================
 def sub_problem(use_stubs=False):
     if use_stubs:
-        u1 = model.u['u'].sub(1)
+        u1 = model.u["u"].sub(1)
         v1 = model.v[1]
-        dx1 = model.child_meshes['er_vol'].dx
+        dx1 = model.child_meshes["er_vol"].dx
     else:
         # sub problem not using stubs
-        mesh = d.UnitCubeMesh(10,10,10)
+        mesh = d.UnitCubeMesh(10, 10, 10)
         V = d.FunctionSpace(mesh, "CG", 1)
         u1 = d.Function(V)
         v1 = d.TestFunction(V)
-        dx1 = d.Measure('dx')
+        dx1 = d.Measure("dx")
 
-    expression = d.Expression('x[0]+2', degree=1)
+    expression = d.Expression("x[0]+2", degree=1)
     u1.assign(expression)
     u1n = u1.copy(deepcopy=True)
     print(f"init: u1 min = {u1.vector()[:].min()}, u1 max = {u1.vector()[:].max()}")
-    F = u1*v1*dx1 + d.inner(d.grad(u1), d.grad(v1))*dx1 - u1n*v1*dx1
-    J = d.derivative(F,u1)
+    F = u1 * v1 * dx1 + d.inner(d.grad(u1), d.grad(v1)) * dx1 - u1n * v1 * dx1
+    J = d.derivative(F, u1)
 
     return u1, F, J
 
+
 def mixed_problem():
-    #mesh = adjacent_cubes_mesh.dolfin_mesh
-    #mesh = mesh
-    mf3 = mf3_; mf2 = mf2_
+    # mesh = adjacent_cubes_mesh.dolfin_mesh
+    # mesh = mesh
+    mf3 = mf3_
+    mf2 = mf2_
     # mesh functions
-    #mf3 = adjacent_cubes_mesh._get_mesh_function(3); mf2 = adjacent_cubes_mesh._get_mesh_function(2)
+    # mf3 = adjacent_cubes_mesh._get_mesh_function(3); mf2 = adjacent_cubes_mesh._get_mesh_function(2)
     # submeshes
-    mesh1 = d.MeshView.create(mf3, 11); mesh2 = d.MeshView.create(mf3, 12); mesh_ = d.MeshView.create(mf2, 4)
+    mesh1 = d.MeshView.create(mf3, 11)
+    mesh2 = d.MeshView.create(mf3, 12)
+    mesh_ = d.MeshView.create(mf2, 4)
     # build mesh mappings
-    mesh_.build_mapping(mesh1); mesh_.build_mapping(mesh2)
+    mesh_.build_mapping(mesh1)
+    mesh_.build_mapping(mesh2)
     # function spaces
-    V1 = d.FunctionSpace(mesh1, "CG", 1); V2 = d.FunctionSpace(mesh2, "CG", 1)
+    V1 = d.FunctionSpace(mesh1, "CG", 1)
+    V2 = d.FunctionSpace(mesh2, "CG", 1)
     # Mixed function space
     W = d.MixedFunctionSpace(V1, V2)
     # functions
     u = d.Function(W)
     un = d.Function(W)
-    u1 = u.sub(0); u2 = u.sub(1)
-    u1n = un.sub(0); u2n = un.sub(1)
+    u1 = u.sub(0)
+    u2 = u.sub(1)
+    u1n = un.sub(0)
+    u2n = un.sub(1)
     # test functions
     v = d.TestFunctions(W)
-    v1 = v[0]; v2 = v[1]
+    v1 = v[0]
+    v2 = v[1]
     # measures
-    dx1 = d.Measure('dx', domain=mesh1); dx2 = d.Measure('dx', domain=mesh2); dx_ = d.Measure('dx', domain=mesh_)
+    dx1 = d.Measure("dx", domain=mesh1)
+    dx2 = d.Measure("dx", domain=mesh2)
+    dx_ = d.Measure("dx", domain=mesh_)
     # un
-    expression1 = d.Expression('x[0]+4', degree=1); expression2 = d.Constant(0.5)
-    u1.assign(expression1); u2.assign(expression2)
-    un.sub(0).assign(expression1); un.sub(1).assign(expression2)
+    expression1 = d.Expression("x[0]+4", degree=1)
+    expression2 = d.Constant(0.5)
+    u1.assign(expression1)
+    u2.assign(expression2)
+    un.sub(0).assign(expression1)
+    un.sub(1).assign(expression2)
     try:
-        print(f"init: u1 min = {u1.vector().get_local()[:].min()}, u1 max = {u1.vector().get_local()[:].max()}")
-        print(f"init: u2 min = {u2.vector().get_local()[:].min()}, u2 max = {u2.vector().get_local()[:].max()}")
+        print(
+            f"init: u1 min = {u1.vector().get_local()[:].min()}, u1 max = {u1.vector().get_local()[:].max()}",
+        )
+        print(
+            f"init: u2 min = {u2.vector().get_local()[:].min()}, u2 max = {u2.vector().get_local()[:].max()}",
+        )
     except:
         print(f"proc {rank} does not have u1/u2 min/max")
     # define problem
-    F1 = u1*v1*dx1 + d.inner(d.grad(u1), d.grad(v1))*dx1 - u1n*v1*dx1 - (d.Constant(0.01)*(u2-u1)*v1*dx_)#(-(u1-u2)*v1*dx_)
-    F2 = u2*v2*dx2 + d.inner(d.grad(u2), d.grad(v2))*dx2 - u2n*v2*dx2 - (d.Constant(0.01)*(u1-u2)*v2*dx_)#((u1-u2)*v2*dx_)
+    F1 = (
+        u1 * v1 * dx1
+        + d.inner(d.grad(u1), d.grad(v1)) * dx1
+        - u1n * v1 * dx1
+        - (d.Constant(0.01) * (u2 - u1) * v1 * dx_)
+    )  # (-(u1-u2)*v1*dx_)
+    F2 = (
+        u2 * v2 * dx2
+        + d.inner(d.grad(u2), d.grad(v2)) * dx2
+        - u2n * v2 * dx2
+        - (d.Constant(0.01) * (u1 - u2) * v2 * dx_)
+    )  # ((u1-u2)*v2*dx_)
 
-    J11 = d.derivative(F1,u1)
-    J12 = d.derivative(F1,u2)
-    J21 = d.derivative(F2,u1)
-    J22 = d.derivative(F2,u2)
+    J11 = d.derivative(F1, u1)
+    J12 = d.derivative(F1, u2)
+    J21 = d.derivative(F2, u1)
+    J22 = d.derivative(F2, u2)
 
-    Fblocks, Jblocks = stubs.model.Model.get_block_system(F1+F2, u._functions)
+    Fblocks, Jblocks = stubs.model.Model.get_block_system(F1 + F2, u._functions)
 
-    return u, un, Fblocks, Jblocks, [F1,F2], [J11,J12,J21,J22]
+    return u, un, Fblocks, Jblocks, [F1, F2], [J11, J12, J21, J22]
+
 
 # print(f"\n\nMixed problem =============")
 u, un, Fblocks, Jblocks, F, J = mixed_problem()
@@ -375,25 +422,27 @@ Fsum = F[0] + F[1]
 # print(f"solve: u2 min = {u.sub(1).vector()[:].min()}, u2 max = {u.sub(1).vector()[:].max()}")
 # print(f"Mixed problem =============\n\n")
 
+
 def snes_solve(snesproblem, Fvec, Jmat):
-    snes = PETSc.SNES().create(d.MPI.comm_world)    
+    snes = PETSc.SNES().create(d.MPI.comm_world)
     snes.setFunction(snesproblem.F, Fvec)
     snes.setJacobian(snesproblem.J, Jmat)
     snes.solve(None, snesproblem.u.vector().vec())
-    #u1 = snesproblem.u.sub(0)
-    #print(f"solve: u1 min = {u1.vector()[:].min()}, u1 max = {u1.vector()[:].max()}")
+    # u1 = snesproblem.u.sub(0)
+    # print(f"solve: u1 min = {u1.vector()[:].min()}, u1 max = {u1.vector()[:].max()}")
     # print(np.isclose(u1.vector()[:].max() - u1.vector()[:].min(), .4842))
     # if u1.vector()[:].min() > 2.1:
     #     print("reasonable solution")
 
+
 def snes_solve_mixed(snesproblem, Fvec, Jmat, upetsc):
-    snes = PETSc.SNES().create(d.MPI.comm_world)    
+    snes = PETSc.SNES().create(d.MPI.comm_world)
     snes.setFunction(snesproblem.F, Fvec)
     snes.setJacobian(snesproblem.J, Jmat)
-    #snes.solve(None, snesproblem.u.vector().vec())
+    # snes.solve(None, snesproblem.u.vector().vec())
     snes.solve(None, upetsc)
-    #u1 = snesproblem.u.sub(0)
-    #print(f"solve: u1 min = {u1.vector()[:].min()}, u1 max = {u1.vector()[:].max()}")
+    # u1 = snesproblem.u.sub(0)
+    # print(f"solve: u1 min = {u1.vector()[:].min()}, u1 max = {u1.vector()[:].max()}")
     # print(np.isclose(u1.vector()[:].max() - u1.vector()[:].min(), .4842))
     # if u1.vector()[:].min() > 2.1:
     #     print("reasonable solution")
@@ -401,25 +450,25 @@ def snes_solve_mixed(snesproblem, Fvec, Jmat, upetsc):
 
 # u1, F, J = sub_problem(use_stubs=False)
 # snesproblem = mySNESProblem(F, u1, J)
-# Fvec = d.PETScVector()  
+# Fvec = d.PETScVector()
 # Jmat = d.PETScMatrix()
 # snes_solve(snesproblem.F, snesproblem.J, Fvec.vec(), Jmat.mat())
 
-#====================================
+# ====================================
 # Nest on mixed problem
-#====================================
+# ====================================
 
 
-#print(f"\n Nest on sub problem")
+# print(f"\n Nest on sub problem")
 # u1, F, J = sub_problem(use_stubs=False)
 # snesproblem = mySNESProblem_nest(F, u1, [J])
-# Fvec = d.PETScVector()  
-#Jmat = d.PETScNestMatrix()
+# Fvec = d.PETScVector()
+# Jmat = d.PETScNestMatrix()
 # J
 # Jdpetsc = d.PETScMatrix()
 # d.assemble(J, tensor=Jdpetsc)
 # Jpetsc = Jdpetsc.mat()
-#Jpetsc_nest = PETSc.Mat().createNest([[Jpetsc, Jpetsc], [Jpetsc, Jpetsc]])
+# Jpetsc_nest = PETSc.Mat().createNest([[Jpetsc, Jpetsc], [Jpetsc, Jpetsc]])
 
 
 print(f"\n Nest on mixed problem")
@@ -429,31 +478,39 @@ snesproblem = mySNESProblem_nest(u, Fblocks, Jblocks)
 d.assemble_mixed(Jblocks[0][0], tensor=d.PETScMatrix())
 Jpetsc_nest = snesproblem.initialize_petsc_matnest()
 Fpetsc_nest = snesproblem.initialize_petsc_vecnest()
-#upetsc = PETSc.Vec().createNest([u.sub(0).vector().vec().copy(), u.sub(1).vector().vec().copy()])
+# upetsc = PETSc.Vec().createNest([u.sub(0).vector().vec().copy(), u.sub(1).vector().vec().copy()])
 upetsc = PETSc.Vec().createNest([u.vector().vec().copy() for u in u._functions])
 
 print("before solve")
 try:
-    print(f"solve: u1 min = {u.sub(0).vector().get_local()[:].min()}, u1 max = {u.sub(0).vector().get_local()[:].max()}")
-    print(f"solve: u2 min = {u.sub(1).vector().get_local()[:].min()}, u2 max = {u.sub(1).vector().get_local()[:].max()}")
+    print(
+        f"solve: u1 min = {u.sub(0).vector().get_local()[:].min()}, u1 max = {u.sub(0).vector().get_local()[:].max()}",
+    )
+    print(
+        f"solve: u2 min = {u.sub(1).vector().get_local()[:].min()}, u2 max = {u.sub(1).vector().get_local()[:].max()}",
+    )
 except:
     print(f"proc {rank} does not have u1/u2 min/max")
 
 snes_solve_mixed(snesproblem, Fpetsc_nest, Jpetsc_nest, upetsc)
 
-#snes.solve(None, upetsc)
+# snes.solve(None, upetsc)
 
 print("after solve")
 try:
-    print(f"solve: u1 min = {u.sub(0).vector().get_local()[:].min()}, u1 max = {u.sub(0).vector().get_local()[:].max()}")
-    print(f"solve: u2 min = {u.sub(1).vector().get_local()[:].min()}, u2 max = {u.sub(1).vector().get_local()[:].max()}")
+    print(
+        f"solve: u1 min = {u.sub(0).vector().get_local()[:].min()}, u1 max = {u.sub(0).vector().get_local()[:].max()}",
+    )
+    print(
+        f"solve: u2 min = {u.sub(1).vector().get_local()[:].min()}, u2 max = {u.sub(1).vector().get_local()[:].max()}",
+    )
 except:
     print(f"proc {rank} does not have u1/u2 min/max")
 
 
 # # J00, J01 = sub_forms_by_domain(J[0])
 # J000, J001 = Jblocks[0]
-# M000 = d.as_backend_type(d.assemble_mixed(J000))#; 
+# M000 = d.as_backend_type(d.assemble_mixed(J000))#;
 # M000 += d.as_backend_type(d.assemble_mixed(J001))
 # #M000.axpy(1, M001, False)
 # J01 = Jblocks[1][0]
@@ -461,7 +518,7 @@ except:
 # J10 = Jblocks[2][0]
 # M10 = d.as_backend_type(d.assemble_mixed(J10))
 # J110, J111 = Jblocks[3]
-# M110 = d.as_backend_type(d.assemble_mixed(J110))#; M111 = 
+# M110 = d.as_backend_type(d.assemble_mixed(J110))#; M111 =
 # M110 += d.as_backend_type(d.assemble_mixed(J111))
 # #M110.axpy(1, M111, False)
 
@@ -501,7 +558,6 @@ except:
 #         print(Jpetsc_nest.getNestSubMatrix(i,j).size)
 
 
-
 # dpM00 = d.PETScMatrix()
 # dpM01 = d.PETScMatrix()
 # M00 = d.assemble_mixed(J00, tensor=dpM00)
@@ -523,41 +579,41 @@ except:
 # sum(M00.array()[:,0]) + sum(M00.array()[:,17]) + sum(M01.array()[:,0]) + sum(M01.array()[:,17])
 
 if False:
-    #====================================
+    # ====================================
     # Mixed problem
-    #====================================
-    Fsum = sum([f.lhs for f in model.forms]) # Sum of all forms
-    u = model.u['u']
+    # ====================================
+    Fsum = sum([f.lhs for f in model.forms])  # Sum of all forms
+    u = model.u["u"]
 
     new_Jlist = list()
     for Jij_domains in model.Jlist:
         Jij = [d.assemble_mixed(Jij_domain) for Jij_domain in Jij_domains]
         Jsum = Jij[0]
         if len(Jij) > 1:
-            for domain_idx in range(1,len(Jij)):
+            for domain_idx in range(1, len(Jij)):
                 Jsum += Jij[domain_idx]
-        
-        new_Jlist.append(Jsum)
 
+        new_Jlist.append(Jsum)
 
     b = d.PETScVector()  # same as b = PETSc.Vec()
     J_mat = d.PETScNestMatrix()
     myproblem = mySNESProblem(Fsum, u, model.Jlist)
-    snes = PETSc.SNES().create(d.MPI.comm_world)    
+    snes = PETSc.SNES().create(d.MPI.comm_world)
     snes.setFunction(myproblem.F, b.vec())
     snes.setJacobian(myproblem.J, J_mat.mat())
 
-    sol = PETSc.Vec().createNest([u.sub(0).vector().vec().copy(), u.sub(1).vector().vec().copy()])
+    sol = PETSc.Vec().createNest(
+        [u.sub(0).vector().vec().copy(), u.sub(1).vector().vec().copy()],
+    )
     # snes.solve(None, sol)
 
     Jnest = d.PETScNestMatrix(new_Jlist)
     unest = d.Vector()
     Jnest.init_vectors(unest, [u.sub(0).vector(), u.sub(1).vector()])
 
-
     # NestMatrix
-    # dP -> P -> 
-    #Jnest00 = new_Jlist[0]
+    # dP -> P ->
+    # Jnest00 = new_Jlist[0]
     Jnest = d.PETScNestMatrix(new_Jlist)
     pnestmat = Jnest.copy().mat()
 
@@ -567,21 +623,20 @@ if False:
         # Jmat = d.assemble_mixed(Jinput)
         # print(Jmat.array().sum()) # for Jinput=model.Jlist[0][0], this is 20
 
-        # 
+        #
         Jmat = d.PETScMatrix()
         # pJmat = d.as_backend_type(Jmat).mat()
         # dpJmat = d.PETScMatrix(pJmat)
-        #model.dolfin_set_function_values(model.sc['A'], 'u', 33)
+        # model.dolfin_set_function_values(model.sc['A'], 'u', 33)
         # Jmat.zero()
-        d.assemble_mixed(Jinput, tensor=Jmat) # this updates Jmat
+        d.assemble_mixed(Jinput, tensor=Jmat)  # this updates Jmat
 
     assemble_submatrix(model.Jlist[0][0])
 
-
     # Starting from a petsc.NestMatrix, wrap with dolfin, then assemble submatrices
     petsc_mat = Jnest.mat()
-        # Jmat = d.assemble_mixed(Jinput)
-        # print(Jmat.array().sum()) # for Jinput=model.Jlist[0][0], this is 20
+    # Jmat = d.assemble_mixed(Jinput)
+    # print(Jmat.array().sum()) # for Jinput=model.Jlist[0][0], this is 20
 
     # Vector
     # dolfin assemble -> petscvec -> dolfin wrapped petsvec -> assemble using dolfin wrapped petscvec as tensor
@@ -591,8 +646,6 @@ if False:
     # pFvec = d.as_backend_type(Fvec).vec()
     # dpFvec = d.PETScVector(pFvec)
     # d.assemble(3*F, tensor=dpFvec) # this updates Fvec
-
-        
 
     # def F(self, snes, x, F):
     #     # convert petsc type vectors into dolfin wrappers
@@ -613,8 +666,6 @@ if False:
 
     #     for bc in self.bcs:
     #         bc.apply(F, x)
-
-
 
     # from dolfin import *
     # def problem():
@@ -667,7 +718,6 @@ if False:
     #     F = derivative(Pi, u, v)
 
     #     return F, u, bcs
-
 
     # class SNESProblem():
     #     def __init__(self, F, u, bcs):
@@ -722,7 +772,7 @@ if False:
     #         d.assemble(self.a, tensor=J)
     #         for bc in self.bcs:
     #             bc.apply(J)
-                
+
     # # # simple non-linear
     # mesh = d.UnitSquareMesh(30,30)
     # V = d.FunctionSpace(mesh, "CG", 1)
@@ -744,10 +794,8 @@ if False:
     # b = d.PETScVector()  # same as b = PETSc.Vec()
     # J_mat = d.PETScMatrix()
 
-    # snes = PETSc.SNES().create(d.MPI.comm_world)    
+    # snes = PETSc.SNES().create(d.MPI.comm_world)
     # snes.setFunction(snesproblem.F, b.vec())
     # snes.setJacobian(snesproblem.J, J_mat.mat())
     # snes.solve(None, snesproblem.u.vector().vec())
     # # u.vector().vec().max() -> (27, 1.041746041109839)
-
-

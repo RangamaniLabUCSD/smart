@@ -1,12 +1,13 @@
 #adjacent_cubes_mesh_test.py
-import dolfin as d
 from copy import deepcopy
+
+import dolfin as d
 import numpy as np
 
 
 def get_bmc_to_pmf_map(bm, sm, pm, bmc_to_smf, smv_to_pmv):
     """
-    For a BoundaryMesh created from a SubMesh of a Parent Mesh, get map of 
+    For a BoundaryMesh created from a SubMesh of a Parent Mesh, get map of
     BoundaryMesh cells to ParentMesh facets.
     from BoundaryMesh to ParentMesh
     c=cell (dim=n), f=facet (dim=n-1), v=vertex (dim=0)
@@ -14,7 +15,7 @@ def get_bmc_to_pmf_map(bm, sm, pm, bmc_to_smf, smv_to_pmv):
     all indices are assumed to be local unless stated otherwise
      * "sm_farray_up" implies indices are from the mesh one level above it
     """
-    # Useful lambdas 
+    # Useful lambdas
     facet_array             = lambda mesh: np.array([x.entities(0) for x in d.facets(mesh)])
     facet_midpoint          = lambda mesh, fidx: list(d.facets(mesh))[fidx].midpoint().array()
     cell_midpoint           = lambda mesh, cidx: list(d.cells(mesh))[cidx].midpoint().array()
@@ -95,7 +96,7 @@ bm_union = d.BoundaryMesh(d.SubMesh(pm, mf_vv, initial_svmarker), 'exterior')
 # initialize unique facet markers in the ParentMesh frame
 unique_pmf = deepcopy(bmc_to_pmf[initial_svmarker])
 
-# Loop over other BoundaryMeshes and find/remove overlapping cells 
+# Loop over other BoundaryMeshes and find/remove overlapping cells
 for svmarker in remaining_svmarkers:
     for pmf in bmc_to_pmf[svmarker]:
         if pmf not in unique_pmf:
@@ -122,14 +123,14 @@ for svmarker in remaining_svmarkers:
 #
 #
 
-#np_unique_array = lambda 
+#np_unique_array = lambda
 =>>>>>>>>>>>>>>>>>>>>>>>>do this next. merge all vertices
 #https://stackoverflow.com/questions/49950412/merge-two-numpy-arrays-and-delete-duplicates
 
 # https://fenicsproject.org/qa/185/entity-mapping-between-a-submesh-and-the-parent-mesh/
 
 # Get entity maps
-temp_emap_0 = 
+temp_emap_0 =
 
 # Find overlapping vertices and cells
 
@@ -139,4 +140,3 @@ me = d.MeshEditor()
 b = bm[11]
 btype = d.CellType.type2string(b.type().cell_type())
 me.open(b, btype, b.topology().dim(), b.geometric_dimension())
-

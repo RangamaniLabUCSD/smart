@@ -1,21 +1,20 @@
-from dolfin import *
 import numpy as np
-
-from KNPEMI_MMS import MMS
+from dolfin import *
 from KNPEMI import setup_square_domain
 from KNPEMI import solve_system
+from KNPEMI_MMS import MMS
 
 # Export results
 do_export = False
 # Polynomial order (= 1 or 2)
 order = 1
-#n_values = [8, 16, 32, 64]
+# n_values = [8, 16, 32, 64]
 n_values = [16]
 n = n_values[0]
 
 t = Constant(0.0)
-dt = 1.0e-5/(n*n) # time step
-Tstop = 1.0e-7    # end time
+dt = 1.0e-5 / (n * n)  # time step
+Tstop = 1.0e-7  # end time
 
 # get physical parameters
 psi = 1.0
@@ -24,8 +23,8 @@ tmp = 1.0
 R = 1.0
 C_M = 1.0
 
-dt_inv = Constant(1./dt)    # invert time step
-dt = Constant(dt)           # make dt Constant
+dt_inv = Constant(1.0 / dt)  # invert time step
+dt = Constant(dt)  # make dt Constant
 # get physical parameters
 psi = 1.0
 F = 1.0
@@ -34,116 +33,175 @@ R = 1.0
 C_M = 1.0
 
 
-
-rNa_i = []; rNa_e = []; rK_i = []; rK_e = []; rCl_i = []; rCl_e = []; rphi_i = []; rphi_e = []; rJM = [];
+rNa_i = []
+rNa_e = []
+rK_i = []
+rK_e = []
+rCl_i = []
+rCl_e = []
+rphi_i = []
+rphi_e = []
+rJM = []
 # For L2 errors
-ENa_i_L2 = []; ENa_e_L2 = []; EK_i_L2 = []; EK_e_L2 = []; ECl_i_L2 = []; ECl_e_L2 = []; Ephi_i_L2 = []; Ephi_e_L2 = []; EJM_L2 = [];
+ENa_i_L2 = []
+ENa_e_L2 = []
+EK_i_L2 = []
+EK_e_L2 = []
+ECl_i_L2 = []
+ECl_e_L2 = []
+Ephi_i_L2 = []
+Ephi_e_L2 = []
+EJM_L2 = []
 # For H1 errors
-ENa_i_H1 = []; ENa_e_H1 = []; EK_i_H1 = []; EK_e_H1 = []; ECl_i_H1 = []; ECl_e_H1 = []; Ephi_i_H1 = []; Ephi_e_H1 = [];
+ENa_i_H1 = []
+ENa_e_H1 = []
+EK_i_H1 = []
+EK_e_H1 = []
+ECl_i_H1 = []
+ECl_e_H1 = []
+Ephi_i_H1 = []
+Ephi_e_H1 = []
 # get MMS terms and exact solutions
 M = MMS()
-src_terms, exact_sols, init_conds, bndry_terms, \
-        subdomains_MMS =  M.get_MMS_terms_KNPEMI(t)
-dt_inv = Constant(1./dt)    # invert time step
-dt = Constant(dt)           # make dt Constant
+src_terms, exact_sols, init_conds, bndry_terms, subdomains_MMS = M.get_MMS_terms_KNPEMI(
+    t,
+)
+dt_inv = Constant(1.0 / dt)  # invert time step
+dt = Constant(dt)  # make dt Constant
 
-Na = {'Di':1.0, 'De':1.0, 'z':1.0,
-        'ki_init':init_conds['Na_i'],
-        'ke_init':init_conds['Na_e'],
-        'f_k_i':src_terms['f_Na_i'],
-        'f_k_e':src_terms['f_Na_e'],
-        'J_k_e':bndry_terms['J_Na_e'],
-        'phi_i_e':exact_sols['phi_i_e'],
-        'f_phi_i':src_terms['f_phi_i'],
-        'f_phi_e':src_terms['f_phi_e'],
-        'f_g_M':src_terms['f_g_M'],
-        'f_J_M':src_terms['f_J_M']}
+Na = {
+    "Di": 1.0,
+    "De": 1.0,
+    "z": 1.0,
+    "ki_init": init_conds["Na_i"],
+    "ke_init": init_conds["Na_e"],
+    "f_k_i": src_terms["f_Na_i"],
+    "f_k_e": src_terms["f_Na_e"],
+    "J_k_e": bndry_terms["J_Na_e"],
+    "phi_i_e": exact_sols["phi_i_e"],
+    "f_phi_i": src_terms["f_phi_i"],
+    "f_phi_e": src_terms["f_phi_e"],
+    "f_g_M": src_terms["f_g_M"],
+    "f_J_M": src_terms["f_J_M"],
+}
 
-K = {'Di':1.0, 'De':1.0, 'z':1.0,
-        'ki_init':init_conds['K_i'],
-        'ke_init':init_conds['K_e'],
-        'f_k_i':src_terms['f_K_i'],
-        'f_k_e':src_terms['f_K_e'],
-        'J_k_e':bndry_terms['J_K_e'],
-        'phi_i_e':exact_sols['phi_i_e'],
-        'f_phi_i':src_terms['f_phi_i'],
-        'f_phi_e':src_terms['f_phi_e'],
-        'f_g_M':src_terms['f_g_M'],
-        'f_J_M':src_terms['f_J_M']}
+K = {
+    "Di": 1.0,
+    "De": 1.0,
+    "z": 1.0,
+    "ki_init": init_conds["K_i"],
+    "ke_init": init_conds["K_e"],
+    "f_k_i": src_terms["f_K_i"],
+    "f_k_e": src_terms["f_K_e"],
+    "J_k_e": bndry_terms["J_K_e"],
+    "phi_i_e": exact_sols["phi_i_e"],
+    "f_phi_i": src_terms["f_phi_i"],
+    "f_phi_e": src_terms["f_phi_e"],
+    "f_g_M": src_terms["f_g_M"],
+    "f_J_M": src_terms["f_J_M"],
+}
 
-Cl = {'Di':1.0, 'De':1.0, 'z':-1.0,
-        'ki_init':init_conds['Cl_i'],
-        'ke_init':init_conds['Cl_e'],
-        'f_k_i':src_terms['f_Cl_i'],
-        'f_k_e':src_terms['f_Cl_e'],
-        'J_k_e':bndry_terms['J_Cl_e'],
-        'phi_i_e':exact_sols['phi_i_e'],
-        'f_phi_i':src_terms['f_phi_i'],
-        'f_phi_e':src_terms['f_phi_e'],
-        'f_g_M':src_terms['f_g_M'],
-        'f_J_M':src_terms['f_J_M']}
+Cl = {
+    "Di": 1.0,
+    "De": 1.0,
+    "z": -1.0,
+    "ki_init": init_conds["Cl_i"],
+    "ke_init": init_conds["Cl_e"],
+    "f_k_i": src_terms["f_Cl_i"],
+    "f_k_e": src_terms["f_Cl_e"],
+    "J_k_e": bndry_terms["J_Cl_e"],
+    "phi_i_e": exact_sols["phi_i_e"],
+    "f_phi_i": src_terms["f_phi_i"],
+    "f_phi_e": src_terms["f_phi_e"],
+    "f_g_M": src_terms["f_g_M"],
+    "f_J_M": src_terms["f_J_M"],
+}
 
 ion_list = [Na, K, Cl]
 
 # solve
-#for i in range(len(n_values)):
+# for i in range(len(n_values)):
 
-#n = n_values[i]
+# n = n_values[i]
 # time variables
 N_ions = len(ion_list)
 interior_mesh, exterior_mesh, gamma_mesh = setup_square_domain(n)
 
 # get MMS terms and exact solutions
-src_terms, exact_sols, init_conds, bndry_terms, \
-            subdomains_MMS =  M.get_MMS_terms_KNPEMI(t)
+src_terms, exact_sols, init_conds, bndry_terms, subdomains_MMS = M.get_MMS_terms_KNPEMI(
+    t,
+)
 
 # ------------------------- Setup function spaces ----------------------- #
 # Element over interior mesh
-P1 = FiniteElement('P', interior_mesh.ufl_cell(), 1)    # ion concentrations and potentials
-P2 = FiniteElement('P', interior_mesh.ufl_cell(), 2)
-P3 = FiniteElement('P', interior_mesh.ufl_cell(), 3)
-Pk = [P1,P2,P3]
-R0 = FiniteElement('R', interior_mesh.ufl_cell(), 0)    # Lagrange to enforce /int phi_i = 0
+P1 = FiniteElement(
+    "P",
+    interior_mesh.ufl_cell(),
+    1,
+)  # ion concentrations and potentials
+P2 = FiniteElement("P", interior_mesh.ufl_cell(), 2)
+P3 = FiniteElement("P", interior_mesh.ufl_cell(), 3)
+Pk = [P1, P2, P3]
+R0 = FiniteElement(
+    "R",
+    interior_mesh.ufl_cell(),
+    0,
+)  # Lagrange to enforce /int phi_i = 0
 # Element over gamma mesh
-Q1 = FiniteElement('P', gamma_mesh.ufl_cell(), 1)        # membrane ion channels
-Q2 = FiniteElement('P', gamma_mesh.ufl_cell(), 2)
-Q3 = FiniteElement('P', gamma_mesh.ufl_cell(), 3)
-Qk = [Q1,Q2,Q3]
+Q1 = FiniteElement("P", gamma_mesh.ufl_cell(), 1)  # membrane ion channels
+Q2 = FiniteElement("P", gamma_mesh.ufl_cell(), 2)
+Q3 = FiniteElement("P", gamma_mesh.ufl_cell(), 3)
+Qk = [Q1, Q2, Q3]
 
 # Intracellular ion concentrations for each ion (N_ion), potential, Lagrange multiplier
-interior_element_list = [Pk[order-1]]*(N_ions + 1) + [R0]
+interior_element_list = [Pk[order - 1]] * (N_ions + 1) + [R0]
 # Extracellular ion concentrations for each (N_ion), potential
-exterior_element_list = [Pk[order-1]]*(N_ions + 1)
+exterior_element_list = [Pk[order - 1]] * (N_ions + 1)
 
 
 # Create function spaces
 Wi = FunctionSpace(interior_mesh, MixedElement(interior_element_list))
 We = FunctionSpace(exterior_mesh, MixedElement(exterior_element_list))
-Wg = FunctionSpace(gamma_mesh, Qk[order-1])
+Wg = FunctionSpace(gamma_mesh, Qk[order - 1])
 W = MixedFunctionSpace(Wi, We, Wg)
-
 
 
 # mark exterior subdomain - subdomains_MMS[0] = (x=0) U (x=1) U (y=0) U (y=1)
 exterior_subdomains = subdomains_MMS[0]
-exterior_boundary = MeshFunction('size_t', exterior_mesh, exterior_mesh.topology().dim()-1, 0)
-[subd.mark(exterior_boundary, 1) for subd in map(CompiledSubDomain, exterior_subdomains)]
+exterior_boundary = MeshFunction(
+    "size_t",
+    exterior_mesh,
+    exterior_mesh.topology().dim() - 1,
+    0,
+)
+[
+    subd.mark(exterior_boundary, 1)
+    for subd in map(CompiledSubDomain, exterior_subdomains)
+]
 # normal on exterior boundary
 n_outer = FacetNormal(exterior_mesh)
 # measure on exterior boundary
-dsOuter = Measure('ds', domain=exterior_mesh, subdomain_data=exterior_boundary, subdomain_id=1)
+dsOuter = Measure(
+    "ds",
+    domain=exterior_mesh,
+    subdomain_data=exterior_boundary,
+    subdomain_id=1,
+)
 
 # mark interface - subdomains_MMS[1] = (x=0.25) U (x=0.75) U (y=0.25) U (y=0.75)
 gamma_subdomains = subdomains_MMS[1]
 # Mark interface
-gamma_boundary = MeshFunction('size_t', gamma_mesh,gamma_mesh.topology().dim(), 0)
-[subd.mark(gamma_boundary, i) for i, subd in enumerate(map(CompiledSubDomain, gamma_subdomains), 1)]  
+gamma_boundary = MeshFunction("size_t", gamma_mesh, gamma_mesh.topology().dim(), 0)
+[
+    subd.mark(gamma_boundary, i)
+    for i, subd in enumerate(map(CompiledSubDomain, gamma_subdomains), 1)
+]
 # measures on exterior mesh
-dxe = Measure('dx', domain=exterior_mesh)    
+dxe = Measure("dx", domain=exterior_mesh)
 # measure on interior mesh
-dxi = Measure('dx', domain=interior_mesh)
+dxi = Measure("dx", domain=interior_mesh)
 # measure on gamma
-dxGamma = Measure('dx', domain=gamma_mesh, subdomain_data=gamma_boundary)
+dxGamma = Measure("dx", domain=gamma_mesh, subdomain_data=gamma_boundary)
 
 
 # ------------------------- Setup functions ----------------------------- #
@@ -165,54 +223,53 @@ ui_prev = split(ui_p)
 ue_prev = split(ue_p)
 
 # intracellular potential
-phi_i = ui[N_ions]              # unknown
-vphi_i = vi[N_ions]             # test function
+phi_i = ui[N_ions]  # unknown
+vphi_i = vi[N_ions]  # test function
 # extracellular potential
-phi_e = ue[N_ions]              # unknown
-vphi_e = ve[N_ions]             # test function
+phi_e = ue[N_ions]  # unknown
+vphi_e = ve[N_ions]  # test function
 # Lagrange multiplier for /int phi_i = 0
-_c = ui[N_ions+1]               # unknown
-_d = vi[N_ions+1]               # test function
+_c = ui[N_ions + 1]  # unknown
+_d = vi[N_ions + 1]  # test function
 
 
 # get MMS terms and exact solutions
-src_terms, exact_sols, init_conds, bndry_terms, \
-            subdomains_MMS =  M.get_MMS_terms_KNPEMI(t)
-            
+src_terms, exact_sols, init_conds, bndry_terms, subdomains_MMS = M.get_MMS_terms_KNPEMI(
+    t,
+)
+
 # set initial membrane potential
-phi_M_init = init_conds['phi_M']
+phi_M_init = init_conds["phi_M"]
 phi_M_prev = interpolate(phi_M_init, Wg)
 
 # --------------------- Setup variational formulation ---------------------- #
 # sum of fractions
 alpha_i_sum = 0  # intracellular
 alpha_e_sum = 0  # extracellular
-I_ch = 0         # total channel current
-idx = 0; ion = ion_list[0]
+I_ch = 0  # total channel current
+idx = 0
+ion = ion_list[0]
 # Initialize parts of variational formulation
-#for idx, ion in enumerate(ion_list):
+# for idx, ion in enumerate(ion_list):
 # get ion attributes
-z = ion['z']; Di = ion['Di']; De = ion['De'];
+z = ion["z"]
+Di = ion["Di"]
+De = ion["De"]
 
 # set initial value of intra and extracellular ion concentration
-assign(ui_p.sub(idx), interpolate(ion['ki_init'], Wi.sub(idx).collapse()))
-assign(ue_p.sub(idx), interpolate(ion['ke_init'], We.sub(idx).collapse()))
+assign(ui_p.sub(idx), interpolate(ion["ki_init"], Wi.sub(idx).collapse()))
+assign(ue_p.sub(idx), interpolate(ion["ke_init"], We.sub(idx).collapse()))
 
 
-
-#LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
+# LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
 ui_p.set_allow_extrapolation(True)
-parameters['allow_extrapolation'] = True
+parameters["allow_extrapolation"] = True
 # add ion specific contribution to fraction alpha
-#ui_prev_g = interpolate(ui_p.sub(idx), Wg)
+# ui_prev_g = interpolate(ui_p.sub(idx), Wg)
 
 
 # solve
-#wh, interior_mesh, exterior_mesh, gamma_mesh = solve_system(n, t, dt, Tstop, ion_list, M, order)
-
-
-
-
+# wh, interior_mesh, exterior_mesh, gamma_mesh = solve_system(n, t, dt, Tstop, ion_list, M, order)
 
 
 # hi = interior_mesh.hmin()
@@ -259,7 +316,7 @@ parameters['allow_extrapolation'] = True
 # if do_export:
 #     encoding = XDMFFile.Encoding.HDF5 if has_hdf5() else XDMFFile.Encoding.ASCII
 #     if MPI.size(MPI.comm_world) > 1 and encoding == XDMFFile.Encoding.ASCII:
-#         print("XDMF file output not supported in parallel without HDF5")        
+#         print("XDMF file output not supported in parallel without HDF5")
 #     out_nai = XDMFFile(MPI.comm_world, "exact-Na_i.xdmf")
 #     out_nai.write(Na_i_e)
 #     out_nae = XDMFFile(MPI.comm_world, "exact-Na_e.xdmf")

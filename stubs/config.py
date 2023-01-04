@@ -1,9 +1,10 @@
 """
 Configuration settings for simulation: plotting, reaction types, solution output, etc.
 """
+import logging
+
 import dolfin as d
 import ufl
-import logging
 
 global_settings = {
     "main_dir": None,
@@ -127,7 +128,7 @@ class Config:
             raise ValueError(f"Please provide a final time in config.solver")
         if self.solver["initial_dt"] is None:
             raise ValueError(
-                f"Please provide an initial time-step size in config.solver"
+                f"Please provide an initial time-step size in config.solver",
             )
 
     def set_logger_levels(self):

@@ -1,6 +1,6 @@
 Here we explore models built using just two different simple kinetic systems + several different mesh topologies.
 
-File and directories are organized as such: 
+File and directories are organized as such:
   /exampleXY
     example_XY_model.py    [run this script to generate the .sbmodel file]
     example_XY.sbmodel      [all data necessary for model]
@@ -32,5 +32,3 @@ Examples included:
  * example6c (same as exmaple53 but showing it also works on a 2d mesh)
  * example5d (same as example53 but showing that the non-manifold mesh can have pdes on surfaces other than the interface)
  * example6d (same as example54 but showing it also works on a 2d mesh)
-
-

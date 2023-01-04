@@ -1,19 +1,18 @@
 # debugging 06/04/22
-
-
-import petsc4py.PETSc as p
 import dolfin as d
 import matplotlib.pyplot as plt
+import petsc4py.PETSc as p
+
 comm = d.MPI.comm_world
 
 P = d.PETScMatrix()
-mesh = d.UnitSquareMesh(2,2)
-V = d. FunctionSpace(mesh, 'CG', 1)
+mesh = d.UnitSquareMesh(2, 2)
+V = d.FunctionSpace(mesh, "CG", 1)
 u = d.TrialFunction(V)
-u_ = d.interpolate(d.Expression('10*x[0]*x[1]', degree=1), V)
+u_ = d.interpolate(d.Expression("10*x[0]*x[1]", degree=1), V)
 v = d.TestFunction(V)
-F = d.inner(d.grad(u), d.grad(v))*d.dx 
-L = d.inner(u_, v)*d.dx
+F = d.inner(d.grad(u), d.grad(v)) * d.dx
+L = d.inner(u_, v) * d.dx
 B = d.assemble(L)
 M = d.assemble(F)
 # M.local_range(0)
@@ -28,7 +27,7 @@ Q.setSizes(((lnrow, gnrow), (lncol, gncol)))
 Q.setType("aij")
 Q.setUp()
 
-for i,mat in enumerate([Mback, Q]): 
+for i, mat in enumerate([Mback, Q]):
     print(f"\n\n===========================\nMatrix:  {['Mback', 'Q'][i]} ")
     print(mat.getSizes())
     print(mat.getType())

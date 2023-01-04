@@ -5,7 +5,8 @@ import pickle
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from decimal import Decimal
-from itertools import chain, combinations
+from itertools import chain
+from itertools import combinations
 
 import dolfin as d
 import numpy as np
@@ -18,18 +19,26 @@ from tabulate import tabulate
 from ufl.algorithms.ad import expand_derivatives
 from ufl.form import sub_forms_by_domain
 
-from .common import Stopwatch
 from .common import _fancy_print as fancy_print
+from .common import Stopwatch
 from .common import sub
-from .utils import empty_sbmodel
 from .config import Config
-from .mesh import ChildMesh, ParentMesh
-from .model_assembly import (Compartment, CompartmentContainer, FluxContainer,
-                             Form, FormContainer, Parameter,
-                             ParameterContainer, Reaction, ReactionContainer,
-                             Species, SpeciesContainer)
+from .mesh import ChildMesh
+from .mesh import ParentMesh
+from .model_assembly import Compartment
+from .model_assembly import CompartmentContainer
+from .model_assembly import FluxContainer
+from .model_assembly import Form
+from .model_assembly import FormContainer
+from .model_assembly import Parameter
+from .model_assembly import ParameterContainer
+from .model_assembly import Reaction
+from .model_assembly import ReactionContainer
+from .model_assembly import Species
+from .model_assembly import SpeciesContainer
 from .solvers import stubsSNESProblem
 from .units import unit
+from .utils import empty_sbmodel
 
 Print = PETSc.Sys.Print
 
@@ -69,33 +78,21 @@ class Model:
     def from_dict(cls, input_dict):
         pc, sc, cc, rc = empty_sbmodel()
         pc.add(
-            [
-                Parameter.from_dict(parameter)
-                for parameter in input_dict["parameters"]
-            ]
+            [Parameter.from_dict(parameter) for parameter in input_dict["parameters"]],
         )
-        sc.add(
-            [
-                Species.from_dict(species)
-                for species in input_dict["species"]
-            ]
-        )
+        sc.add([Species.from_dict(species) for species in input_dict["species"]])
         cc.add(
             [
                 Compartment.from_dict(compartment)
                 for compartment in input_dict["compartments"]
-            ]
+            ],
         )
-        rc.add(
-            [
-                Reaction.from_dict(reaction)
-                for reaction in input_dict["reactions"]
-            ]
-        )
+        rc.add([Reaction.from_dict(reaction) for reaction in input_dict["reactions"]])
         config = Config()
         config.__dict__ = input_dict["config"]
         parent_mesh = ParentMesh(
-            input_dict["parent_mesh_filename"], input_dict["parent_mesh_filetype"]
+            input_dict["parent_mesh_filename"],
+            input_dict["parent_mesh_filetype"],
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
@@ -160,9 +157,7 @@ class Model:
         # nicer printing for timers
         print_buffer = max([len(stopwatch_name) for stopwatch_name in stopwatch_names])
         self.stopwatches = {
-            stopwatch_name: Stopwatch(
-                stopwatch_name, print_buffer=print_buffer
-            )
+            stopwatch_name: Stopwatch(stopwatch_name, print_buffer=print_buffer)
             for stopwatch_name in stopwatch_names
         }
 
@@ -230,7 +225,7 @@ class Model:
 
         # Solver related parameters
         self._base_t = Decimal(
-            "0." + (self.config.solver["time_precision"] - 1) * "0" + "1"
+            "0." + (self.config.solver["time_precision"] - 1) * "0" + "1",
         )
         self.t = self.rounded_decimal(0.0)
         self.dt = self.rounded_decimal(self.config.solver["initial_dt"])
@@ -267,7 +262,8 @@ class Model:
         self._init_1_2_check_namespace_conflicts()
         self._init_1_3_check_parameter_dimensionality()
         fancy_print(
-            f"Step 1 of initialization completed successfully!", text_color="magenta"
+            f"Step 1 of initialization completed successfully!",
+            text_color="magenta",
         )
 
     def _init_2(self):
@@ -284,7 +280,8 @@ class Model:
         self._init_2_6_link_species_to_compartments()
         self._init_2_7_get_species_compartment_indices()
         fancy_print(
-            f"Step 2 of initialization completed successfully!", text_color="magenta"
+            f"Step 2 of initialization completed successfully!",
+            text_color="magenta",
         )
 
     def _init_3(self):
@@ -329,15 +326,16 @@ class Model:
 
     def _init_1_1_check_mesh_dimensionality(self):
         fancy_print(
-            f"Check that mesh/compartment dimensionalities match", format_type="log"
+            f"Check that mesh/compartment dimensionalities match",
+            format_type="log",
         )
         if (self.max_dim - self.min_dim) not in [0, 1]:
             raise ValueError(
-                "(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1."
+                "(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1.",
             )
         if self.max_dim > self.parent_mesh.dimensionality:
             raise ValueError(
-                "Maximum dimension of a compartment is higher than the topological dimension of parent mesh."
+                "Maximum dimension of a compartment is higher than the topological dimension of parent mesh.",
             )
         # This is possible to simulate but could be unintended. (e.g. if you have a 3d mesh you could choose to only simulate on the surface)
         if self.max_dim != self.parent_mesh.dimensionality:
@@ -358,14 +356,14 @@ class Model:
             self._all_keys = self._all_keys.union(keys)
         if sum([c.size for c in containers]) != len(self._all_keys):
             raise ValueError(
-                "Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name."
+                "Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name.",
             )
 
         protected_names = {"x[0]", "x[1]", "x[2]", "t", "unit_scale_factor"}
         # Protect the variable names 'x[0]', 'x[1]', 'x[2]' and 't' because they are used for spatial dimensions and time
         if not protected_names.isdisjoint(self._all_keys):
             raise ValueError(
-                "An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', 't', or 'unit_scale_factor'). Please change the name."
+                "An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', 't', or 'unit_scale_factor'). Please change the name.",
             )
 
         # Make sure there are no overlapping markers or markers with value 0
@@ -387,18 +385,19 @@ class Model:
     def _init_1_3_check_parameter_dimensionality(self):
         if "x[2]" in self._all_keys and self.max_dim < 3:
             raise ValueError(
-                "An object has the variable name 'x[2]' but there are less than 3 spatial dimensions."
+                "An object has the variable name 'x[2]' but there are less than 3 spatial dimensions.",
             )
         if "x[1]" in self._all_keys and self.max_dim < 2:
             raise ValueError(
-                "An object has the variable name 'x[1]' but there are less than 2 spatial dimensions."
+                "An object has the variable name 'x[1]' but there are less than 2 spatial dimensions.",
             )
 
     # Step 2 - Cross-container Dependent Initialization
 
     def _init_2_1_reactions_to_symbolic_strings(self):
         fancy_print(
-            f"Turning reactions into unsigned symbolic flux strings", format_type="log"
+            f"Turning reactions into unsigned symbolic flux strings",
+            format_type="log",
         )
         """
         Turn all reactions into unsigned symbolic flux strings
@@ -425,24 +424,24 @@ class Model:
             # Custom reaction
             elif reaction.reaction_type in self.config.reaction_database.keys():
                 reaction.eqn_f_str = reaction._parse_custom_reaction(
-                    self.config.reaction_database[reaction.reaction_type]
+                    self.config.reaction_database[reaction.reaction_type],
                 )
 
             # pre-defined equation string
             elif reaction.eqn_f_str or reaction.eqn_r_str:
                 if reaction.eqn_f_str:
                     reaction.eqn_f_str = reaction._parse_custom_reaction(
-                        reaction.eqn_f_str
+                        reaction.eqn_f_str,
                     )
                 if reaction.eqn_r_str:
                     reaction.eqn_r_str = reaction._parse_custom_reaction(
-                        reaction.eqn_r_str
+                        reaction.eqn_r_str,
                     )
 
             else:
                 raise ValueError(
                     "Reaction %s does not seem to have an associated equation"
-                    % reaction.name
+                    % reaction.name,
                 )
 
     def _init_2_2_check_reaction_validity(self):
@@ -462,7 +461,7 @@ class Model:
                 if len(param_set) + len(species_set) != len(var_set):
                     diff_set = var_set.difference(param_set.union(species_set))
                     raise NameError(
-                        f"Reaction {reaction.name} refers to a parameter or species ({diff_set}) that is not in the model."
+                        f"Reaction {reaction.name} refers to a parameter or species ({diff_set}) that is not in the model.",
                     )
 
     def _init_2_3_link_reaction_properties(self):
@@ -504,29 +503,29 @@ class Model:
                 if all(is_volume):
                     raise NotImplementedError(
                         f"Reaction {reaction.name} has two volumes - the adjoining surface must be specified "
-                        f"using reaction.explicit_restriction_to_domain"
+                        f"using reaction.explicit_restriction_to_domain",
                     )
                     # reaction.topology = 'volume_volume'
                 elif not any(is_volume):
                     raise Exception(
-                        f"Reaction {reaction.name} involves two surfaces. This is not supported."
+                        f"Reaction {reaction.name} involves two surfaces. This is not supported.",
                     )
                 else:
                     reaction.topology = "volume_surface"
             elif len(is_volume) == 3:
                 if sum(is_volume) == 3:
                     raise Exception(
-                        f"Reaction {reaction.name} involves three volumes. This is not supported."
+                        f"Reaction {reaction.name} involves three volumes. This is not supported.",
                     )
                 elif sum(is_volume) < 2:
                     raise Exception(
-                        f"Reaction {reaction.name} involves two or more surfaces. This is not supported."
+                        f"Reaction {reaction.name} involves two or more surfaces. This is not supported.",
                     )
                 else:
                     reaction.topology = "volume_surface_volume"
             else:
                 raise ValueError(
-                    "Number of compartments involved in a flux must be in [1,2,3]!"
+                    "Number of compartments involved in a flux must be in [1,2,3]!",
                 )
 
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
@@ -557,7 +556,8 @@ class Model:
                     self.sc.remove(species)
                 fancy_print(print_str, format_type="log_urgent")
                 fancy_print(
-                    f"Removing unused species(s) from model!", format_type="log_urgent"
+                    f"Removing unused species(s) from model!",
+                    format_type="log_urgent",
                 )
             else:
                 raise ValueError(print_str)
@@ -593,7 +593,8 @@ class Model:
 
     def _init_2_7_get_species_compartment_indices(self):
         fancy_print(
-            f"Getting indices for species for each compartment", format_type="log"
+            f"Getting indices for species for each compartment",
+            format_type="log",
         )
         for compartment in self.cc:
             index = 0
@@ -683,15 +684,16 @@ class Model:
             # intersection with a single volume mesh
             for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
                 child_mesh.find_surface_to_volumes_mesh_intersection(
-                    [sibling_volume_mesh]
+                    [sibling_volume_mesh],
                 )
             # intersection with a pair of volume meshes
             sibling_volume_mesh_pairs = combinations(
-                self.parent_mesh.child_volume_meshes, 2
+                self.parent_mesh.child_volume_meshes,
+                2,
             )
             for sibling_volume_mesh_pair in sibling_volume_mesh_pairs:
                 child_mesh.find_surface_to_volumes_mesh_intersection(
-                    list(sibling_volume_mesh_pair)
+                    list(sibling_volume_mesh_pair),
                 )
 
     def _init_3_6_get_intersection_submeshes(self):
@@ -709,7 +711,7 @@ class Model:
             for mesh_id_set in child_mesh.intersection_map.keys():
                 for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
                     child_mesh.intersection_submesh[mesh_id_set].build_mapping(
-                        sibling_volume_mesh.dolfin_mesh
+                        sibling_volume_mesh.dolfin_mesh,
                     )
 
     def _init_3_7_get_integration_measures(self):
@@ -733,7 +735,9 @@ class Model:
                 parameter.dolfin_constant = d.Constant(parameter.value)
             elif parameter.type == "expression" and not parameter.use_preintegration:
                 parameter.dolfin_expression = d.Expression(
-                    sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1
+                    sym.printing.ccode(parameter.sym_expr),
+                    t=self.T,
+                    degree=1,
                 )
             elif parameter.type == "expression" and parameter.use_preintegration:
                 parameter.dolfin_constant = d.Constant(parameter.value)
@@ -766,11 +770,12 @@ class Model:
 
     def _init_4_2_define_dolfin_function_spaces(self):
         fancy_print(
-            f"Defining dolfin function spaces for compartments", format_type="log"
+            f"Defining dolfin function spaces for compartments",
+            format_type="log",
         )
         # Aliases
         max_compartment_name = max(
-            [len(compartment_name) for compartment_name in self.cc.keys]
+            [len(compartment_name) for compartment_name in self.cc.keys],
         )
 
         # Make the individual function spaces (per compartment)
@@ -791,7 +796,9 @@ class Model:
                 )
             else:
                 compartment.V = d.FunctionSpace(
-                    self.child_meshes[compartment.name].dolfin_mesh, "P", 1
+                    self.child_meshes[compartment.name].dolfin_mesh,
+                    "P",
+                    1,
                 )
 
         self.V = [compartment.V for compartment in self._active_compartments]
@@ -884,7 +891,7 @@ class Model:
                 species.V = sub(compartment.V, species.dof_index)
                 species.v = sub(compartment.v, species.dof_index)
                 species.dof_map = self.dolfin_get_dof_indices(
-                    species
+                    species,
                 )  # species.V.dofmap().dofs()
 
                 for key in compartment.u.keys():
@@ -892,7 +899,8 @@ class Model:
                     species.u[key] = sub(compartment.u[key], species.dof_index)
                     # compartment.u[key].sub(species.dof_index)
                     species._usplit[key] = sub(
-                        compartment._usplit[key], species.dof_index
+                        compartment._usplit[key],
+                        species.dof_index,
                     )
                 species.ut = sub(compartment.ut, species.dof_index)
 
@@ -907,13 +915,15 @@ class Model:
                     sidx = species.dof_index
                     if compartment.num_species > 1:
                         species.u[key].rename(
-                            f"{compartment.name}_{sidx}_{species.name}_{key}", ""
+                            f"{compartment.name}_{sidx}_{species.name}_{key}",
+                            "",
                         )
 
     def _init_4_6_check_dolfin_function_validity(self):
         "Sanity check... If an error occurs here it is likely an internal bug..."
         fancy_print(
-            f"Checking that dolfin functions were created correctly", format_type="log"
+            f"Checking that dolfin functions were created correctly",
+            format_type="log",
         )
         # sanity check
         for compartment in self._active_compartments:  # self.cc:
@@ -950,11 +960,15 @@ class Model:
             for ukey in species.u.keys():
                 if isinstance(species.initial_condition, float):
                     self.dolfin_set_function_values(
-                        species, ukey, species.initial_condition
+                        species,
+                        ukey,
+                        species.initial_condition,
                     )
                 else:
                     self.dolfin_set_function_values(
-                        species, ukey, species.initial_condition_expression
+                        species,
+                        ukey,
+                        species.initial_condition_expression,
                     )
 
     def _init_5_1_reactions_to_fluxes(self):
@@ -998,7 +1012,7 @@ class Model:
                     flux_form_units,
                     True,
                     linearity_dict,
-                )
+                ),
             )
 
         for species in self.sc:
@@ -1033,7 +1047,7 @@ class Model:
                         Dform_units,
                         True,
                         linear_wrt_comp,
-                    )
+                    ),
                 )
             # mass (time derivative) terms
             Muform = (u) * v / self.dT * dx
@@ -1052,7 +1066,7 @@ class Model:
                     mass_form_units,
                     True,
                     linear_wrt_comp,
-                )
+                ),
             )
             Munform = (-un) * v / self.dT * dx
             self.forms.add(
@@ -1064,7 +1078,7 @@ class Model:
                     mass_form_units,
                     True,
                     linear_wrt_comp,
-                )
+                ),
             )
         for compartment in self.cc:
             diffusive_forms = [
@@ -1118,14 +1132,14 @@ class Model:
                     f.lhs
                     for f in self.forms
                     if all(z == True for z in f.linear_wrt_comp.values())
-                ]
+                ],
             )
             self.Fsum_nonlinear = sum(
                 [
                     f.lhs
                     for f in self.forms
                     if not all(z == True for z in f.linear_wrt_comp.values())
-                ]
+                ],
             )
             # self.Fsum_all       = self.Fsum_linear + self.Fsum_nonlinear
 
@@ -1141,14 +1155,17 @@ class Model:
             fancy_print("Getting linear block Jacobian components", format_type="log")
             _, self.Jblocks_linear, _ = self.get_block_system(self.Fsum_linear, u)
             fancy_print(
-                "Getting non-linear block Jacobian components", format_type="log"
+                "Getting non-linear block Jacobian components",
+                format_type="log",
             )
             _, self.Jblocks_nonlinear, _ = self.get_block_system(self.Fsum_nonlinear, u)
             fancy_print(
-                "Getting linear+non-linear block Jacobian components", format_type="log"
+                "Getting linear+non-linear block Jacobian components",
+                format_type="log",
             )
             self.Fblocks_all, self.Jblocks_all, _ = self.get_block_system(
-                self.Fsum_all, u
+                self.Fsum_all,
+                u,
             )
 
         # Not separating linear/non-linear components (everything assumed non-linear)
@@ -1193,7 +1210,7 @@ class Model:
                 self._ubackend = u[0].vector().vec().copy()
             else:
                 self._ubackend = PETSc.Vec().createNest(
-                    [usub.vector().vec().copy() for usub in u]
+                    [usub.vector().vec().copy() for usub in u],
                 )
 
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
@@ -1231,11 +1248,15 @@ class Model:
 
         else:
             fancy_print(
-                f"Using dolfin MixedNonlinearVariationalSolver", format_type="log"
+                f"Using dolfin MixedNonlinearVariationalSolver",
+                format_type="log",
             )
             self._ubackend = [u[i]._cpp_object for i in range(len(u))]
             self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(
-                self.Fblocks_all, self._ubackend, [], self.Jblocks_all
+                self.Fblocks_all,
+                self._ubackend,
+                [],
+                self.Jblocks_all,
             )
             # self.problem_alternative = d.MixedNonlinearVariationalProblem(Fblock, u, [], J)
             self.solver = d.MixedNonlinearVariationalSolver(self.problem)
@@ -1547,7 +1568,7 @@ class Model:
 
         if tadjust < tnow:
             raise AssertionError(
-                "tadjust (Next time to adjust dt) is smaller than current time."
+                "tadjust (Next time to adjust dt) is smaller than current time.",
             )
 
         # If true, this means taking a full time-step with current values of t and dt would pass a checkpoint to adjust dt
@@ -1667,10 +1688,12 @@ class Model:
             self.idx_nl.append(self.solver.its)
             self.idx_l.append(self.solver.ksp.its)
             fancy_print(
-                f"Non-linear solver iterations: {self.solver.its}", format_type="log"
+                f"Non-linear solver iterations: {self.solver.its}",
+                format_type="log",
             )
             fancy_print(
-                f"Linear solver iterations: {self.solver.ksp.its}", format_type="log"
+                f"Linear solver iterations: {self.solver.ksp.its}",
+                format_type="log",
             )
             fancy_print(
                 f"SNES converged reason: {self.solver.getConvergedReason()}",
@@ -1698,7 +1721,7 @@ class Model:
             if not self.solver.converged:
                 if not self.config.solver["attempt_timestep_restart_on_divergence"]:
                     raise RuntimeError(
-                        f"Model {self.name}: SNES diverged and attempt_timestep_restart_on_divergence is False. Exiting."
+                        f"Model {self.name}: SNES diverged and attempt_timestep_restart_on_divergence is False. Exiting.",
                     )
                 self.stopwatches["Total time step"].stop()
                 fancy_print(
@@ -1716,7 +1739,7 @@ class Model:
                     self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                 else:
                     self._ubackend = PETSc.Vec().createNest(
-                        [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                        [usub.vector().vec().copy() for usub in self.u["u"]._functions],
                     )
                 self._failed_to_converge = True
                 self.monolithic_solve()
@@ -1730,12 +1753,14 @@ class Model:
             self.solver.solve()
 
             fancy_print(
-                f"Total residual: {self.get_total_residual(norm=2)}", format_type="log"
+                f"Total residual: {self.get_total_residual(norm=2)}",
+                format_type="log",
             )
             residuals = dict()
             for compartment in self._active_compartments:
                 residuals[compartment.name] = self.get_compartment_residual(
-                    compartment, norm=2
+                    compartment,
+                    norm=2,
                 )
                 fancy_print(
                     f"L2-norm of compartment {compartment.name} is {residuals[compartment.name]}",
@@ -1778,7 +1803,7 @@ class Model:
                 self.dtvec[-1],
                 self.residuals[-1],
                 self.solver.getConvergedReason(),
-            )
+            ),
         )
         # Remove previous values
         self.idx = int(self.idx) - 1
@@ -1791,16 +1816,16 @@ class Model:
         """Updates all time dependent parameters. Time-dependent parameters are
         either defined either symbolically or through a data file, and each of
         these can either be defined as a direct function of t, p(t), or a
-        "pre-integrated expression", \int_{t_n}^{t_{n+1}} P(tau) dtau, which allows for
+        "pre-integrated expression", \\int_{t_n}^{t_{n+1}} P(tau) dtau, which allows for
         exact integration when the expression the parameter appears in doesn't rely
         on any other time-dependet variables. This may be useful for guaranteeing
         a certain amount of flux independent of time-stepping.
 
         Backward Euler is essentially making the approximation:
-        du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \int_{t_n}^{t_{n+1}} f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
+        du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \\int_{t_n}^{t_{n+1}} f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
         If some portion of f is only dependent on t, e.g. f=f_1+f_2+...+f_n, f_i=f_i(t),
         we can use the exact expression where F_i(t) is the anti-derivative of f_i(t).
-        \int_{t_n}^{t_{n+1}} f_i(t_{n+1}) -> (F_i(t_{n+1}) - F_i(t_n))
+        \\int_{t_n}^{t_{n+1}} f_i(t_{n+1}) -> (F_i(t_{n+1}) - F_i(t_n))
 
         Therefore,
         f(t_{n+1}) = (F_i(t_{n+1}) - F_i(t_n))/dt
@@ -1820,7 +1845,7 @@ class Model:
                 if parameter.type == "expression":
                     parameter.value = parameter.sym_expr.subs({"t": t}).evalf()
                     parameter.value_vector = np.vstack(
-                        (parameter.value_vector, [t, parameter.value])
+                        (parameter.value_vector, [t, parameter.value]),
                     )
                     continue
                 # Parameters from a data file need to have their dolfin constant updated
@@ -1830,11 +1855,11 @@ class Model:
                     # We never want time to extrapolate beyond the provided data.
                     if t < t_data[0] or t > t_data[-1]:
                         raise Exception(
-                            "Parameter cannot be extrapolated beyond provided data."
+                            "Parameter cannot be extrapolated beyond provided data.",
                         )
                     # Just in case... return a nan if value is outside of bounds
                     new_value = float(
-                        np.interp(t, t_data, p_data, left=np.nan, right=np.nan)
+                        np.interp(t, t_data, p_data, left=np.nan, right=np.nan),
                     )
                     fancy_print(
                         f"Time-dependent parameter {parameter_name} updated by data. New value is {new_value}",
@@ -1853,10 +1878,18 @@ class Model:
                 if parameter.type == "from_file":
                     int_data = parameter.preint_sampling_data
                     a = np.interp(
-                        tn, int_data[:, 0], int_data[:, 1], left=np.nan, right=np.nan
+                        tn,
+                        int_data[:, 0],
+                        int_data[:, 1],
+                        left=np.nan,
+                        right=np.nan,
                     )
                     b = np.interp(
-                        t, int_data[:, 0], int_data[:, 1], left=np.nan, right=np.nan
+                        t,
+                        int_data[:, 0],
+                        int_data[:, 1],
+                        left=np.nan,
+                        right=np.nan,
                     )
                     new_value = float((b - a) / dt)
                     fancy_print(
@@ -1867,7 +1900,7 @@ class Model:
             if new_value is not None:
                 assert not np.isnan(new_value)
                 parameter.value_vector = np.vstack(
-                    (parameter.value_vector, [t, new_value])
+                    (parameter.value_vector, [t, new_value]),
                 )
                 parameter.value = new_value
                 parameter.dolfin_constant.assign(new_value)
@@ -2145,13 +2178,27 @@ class Model:
         self.data.init_solution_files(self.sc, self.config)
         self.data.store_solution_files(self.u, self.t, self.config)
         self.data.compute_statistics(
-            self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx
+            self.u,
+            self.t,
+            self.dt,
+            self.sc,
+            self.pc,
+            self.cc,
+            self.fc,
+            self.nl_idx,
         )
         self.data.init_plot(self.config, self.sc, self.fc)
 
     def post_process(self):
         self.data.compute_statistics(
-            self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx
+            self.u,
+            self.t,
+            self.dt,
+            self.sc,
+            self.pc,
+            self.cc,
+            self.fc,
+            self.nl_idx,
         )
         self.data.compute_probe_values(self.u, self.sc)
         self.data.output_pickle()
@@ -2272,7 +2319,12 @@ class Model:
         return len(self._active_compartments)
 
     def get_mass(
-        self, species, units=None, units_final=None, ukey="u", sub_domain=None
+        self,
+        species,
+        units=None,
+        units_final=None,
+        ukey="u",
+        sub_domain=None,
     ):
         u_units = species.concentration_units
         dx_units = species.compartment.measure_units
@@ -2291,11 +2343,11 @@ class Model:
             return d.assemble(
                 species.u["u"]
                 * units_scale
-                * species.compartment.mesh.dx_uncombined[sub_domain]
+                * species.compartment.mesh.dx_uncombined[sub_domain],
             )
         else:
             return d.assemble(
-                species.u["u"] * units_scale * species.compartment.mesh.dx
+                species.u["u"] * units_scale * species.compartment.mesh.dx,
             )
 
     def get_compartment_residual(self, compartment, norm=None):
@@ -2303,7 +2355,7 @@ class Model:
             [
                 d.assemble_mixed(form).get_local()
                 for form in self.Fblocks_all[compartment.dof_index]
-            ]
+            ],
         )
         if norm is None:
             return res_vec
@@ -2323,13 +2375,13 @@ class Model:
             [
                 d.assemble_mixed(form).get_local()
                 for form in chain.from_iterable(self.Fblocks_all)
-            ]
+            ],
         )
         res_vec = np.hstack(
             [
                 self.get_compartment_residual(compartment, norm=None)
                 for compartment in self._active_compartments
-            ]
+            ],
         )
         assert len(res_vec.shape) == 1
         if norm is None:
@@ -2416,23 +2468,23 @@ class Model:
                     tempdict = odict()
                     if len(mesh_id_pair) == 1:
                         mesh_str = self.parent_mesh.get_mesh_from_id(
-                            list(mesh_id_pair)[0]
+                            list(mesh_id_pair)[0],
                         ).name
                     else:
                         mesh_str = (
                             self.parent_mesh.get_mesh_from_id(
-                                list(mesh_id_pair)[0]
+                                list(mesh_id_pair)[0],
                             ).name
                             + "_"
                             + self.parent_mesh.get_mesh_from_id(
-                                list(mesh_id_pair)[1]
+                                list(mesh_id_pair)[1],
                             ).name
                         )
 
                     intersection_mesh_name = f"{child_mesh.name}_intersect_{mesh_str}"
                     tempdict["name"] = intersection_mesh_name
                     tempdict["id"] = int(
-                        child_mesh.intersection_submesh[mesh_id_pair].id()
+                        child_mesh.intersection_submesh[mesh_id_pair].id(),
                     )
                     tempdict["dimensionality"] = child_mesh.dimensionality
                     tempdict["num_cells"] = child_mesh.intersection_submesh[

@@ -1,45 +1,42 @@
 # ===================
 # Testing if formmanipulations.derivative(F,u) works on a single Vector Function
 # ===================
-#mesh = model.parent_mesh.dolfin_mesh
-mesh = d.UnitCubeMesh(5,5,5)
-dx = d.Measure('dx', mesh)
+# mesh = model.parent_mesh.dolfin_mesh
+mesh = d.UnitCubeMesh(5, 5, 5)
+dx = d.Measure("dx", mesh)
 
-V1  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
-V2  = d.VectorFunctionSpace(mesh, "P", 1, dim=3)
-V3  = d.FunctionSpace(mesh, "P", 1)
-W   = d.MixedFunctionSpace(*[V1, V2, V3])
-u   = d.Function(W)
+V1 = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
+V2 = d.VectorFunctionSpace(mesh, "P", 1, dim=3)
+V3 = d.FunctionSpace(mesh, "P", 1)
+W = d.MixedFunctionSpace(*[V1, V2, V3])
+u = d.Function(W)
 
 v1, v2, v3 = d.TestFunctions(W)
 u1, u2, u3 = u.split()
 
 v1, v2, v3 = v.split()
 
-v0 = v[0]; v1 = v[1]
-#u0 = u.sub(0); u1 = u.sub(1)
+v0 = v[0]
+v1 = v[1]
+# u0 = u.sub(0); u1 = u.sub(1)
 u0, u1 = d.split(u)
 
-F  = u0*v0*dx + u1*v1*dx
-G  = d.inner(u,v)*dx
-i  = ufl.indices(1)
-H  = u[i]*v[i]*dx
-all(d.assemble(F) == d.assemble(G)) # True
-all(d.assemble(G) == d.assemble(H)) # True
+F = u0 * v0 * dx + u1 * v1 * dx
+G = d.inner(u, v) * dx
+i = ufl.indices(1)
+H = u[i] * v[i] * dx
+all(d.assemble(F) == d.assemble(G))  # True
+all(d.assemble(G) == d.assemble(H))  # True
 
 dFdu = dict()
 dGdu = dict()
 
-one_vec = d.Expression(('1.0', '1.0'), degree=2, domain=mesh)
+one_vec = d.Expression(("1.0", "1.0"), degree=2, domain=mesh)
 
-dFdu['dolfin.derivative'] = d.derivative(F, u)
-dFdu['ufl.derivative'] = ufl.derivative(F, u, v)
-#dFdu['ufl.derivative_tuple'] = ufl.derivative(F, (u0,u1))
-dFdu['ufl.diff'] = ufl.diff(F, u)
-
-
-
-
+dFdu["dolfin.derivative"] = d.derivative(F, u)
+dFdu["ufl.derivative"] = ufl.derivative(F, u, v)
+# dFdu['ufl.derivative_tuple'] = ufl.derivative(F, (u0,u1))
+dFdu["ufl.diff"] = ufl.diff(F, u)
 
 
 # Argument = ufl.Argument
@@ -70,8 +67,6 @@ dFdu['ufl.diff'] = ufl.diff(F, u)
 # _dFdu  = expand_derivatives(formmanipulations.derivative(_F, _u))
 # _dFdu0 = expand_derivatives(formmanipulations.derivative(_F, _u0))
 # _dFdu1 = expand_derivatives(formmanipulations.derivative(_F, _u1))
-
-
 
 
 # print(f"dFdu nonzero == {not _dFdu.empty()}")

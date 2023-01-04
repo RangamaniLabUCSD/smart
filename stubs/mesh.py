@@ -4,6 +4,7 @@ Wrapper around dolfin mesh class (originally for submesh implementation - possib
 import dolfin as d
 import numpy as np
 from cached_property import cached_property
+
 from .common import _fancy_print as fancy_print
 
 comm = d.MPI.comm_world
@@ -144,7 +145,9 @@ class _Mesh:
         # Uncombined marker measure
         if "cells_uncombined" in self.mf:
             self.dx_uncombined = d.Measure(
-                "dx", domain=mesh, subdomain_data=self.mf["cells_uncombined"]
+                "dx",
+                domain=mesh,
+                subdomain_data=self.mf["cells_uncombined"],
             )
 
         # # intersection  maps
@@ -200,7 +203,7 @@ class ParentMesh(_Mesh):
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
         print(
-            f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
+            f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!',
         )
 
     def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
@@ -218,13 +221,16 @@ class ParentMesh(_Mesh):
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
         print(
-            f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
+            f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!',
         )
 
     def _read_parent_mesh_function_from_file(self, dim):
         if self.mesh_filetype == "xml":
             mf = d.MeshFunction(
-                "size_t", self.dolfin_mesh, dim, value=self.dolfin_mesh.domains()
+                "size_t",
+                self.dolfin_mesh,
+                dim,
+                value=self.dolfin_mesh.domains(),
             )
         elif self.mesh_filetype == "hdf5":
             mf = d.MeshFunction("size_t", self.dolfin_mesh, dim, value=0)
@@ -259,19 +265,19 @@ class ParentMesh(_Mesh):
             [
                 (child_mesh.marker_list is not None and not child_mesh.is_surface)
                 for child_mesh in self.child_meshes.values()
-            ]
+            ],
         ):
             self.mf["cells_uncombined"] = self._read_parent_mesh_function_from_file(
-                volume_dim
+                volume_dim,
             )
         if any(
             [
                 (child_mesh.marker_list is not None and child_mesh.is_surface)
                 for child_mesh in self.child_meshes.values()
-            ]
+            ],
         ):
             self.mf["facets_uncombined"] = self._read_parent_mesh_function_from_file(
-                surface_dim
+                surface_dim,
             )
 
         # Combine markers in a list
@@ -309,7 +315,8 @@ class ChildMesh(_Mesh):
     # dimensionality, marker, name='child_mesh'):
     def __init__(self, parent_mesh, compartment):
         super().__init__(
-            name=compartment.name, dimensionality=compartment.dimensionality
+            name=compartment.name,
+            dimensionality=compartment.dimensionality,
         )
         # Alias
         marker = compartment.cell_marker
@@ -328,7 +335,7 @@ class ChildMesh(_Mesh):
             self.primary_marker = marker[0]
             fancy_print(
                 f"List of markers given for compartment {self.name},"
-                + f"combining into single marker, {marker[0]}"
+                + f"combining into single marker, {marker[0]}",
             )
         else:
             assert isinstance(marker, int)
@@ -410,7 +417,7 @@ class ChildMesh(_Mesh):
             [
                 self.dimensionality == sibling_volume_mesh.dimensionality - 1
                 for sibling_volume_mesh in sibling_volume_mesh_list
-            ]
+            ],
         )
         assert len(sibling_volume_mesh_list) in [1, 2]
         # This is the value we set in dolfin/Mesh.cpp for non-intersecting cells
@@ -418,11 +425,17 @@ class ChildMesh(_Mesh):
 
         # find the intersection between this child mesh and the sibling volume meshes
         mesh_id_set = frozenset(
-            [sibling_volume_mesh.id for sibling_volume_mesh in sibling_volume_mesh_list]
+            [
+                sibling_volume_mesh.id
+                for sibling_volume_mesh in sibling_volume_mesh_list
+            ],
         )
 
         self.intersection_map[mesh_id_set] = d.MeshFunction(
-            "size_t", self.dolfin_mesh, self.dimensionality, value=0
+            "size_t",
+            self.dolfin_mesh,
+            self.dimensionality,
+            value=0,
         )
         cell_maps = [
             np.array(self.mesh_view[sibling_volume_mesh.id].cell_map())
@@ -439,7 +452,7 @@ class ChildMesh(_Mesh):
             )
         # Set the values of intersection_map
         self.intersection_map[mesh_id_set].set_values(
-            intersection_map_values.astype(np.int)
+            intersection_map_values.astype(np.int),
         )
 
         # Check if the intersection is empty
@@ -449,7 +462,10 @@ class ChildMesh(_Mesh):
 
         # Indicate which entities of the parent mesh correspond to this intersection
         self.intersection_map_parent[mesh_id_set] = d.MeshFunction(
-            "size_t", self.parent_mesh.dolfin_mesh, self.dimensionality, value=0
+            "size_t",
+            self.parent_mesh.dolfin_mesh,
+            self.dimensionality,
+            value=0,
         )
         # map from our cells to parent facets
         mesh_to_parent = np.array(self.mesh_view[self.parent_mesh.id].cell_map())
@@ -465,11 +481,13 @@ class ChildMesh(_Mesh):
         #     [sibling_volume_mesh.id for sibling_volume_mesh in sibling_volume_mesh_list])
 
         self.intersection_submesh[mesh_id_set] = d.MeshView.create(
-            self.intersection_map_parent[mesh_id_set], 1
+            self.intersection_map_parent[mesh_id_set],
+            1,
         )
         self.intersection_submesh[mesh_id_set].init()
         self.intersection_dx[mesh_id_set] = d.Measure(
-            "dx", self.intersection_submesh[mesh_id_set]
+            "dx",
+            self.intersection_submesh[mesh_id_set],
         )
 
     def set_parent_mesh(self, parent_mesh):
@@ -485,7 +503,8 @@ class ChildMesh(_Mesh):
     def extract_submesh(self):
         mf_type = "cells" if self.is_volume else "facets"
         self.dolfin_mesh = d.MeshView.create(
-            self.parent_mesh.mf[mf_type], self.primary_marker
+            self.parent_mesh.mf[mf_type],
+            self.primary_marker,
         )
         # self.dolfin_mesh.init()
 
@@ -497,7 +516,10 @@ class ChildMesh(_Mesh):
         # initialize
         raise NotImplementedError("Need to check this")
         self.mf["cells"] = d.MeshFunction(
-            "size_t", self.dolfin_mesh, self.dimensionality, value=0
+            "size_t",
+            self.dolfin_mesh,
+            self.dimensionality,
+            value=0,
         )
 
         # Easiest case, just directly transfer from parent_mesh mesh function

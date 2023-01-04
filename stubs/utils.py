@@ -1,15 +1,17 @@
-
 # ====================================================
 # fancy printing
 # ====================================================
-
 import os
-from .model_assembly import ParameterContainer, SpeciesContainer, CompartmentContainer, ReactionContainer
-from pandas import read_json
-import pandas
 
-__all__ = ["json_to_ObjectContainer",
-           "write_sbmodel", "read_sbmodel", "empty_sbmodel"]
+import pandas
+from pandas import read_json
+
+from .model_assembly import CompartmentContainer
+from .model_assembly import ParameterContainer
+from .model_assembly import ReactionContainer
+from .model_assembly import SpeciesContainer
+
+__all__ = ["json_to_ObjectContainer", "write_sbmodel", "read_sbmodel", "empty_sbmodel"]
 
 
 # # demonstrate built in options
@@ -30,7 +32,7 @@ def json_to_ObjectContainer(json_str, data_type=None):
     """
     if not data_type:
         raise Exception(
-            "Please include the type of data this is (parameters, species, compartments, reactions)."
+            "Please include the type of data this is (parameters, species, compartments, reactions).",
         )
 
     if json_str[-5:] == ".json":
@@ -49,7 +51,7 @@ def json_to_ObjectContainer(json_str, data_type=None):
         return ReactionContainer(df)
     else:
         raise Exception(
-            "I don't know what kind of ObjectContainer this .json file should be"
+            "I don't know what kind of ObjectContainer this .json file should be",
         )
 
 
@@ -116,7 +118,7 @@ def write_sbmodel(filepath, pc, sc, cc, rc):
 
 
 def read_sbmodel(filepath, output_type=dict):
-    f = open(filepath, "r")
+    f = open(filepath)
     lines = f.read().splitlines()
     if lines[0] != "<sbmodel>":
         raise Exception(f"Is {filepath} a valid .sbmodel file?")

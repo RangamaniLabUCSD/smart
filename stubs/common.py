@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 
 import dolfin as d
-# import trimesh
 import numpy as np
 import pint
 import scipy.interpolate as interp
@@ -17,12 +16,32 @@ from termcolor import colored
 from .config import global_settings as gset
 from .units import unit
 
-__all__ = ["stubs_expression", "sub", "ref", "insert_dataframe_col", "nan_to_none", "submesh_dof_to_mesh_dof",
-           "submesh_dof_to_vertex", "submesh_to_bmesh", "bmesh_to_parent", "mesh_vertex_to_dof", "round_to_n",
-           "interp_limit_dy", "sum_discrete_signals", "np_smart_hstack", "append_meshfunction_to_meshdomains",
-           "pint_unit_to_quantity", "pint_quantity_to_unit", "convert_xml_to_hdf5",
-           "read_hdf5", "data_path", "Stopwatch", "find_steady_state"
-           ]
+# import trimesh
+
+__all__ = [
+    "stubs_expression",
+    "sub",
+    "ref",
+    "insert_dataframe_col",
+    "nan_to_none",
+    "submesh_dof_to_mesh_dof",
+    "submesh_dof_to_vertex",
+    "submesh_to_bmesh",
+    "bmesh_to_parent",
+    "mesh_vertex_to_dof",
+    "round_to_n",
+    "interp_limit_dy",
+    "sum_discrete_signals",
+    "np_smart_hstack",
+    "append_meshfunction_to_meshdomains",
+    "pint_unit_to_quantity",
+    "pint_quantity_to_unit",
+    "convert_xml_to_hdf5",
+    "read_hdf5",
+    "data_path",
+    "Stopwatch",
+    "find_steady_state",
+]
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -213,7 +232,7 @@ def interp_limit_dy(t, y, max_dy, interp_type="linear"):
     interp_t = np.sort(
         interp_t.reshape(
             -1,
-        )
+        ),
     )
     interp_y = interp.interp1d(t, y, kind=interp_type)(interp_t)
 
@@ -300,7 +319,7 @@ def pint_quantity_to_unit(pint_quantity):
         raise TypeError("Input must be a pint quantity")
     if pint_quantity.magnitude != 1.0:
         raise ValueError(
-            "Trying to convert a pint quantity into a unit with magnitude != 1"
+            "Trying to convert a pint quantity into a unit with magnitude != 1",
         )
     return pint_quantity.units
 
@@ -407,11 +426,17 @@ def data_path():
 # the time elapsed since the last pause is added to the sublist. Using stop resets the timer to zero
 # and beings a new list of timings.
 
+
 class Stopwatch:
     "Basic stopwatch class with inner/outer timings (pause and stop)"
 
     def __init__(
-        self, name=None, time_unit="s", print_buffer=0, filename=None, start=False
+        self,
+        name=None,
+        time_unit="s",
+        print_buffer=0,
+        filename=None,
+        start=False,
     ):
         self.name = name
         self.time_unit = time_unit
@@ -491,7 +516,10 @@ class Stopwatch:
 
 
 def find_steady_state(
-    reaction_list, constraints=None, return_equations=False, filename=None
+    reaction_list,
+    constraints=None,
+    return_equations=False,
+    filename=None,
 ):
     """
     Find the steady state of a list of reactions + constraints.
@@ -643,7 +671,7 @@ def _fancy_print(
         title_text = f"CPU {rank}: {title_text}"
     if include_timestamp:
         timestamp = datetime.now(timezone("US/Pacific")).strftime(
-            "[%Y-%m-%d time=%H:%M:%S]"
+            "[%Y-%m-%d time=%H:%M:%S]",
         )
         title_text = f"{timestamp} {title_text}"
 
@@ -651,7 +679,7 @@ def _fancy_print(
     min_buffer_size = 5
     terminal_width = 120
     buffer_size = max(
-        [min_buffer_size, int((terminal_width - 1 - len(title_text)) / 2 - 1)]
+        [min_buffer_size, int((terminal_width - 1 - len(title_text)) / 2 - 1)],
     )  # terminal width == 80
     title_str_len = (buffer_size + 1) * 2 + len(title_text)
     parity = 1 if title_str_len == 78 else 0

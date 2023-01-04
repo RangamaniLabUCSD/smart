@@ -17,4 +17,3 @@ Testing explicit members
 
 .. automodule:: stubs.model_assembly
    :members: ObjectContainer
-

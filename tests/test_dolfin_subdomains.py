@@ -10,8 +10,7 @@ def dolfin_mesh(mesh_filename):
 @pytest.mark.dolfin
 def test_dolfin_cell_markers(dolfin_mesh):
     "Test if marker values (facets and cells) are loaded in from dolfin file"
-    mf_3 = d.MeshFunction('size_t', dolfin_mesh, 3,
-                          value=dolfin_mesh.domains())
+    mf_3 = d.MeshFunction("size_t", dolfin_mesh, 3, value=dolfin_mesh.domains())
     # all cell markers should be either 11 or 12
     assert all([x in [11, 12] for x in mf_3.array()])
     assert mf_3.array().size == dolfin_mesh.num_cells()
@@ -20,8 +19,7 @@ def test_dolfin_cell_markers(dolfin_mesh):
 @pytest.mark.dolfin
 def test_dolfin_meshview(dolfin_mesh):
     "Test that dolfin.MeshView() is extracting submeshes correctly"
-    mf_3 = d.MeshFunction('size_t', dolfin_mesh, 3,
-                          value=dolfin_mesh.domains())
+    mf_3 = d.MeshFunction("size_t", dolfin_mesh, 3, value=dolfin_mesh.domains())
     submesh_11 = d.MeshView.create(mf_3, 11)
     submesh_12 = d.MeshView.create(mf_3, 12)
     assert submesh_11.num_cells() == len(mf_3.where_equal(11))
@@ -34,7 +32,7 @@ def test_dolfin_meshview(dolfin_mesh):
 def find_surface_to_volume_mesh_intersections(self, sibling_volume_mesh):
     assert self.dimensionality == sibling_volume_mesh.dimensionality - 1
 
-    # map from our cells to sibling facets 
+    # map from our cells to sibling facets
     # intersection_map is 1 where this mesh intersects with the boundary of its sibling
     self.intersection_map[sibling_volume_mesh.id] = d.MeshFunction('size_t', self.dolfin_mesh, self.dimensionality, value=0)
     bool_array = np.array(self.mesh_view[sibling_volume_mesh.id].cell_map()) # map from our (n-1)-cells to sibling's n-cells

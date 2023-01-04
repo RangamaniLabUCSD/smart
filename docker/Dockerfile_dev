@@ -14,7 +14,7 @@ FROM quay.io/fenicsproject/dev
 
 
 # ======================================================
-# pull and build our forked version of dolfin 
+# pull and build our forked version of dolfin
 #RUN echo "Downloading forked version of dolfin"
 #RUN export FENICS_SRC_DIR=/usr/local/src && \
 #    cd /usr/local/src && \
@@ -87,7 +87,7 @@ RUN python3 -m pip install tikzplotlib
 # this is to install just the dependencies so that we can use the local version of stubs
 RUN python3 -m pip install fenics-stubs
 RUN python3 -m pip uninstall --yes fenics-stubs
-# now we add the local repo to the pythonpath 
+# now we add the local repo to the pythonpath
 ENV PYTHONPATH "${PYTHONPATH}:$FENICS_HOME/shared/gitrepos/stubs"
 
 
@@ -147,8 +147,7 @@ RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]
 
 
 
-# dont want my email floating around on the internet 
+# dont want my email floating around on the internet
 RUN email_name="justinglaughlin"
 RUN git config --global user.email "$email_name@gmail.com"
 RUN git config --global user.name "justinlaughlin"
-

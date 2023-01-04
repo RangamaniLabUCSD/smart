@@ -1,13 +1,16 @@
 """Scratch code for whatever I'm trying to figure out at the moment"""
-import stubs
-import stubs.common as common
+import itertools
+import logging
+
 import dolfin as d
-import ufl
 import numpy as np
 import pint
-import logging
-import itertools
-unit = stubs.unit # unit registry
+import ufl
+
+import stubs
+import stubs.common as common
+
+unit = stubs.unit  # unit registry
 
 # ===================
 # MPI
@@ -18,26 +21,29 @@ rank = d.MPI.comm_world.rank
 # aliases - unit registry
 # ===================
 from stubs.model_assembly import Parameter, Species, Compartment, Reaction
-uM       = unit.uM
-meter    = unit.m
-um       = unit.um
+
+uM = unit.uM
+meter = unit.m
+um = unit.um
 molecule = unit.molecule
-sec      = unit.s
+sec = unit.s
 
-import stubs_model 
+import stubs_model
 
-#model = stubs_model.make_model('adjacent_cubes_from_dolfin_20_lessPM.h5')
-model = stubs_model.make_model('3_50_50_0.h5')
+# model = stubs_model.make_model('adjacent_cubes_from_dolfin_20_lessPM.h5')
+model = stubs_model.make_model("3_50_50_0.h5")
 
 # ===================
 # logging
 # ===================
 # set for others
-loglevel = 'WARNING'
-model.config.loglevel = {'FFC': loglevel,
-                         'UFL': loglevel,
-                         'dijitso': loglevel,
-                         'dolfin': loglevel}
+loglevel = "WARNING"
+model.config.loglevel = {
+    "FFC": loglevel,
+    "UFL": loglevel,
+    "dijitso": loglevel,
+    "dolfin": loglevel,
+}
 model.config.set_logger_levels()
 
 # model.parent_mesh = stubs.mesh.ParentMesh(str(stubs.common.data_path() / 'adjacent_cubes_from_dolfin_40.h5'), 'hdf5')
@@ -45,13 +51,13 @@ print(model.parent_mesh.num_vertices)
 
 
 snes = True
-model.config.solver['use_snes'] = snes
+model.config.solver["use_snes"] = snes
 
 # #====================
 # # init model
 # # ===================
 # #import cProfile
-#cProfile.run("model._init_3()")                 
+# cProfile.run("model._init_3()")
 model.initialize()
 # A = model.sc['A']
 # A2 = model.sc['A2']
@@ -65,25 +71,25 @@ model.initialize()
 #     if end_simulation:
 #         break
 
-print(model.dolfin_get_function_values(model.sc['A']).min())
-print(model.dolfin_get_function_values(model.sc['A']).max())
+print(model.dolfin_get_function_values(model.sc["A"]).min())
+print(model.dolfin_get_function_values(model.sc["A"]).max())
 if snes:
     model.monolithic_solve()
-    #model.solver.solve(None, model._ubackend)
+    # model.solver.solve(None, model._ubackend)
 else:
     model.solver.solve()
-print(model.dolfin_get_function_values(model.sc['A']).max())
-print(model.dolfin_get_function_values(model.sc['A']).min())
+print(model.dolfin_get_function_values(model.sc["A"]).max())
+print(model.dolfin_get_function_values(model.sc["A"]).min())
 
 
-with d.XDMFFile(model.mpi_comm_world, '022522_output/A.xdmf') as xdmf:
-    xdmf.write(model.sc['A'].u['u'], model.t)
-with d.XDMFFile(model.mpi_comm_world, '022522_output/A3.xdmf') as xdmf:
-    xdmf.write(model.sc['A3'].u['u'], model.t)
-with d.XDMFFile(model.mpi_comm_world, '022522_output/X.xdmf') as xdmf:
-    xdmf.write(model.sc['X'].u['u'], model.t)
-with d.XDMFFile(model.mpi_comm_world, '022522_output/B.xdmf') as xdmf:
-    xdmf.write(model.sc['B'].u['u'], model.t)
+with d.XDMFFile(model.mpi_comm_world, "022522_output/A.xdmf") as xdmf:
+    xdmf.write(model.sc["A"].u["u"], model.t)
+with d.XDMFFile(model.mpi_comm_world, "022522_output/A3.xdmf") as xdmf:
+    xdmf.write(model.sc["A3"].u["u"], model.t)
+with d.XDMFFile(model.mpi_comm_world, "022522_output/X.xdmf") as xdmf:
+    xdmf.write(model.sc["X"].u["u"], model.t)
+with d.XDMFFile(model.mpi_comm_world, "022522_output/B.xdmf") as xdmf:
+    xdmf.write(model.sc["B"].u["u"], model.t)
 
 if snes:
     print(f"solver converged? {model.solver.converged}")
@@ -121,16 +127,11 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # print(model.get_mass(A
 
 
-
-
-
-
-
 # 0.013009917771822541
 # 0.4652419890515132
 # 0.012918298632584353
 # 0.4652419890515132
-#====================== 02/07/2022
+# ====================== 02/07/2022
 # from ufl.algorithms.ad import expand_derivatives
 # from ufl.form import sub_forms_by_domain
 
@@ -159,11 +160,10 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # M_ = d.assemble_mixed(model.Jblocks[1][0])
 # np.all(M.array() == M_.array())
 
-#Fblock, Jblock, _ = model.get_block_system(f, model.u['u']._functions)
+# Fblock, Jblock, _ = model.get_block_system(f, model.u['u']._functions)
 
 
-
-#d.derivative(model.Fsum, model.u['u'].sub(1))
+# d.derivative(model.Fsum, model.u['u'].sub(1))
 # J = model.problem.Jpetsc_nest.getNestSubMatrix(0,1)
 # M = d.assemble_mixed(model.Jblocks[1][0])
 
@@ -180,8 +180,7 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # Jsum = d.as_backend_type(d.assemble_mixed(model.Jblocks[1][0], tensor=d.PETScMatrix()))
 # Jpetsc.append(Jsum)
 
-#Jblocks[1][0] is dFcyto / duervol
-
+# Jblocks[1][0] is dFcyto / duervol
 
 
 # pre:
@@ -205,8 +204,6 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # 62.769263576269694
 
 
-
-
 # print(f"sum of residuals {sum(model.get_total_residual())}")
 # # 743.7527142501965
 # # 1e-6
@@ -214,7 +211,7 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # # ===================
 # pm = model.child_meshes['pm']
 # pm_cyto = pm.intersection_submesh[frozenset({18})]
-# model.Jblocks[5][0] # ervol -> pm # 
+# model.Jblocks[5][0] # ervol -> pm #
 
 # model.Jblocks[0][0] # d(Fcyto)/d(ucyto) (domain=pm_intersect_cytosol) -> pm #  Mesh entity index -1 out of range [0, 49600] for entity of dimension 2.
 # # A ucyto * X upm (domain = pm_intersect_cytosol)
@@ -280,7 +277,7 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # form = model.u['u'].sub(1) * model.u['u'].sub(2).sub(1) * pm.intersection_dx[frozenset({24})]
 # # B*X  -> old dolfin = 9493.56, stubs dolfin = 5928.0
 # # B*X2 -> old dolfin = 6250.87, stubs dolfin = 2400, analytic = 3 * 40 * 16 = 2400
-# d.assemble_mixed(form) 
+# d.assemble_mixed(form)
 
 # # newform = model.u['u'].sub(1) * model.u['u'].sub(2).sub(0) * model.v[1] * dx
 # # newF = d.assemble_mixed(newform)
@@ -294,9 +291,7 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # print(newF.get_local().var())
 
 
-
-
-#66.0937846550966
+# 66.0937846550966
 
 # pre:
 # species A : ((10.0, 12.0)), mass=88.00000000000044
@@ -319,10 +314,6 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 # species B : ((3.0936829244406403, 3.3572813784050592)), mass=25.37599643259512
 
 
-
-
-
-
 # # Time loop
 # while True:
 #     end_simulation = model.solve_single_timestep(plot_period)
@@ -330,14 +321,13 @@ print(f"total residual: {model.get_total_residual(norm=2)}")
 #         break
 
 
-
 # 2.9026068866967845
 # 11.249856899995862
 # 2.9026068866967845
 # 11.249856899995862
 
 
-#====================
+# ====================
 # aliases
 # ===================
 # p = model.pc.get_index(0)

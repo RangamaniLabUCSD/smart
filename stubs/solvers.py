@@ -1,12 +1,14 @@
 # # Using PETSc to solve monolithic problem
-import dolfin as d
 import os
+
+import dolfin as d
 import petsc4py.PETSc as p
+
 from .common import _fancy_print as fancy_print
 
 
 class stubsSNESProblem:
-    """To interface with PETSc SNES solver
+    r"""To interface with PETSc SNES solver
 
     Notes on the high-level dolfin solver d.solve() when applied to Mixed Nonlinear problems:
 
@@ -214,7 +216,7 @@ class stubsSNESProblem:
                             format_type="log",
                         )
                     self.tensors[ij][0] = d.PETScMatrix(
-                        self.init_petsc_matrix(i, j, assemble=True)
+                        self.init_petsc_matrix(i, j, assemble=True),
                     )
                     Jpetsc.append(self.tensors[ij][0])
                 elif non_empty_forms == 1:
@@ -331,7 +333,8 @@ class stubsSNESProblem:
 
                 if self.print_assembly:
                     fancy_print(
-                        f"Assembling {self.Jijk_name(i,j)}:", format_type="assembly_sub"
+                        f"Assembling {self.Jijk_name(i,j)}:",
+                        format_type="assembly_sub",
                     )
 
                 Jmats = []
@@ -360,7 +363,7 @@ class stubsSNESProblem:
                             )
                     # Assemble and append to the list of subforms
                     Jmats.append(
-                        d.assemble_mixed(Jform[ij][k], tensor=self.tensors[ij][k])
+                        d.assemble_mixed(Jform[ij][k], tensor=self.tensors[ij][k]),
                     )
                     # Print some useful info on assembled Jijk
                     self.print_Jijk_info(i, j, k, tensor=self.tensors[ij][k].mat())
@@ -441,7 +444,7 @@ class stubsSNESProblem:
             (
                 (self.local_sizes[i], self.global_sizes[i]),
                 (self.local_sizes[j], self.global_sizes[j]),
-            )
+            ),
         )
         # M.setBlockSizes(self.block_sizes[i], self.block_sizes[j])
         # M.setBlockSizes(1,1) # seems to be ok with block size 1?
