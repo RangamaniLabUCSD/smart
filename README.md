@@ -16,10 +16,10 @@ Systems biology models are converted by STUBS into the appropriate systems of re
 Although FEniCS is a core dependency, because it has many different versions (2019.1, development, FEniCSx, etc.), is quite large, and is complicated to build, it is not packaged with STUBS by default. The recommended way to use STUBS is to create a container from one of the official FEniCS docker images and to pip install STUBS from within the container.
 
 ```bash
-# create a container from the official fenics docker image
-jgl:~$ docker run -ti --init quay.io/fenicsproject/dev
+# create a container using DOLFIN built on ubuntu 22.04 with Python 3.10
+jgl:~$ docker run -ti --init ghcr.io/scientificcomputing/fenics:2022-12-12
 # pip install stubs from within the container
-fenics:~$ pip install stubs
+root@jgl:~$ python3 -m pip install fenics-stubs
 ```
 
 ### Dependencies

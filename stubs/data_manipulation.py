@@ -1,31 +1,30 @@
 """
 Functions to help with managing solutions / post-processing
 """
-import dolfin as d
-import mpi4py.MPI as pyMPI
-import numpy as np
-import matplotlib.pyplot as plt
-import pickle
-from numbers import Number
 import os
-import termplotlib as tpl
-import petsc4py.PETSc as PETSc
+import pickle
 from collections import defaultdict as ddict
-Print = PETSc.Sys.Print
-import matplotlib.lines as mlines
-from stubs.common import round_to_n
-from stubs.common import _fancy_print as fancy_print
 
-from stubs.model_assembly import Parameter, Species, Compartment, Reaction, Flux, FieldVariable
+import dolfin as d
+import matplotlib.pyplot as plt
+import numpy as np
+import petsc4py.PETSc as PETSc
+import termplotlib as tpl
+
+from .common import round_to_n
+from .model_assembly import FieldVariable, Flux, Parameter, Species
+from .units import unit
+from .common import _fancy_print as fancy_print
+
+Print = PETSc.Sys.Print
+
 
 comm = d.MPI.comm_world
 size = comm.size
 rank = comm.rank
 root = 0
 
-from stubs import unit as unit
-#import networkx as nx
-#import stubs.model_assembly as model_assembly
+# import networkx as nx
 
 # # matplotlib settings
 # lwsmall = 1.5
@@ -34,12 +33,13 @@ from stubs import unit as unit
 # fsmed = 7
 # fssmall = 5
 
+
 class PostProcessor:
     def __init__(self, model):
         self.model = model
         self.probe_concentrations = ddict(list)
-        self.probe_fluxes         = ddict(list)
-        
+        self.probe_fluxes = ddict(list)
+
 
 class Probe:
     """
@@ -47,109 +47,161 @@ class Probe:
     unit_total = total unit of the final quantity (e.g. integrated value if using probe_type=sum). Useful if just setting values and the unit is known
 
     """
-    #def __init__(self, model, probe_type, var_type, var_name, expression=None, unit_total=None, x_probe=None, filename=None):
-    def __init__(self, model, probe_type, var, unit_total=None, x_probe=None, filename=None):
-        self.model      = model
+
+    # def __init__(self, model, probe_type, var_type, var_name, expression=None, unit_total=None, x_probe=None, filename=None):
+
+    def __init__(
+        self, model, probe_type, var, unit_total=None, x_probe=None, filename=None
+    ):
+        self.model = model
         self.probe_type = probe_type
         if isinstance(var, Parameter):
-            self.var_type = 'time_dependent_parameter'
+            self.var_type = "time_dependent_parameter"
         elif isinstance(var, Species):
-            self.var_type = 'concentration'
+            self.var_type = "concentration"
         elif isinstance(var, Flux):
-            self.var_type = 'flux'
+            self.var_type = "flux"
         elif isinstance(var, FieldVariable):
-            self.var_type = 'field_variable'
-        
-        self.var_name   = var.name # name of the variable to probe (could be a species or flux)
-        self.x_probe    = x_probe # Coordinate to probe function/flux at
-        self.filename   = filename
-        self.figures = dict() # plt.figure() 
+            self.var_type = "field_variable"
+
+        # name of the variable to probe (could be a species or flux)
+        self.var_name = var.name
+        self.x_probe = x_probe  # Coordinate to probe function/flux at
+        self.filename = filename
+        self.figures = dict()  # plt.figure()
 
         # (point==evaluate at a specific point, sum==integrated over appropriate measure, all==all vertex values, stats==(min,max,mean,mean_vertex,median,std))
-        assert self.probe_type in ['point', 'sum', 'all', 'stats']
-        assert self.var_type in ['flux', 'concentration', 'time_dependent_parameter', 'field_variable']
-        # Store the variable 
-        if self.var_type == 'concentration':
+        assert self.probe_type in ["point", "sum", "all", "stats"]
+        assert self.var_type in [
+            "flux",
+            "concentration",
+            "time_dependent_parameter",
+            "field_variable",
+        ]
+        # Store the variable
+        if self.var_type == "concentration":
             self.var = self.model.sc[self.var_name]
             self.unit = self.var.concentration_units
-            self.unit_dx = self.var.compartment.measure_units #self.var.compartment.compartment_units**self.var.compartment.dimensionality
-        elif self.var_type == 'flux':
+            # self.var.compartment.compartment_units**self.var.compartment.dimensionality
+            self.unit_dx = self.var.compartment.measure_units
+        elif self.var_type == "flux":
             self.var = self.model.fc[self.var_name]
             self.unit = self.var.equation_units
             self.unit_dx = self.var.measure_units
-        elif self.var_type == 'time_dependent_parameter':
+        elif self.var_type == "time_dependent_parameter":
             self.var = self.model.pc[self.var_name]
             self.unit = self.var.unit
             self.unit_dx = None
-        elif self.var_type == 'field_variable':
+        elif self.var_type == "field_variable":
             self.var = var
             self.unit = self.var.equation_units
             self.unit_dx = self.var.measure_units
 
-            
-        if self.var_type == 'time_dependent_parameter':
+        if self.var_type == "time_dependent_parameter":
             self.unit_total = self.unit
-        elif self.probe_type in ['sum']:
-            # units of integrated value 
-            self.unit_total = self.unit*self.unit_dx
-        elif self.probe_type in ['point', 'all', 'stats']:
+        elif self.probe_type in ["sum"]:
+            # units of integrated value
+            self.unit_total = self.unit * self.unit_dx
+        elif self.probe_type in ["point", "all", "stats"]:
             self.unit_total = self.unit
-        
+
         # Override with user specified, if given
         if unit_total is not None:
             self.unit_total = unit_total
-            
+
         # probed values
-        if self.probe_type=='stats':
-            self.values = {'min': [], 'max': [], 'mean': [], 'mean_vertex': [], 'median_vertex': [], 'std_vertex': []}
+        if self.probe_type == "stats":
+            self.values = {
+                "min": [],
+                "max": [],
+                "mean": [],
+                "mean_vertex": [],
+                "median_vertex": [],
+                "std_vertex": [],
+            }
         else:
             self.values = []
         self.tvec = []
         self.idx = []
 
-
     def collect_values(self):
         probevar_type = (self.probe_type, self.var_type)
-        if probevar_type == ('point', 'concentration'):
-            value = self.model.dolfin_get_function_values_at_point(self.var, self.x_probe)
-        elif probevar_type == ('sum', 'concentration'):
+        if probevar_type == ("point", "concentration"):
+            value = self.model.dolfin_get_function_values_at_point(
+                self.var, self.x_probe
+            )
+        elif probevar_type == ("sum", "concentration"):
             value = self.model.get_mass(self.var)
-        elif probevar_type == ('all', 'concentration'):
+        elif probevar_type == ("all", "concentration"):
             value = self.model.dolfin_get_function_values(self.var)
-        elif probevar_type == ('stats', 'concentration'):
+        elif probevar_type == ("stats", "concentration"):
             all_values = self.model.dolfin_get_function_values(self.var)
-            mean_value = self.model.get_mass(self.var) / self.var.compartment.nvolume.magnitude
-            value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
-                     'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
-        elif probevar_type in [('point', 'flux'), ('point', 'field_variable')]:
+            mean_value = (
+                self.model.get_mass(self.var) / self.var.compartment.nvolume.magnitude
+            )
+            value = {
+                "min": np.min(all_values),
+                "max": np.max(all_values),
+                "mean": mean_value,
+                "mean_vertex": np.mean(all_values),
+                "median_vertex": np.median(all_values),
+                "std_vertex": np.std(all_values),
+            }
+        elif probevar_type in [("point", "flux"), ("point", "field_variable")]:
             value = self.var._equation_quantity.magnitude(self.x_probe)
-        elif probevar_type == ('sum', 'flux'):
+        elif probevar_type == ("sum", "flux"):
             value = self.var.assembled_flux.magnitude
             assert self.var._assembled_flux.units == (self.unit_total).units
-        elif probevar_type == ('sum', 'field_variable'):
+        elif probevar_type == ("sum", "field_variable"):
             value = self.var.assembled_quantity.magnitude
             assert self.var._assembled_quantity.units == (self.unit_total).units
-        elif probevar_type == ('all', 'flux'):
-            value = -1*d.assemble(self.var.scalar_form).get_local()
-        elif probevar_type == ('all', 'field_variable'):
-            value = d.assemble(self.var._equation_quantity.magnitude*self.var.vscalar*self.var.measure).get_local()
-        elif probevar_type == ('stats', 'flux'):
-            all_values = -1*d.assemble(self.var.scalar_form).get_local()
-            mean_value = self.var.assembled_flux.magnitude / self.var.measure_compartment.nvolume.magnitude
-            value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
-                     'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
-        elif probevar_type == ('stats', 'field_variable'):
-            all_values = d.assemble(self.var._equation_quantity.magnitude*self.var.vscalar*self.var.measure).get_local()
-            mean_value = self.var.assembled_quantity.magnitude / self.var.measure_compartment.nvolume.magnitude
-            value = {'min': np.min(all_values), 'max': np.max(all_values), 'mean': mean_value,
-                     'mean_vertex': np.mean(all_values), 'median_vertex': np.median(all_values), 'std_vertex': np.std(all_values)}
-        elif self.var_type == 'time_dependent_parameter':
+        elif probevar_type == ("all", "flux"):
+            value = -1 * d.assemble(self.var.scalar_form).get_local()
+        elif probevar_type == ("all", "field_variable"):
+            value = d.assemble(
+                self.var._equation_quantity.magnitude
+                * self.var.vscalar
+                * self.var.measure
+            ).get_local()
+        elif probevar_type == ("stats", "flux"):
+            all_values = -1 * d.assemble(self.var.scalar_form).get_local()
+            mean_value = (
+                self.var.assembled_flux.magnitude
+                / self.var.measure_compartment.nvolume.magnitude
+            )
+            value = {
+                "min": np.min(all_values),
+                "max": np.max(all_values),
+                "mean": mean_value,
+                "mean_vertex": np.mean(all_values),
+                "median_vertex": np.median(all_values),
+                "std_vertex": np.std(all_values),
+            }
+        elif probevar_type == ("stats", "field_variable"):
+            all_values = d.assemble(
+                self.var._equation_quantity.magnitude
+                * self.var.vscalar
+                * self.var.measure
+            ).get_local()
+            mean_value = (
+                self.var.assembled_quantity.magnitude
+                / self.var.measure_compartment.nvolume.magnitude
+            )
+            value = {
+                "min": np.min(all_values),
+                "max": np.max(all_values),
+                "mean": mean_value,
+                "mean_vertex": np.mean(all_values),
+                "median_vertex": np.median(all_values),
+                "std_vertex": np.std(all_values),
+            }
+        elif self.var_type == "time_dependent_parameter":
             value = self.var.value
         else:
-            raise ValueError('Unknown probe type')
-            
+            raise ValueError("Unknown probe type")
+
         # Append the value to the list
-        if self.probe_type == 'stats':
+        if self.probe_type == "stats":
             for key in self.values.keys():
                 self.values[key].append(value[key])
         else:
@@ -161,9 +213,9 @@ class Probe:
         self.idx.append(self.model.idx)
 
         return (t, self.model.idx, value)
-    
+
     def set_values(self, value):
-        if self.probe_type == 'stats':
+        if self.probe_type == "stats":
             for key in self.values.keys():
                 self.values[key].append(value[key])
         else:
@@ -173,114 +225,128 @@ class Probe:
         self.tvec.append(float(self.model.t))
         self.idx.append(self.model.idx)
         return (self.tvec, self.idx, value)
-    
+
     @property
     def values_np(self):
-        if self.probe_type == 'stats':
+        if self.probe_type == "stats":
             return {key: np.array(self.values[key]) for key in self.values.keys()}
         else:
             return np.array(self.values)
+
     @property
     def tvec_np(self):
         return np.array(self.tvec)
+
     @property
     def tvec_values_np(self):
-        if self.probe_type == 'stats':
-            return {key: np.vstack((self.tvec_np, self.values_np[key])).T for key in self.values.keys()}
+        if self.probe_type == "stats":
+            return {
+                key: np.vstack((self.tvec_np, self.values_np[key])).T
+                for key in self.values.keys()
+            }
         else:
             return np.vstack((self.tvec_np, self.values_np)).T
+
     def _print_str(self, stat_key=None):
         if stat_key is not None:
-            fancy_print(f"Time-plot of {self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={stat_key}", format_type='log')
+            fancy_print(
+                f"Time-plot of {self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={stat_key}",
+                format_type="log",
+            )
         else:
-            fancy_print(f"Time-plot of {self.var_name}, probe_type={self.probe_type}, units={self.unit_total}", format_type='log')
-        
-    
+            fancy_print(
+                f"Time-plot of {self.var_name}, probe_type={self.probe_type}, units={self.unit_total}",
+                format_type="log",
+            )
+
     def tpl_plot(self, stat_key=None):
         "Generate plot in terminal"
         # post processing
-        if self.probe_type == 'stats':
+        if self.probe_type == "stats":
             if stat_key is None:
-                raise ValueError('stat_key must be specified')
+                raise ValueError("stat_key must be specified")
             else:
                 ty = self.tvec_values_np[stat_key]
         else:
-            ty=self.tvec_values_np
+            ty = self.tvec_values_np
         self._print_str(stat_key)
-        fig = tpl.figure(); fig.plot(ty[:,0], ty[:,1]); fig.show()
-        
+        fig = tpl.figure()
+        fig.plot(ty[:, 0], ty[:, 1])
+        fig.show()
+
     def mpl_plot(self, stat_keys=None, filename=None):
         # plot_data = list()
         if isinstance(stat_keys, str):
             stat_keys = [stat_keys]
 
-        if self.probe_type == 'stats':
+        if self.probe_type == "stats":
             if stat_keys is None:
-                raise ValueError('stat_key must be specified')
+                raise ValueError("stat_key must be specified")
             else:
                 # for stat_key in stat_keys:
                 #     plot_data.append(self.tvec_values_np[stat_key])
-                plot_name = '_'.join(stat_keys)
+                plot_name = "_".join(stat_keys)
         else:
             # plot_data.append(self.tvec_values_np)
-            plot_name = 'default'
+            plot_name = "default"
 
         if filename is None:
             if stat_keys is not None:
-                filename = self.filename+'_'+plot_name+'.png'
+                filename = self.filename + "_" + plot_name + ".png"
             else:
-                filename = self.filename+'.png'
-
+                filename = self.filename + ".png"
 
         # begin plotting
         if plot_name not in self.figures:
             self.figures[plot_name] = plt.subplots()
-        
-        f,a = self.figures[plot_name] # figure, axes
+
+        f, a = self.figures[plot_name]  # figure, axes
         a.cla()
         if stat_keys is not None:
             for stat_key in stat_keys:
                 self._print_str(stat_key)
                 ty = self.tvec_values_np[stat_key]
-                a.plot(ty[:,0], ty[:,1])
-                a.set_xlabel('Time [s]')
-                a.set_ylabel(f'{self.var_name} [{self.unit_total}]')
+                a.plot(ty[:, 0], ty[:, 1])
+                a.set_xlabel("Time [s]")
+                a.set_ylabel(f"{self.var_name} [{self.unit_total}]")
         else:
             self._print_str(None)
             ty = self.tvec_values_np
-            a.plot(ty[:,0], ty[:,1])
-            a.set_xlabel('Time [s]')
-            a.set_ylabel(f'{self.var_name} [{self.unit_total}]')
-        
-        if stat_keys is not None:
-            a.set_title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={plot_name}")
-        else:
-            a.set_title(f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}")
+            a.plot(ty[:, 0], ty[:, 1])
+            a.set_xlabel("Time [s]")
+            a.set_ylabel(f"{self.var_name} [{self.unit_total}]")
 
-        #f.set_tight_layout(1)
+        if stat_keys is not None:
+            a.set_title(
+                f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}, stat={plot_name}"
+            )
+        else:
+            a.set_title(
+                f"{self.var_name}, probe_type={self.probe_type}, units={self.unit_total}"
+            )
+
+        # f.set_tight_layout(1)
         if filename is None:
             f.show()
         else:
-            f.savefig(filename)        
-            fancy_print(f"Saving plot to {filename}", format_type='log')
-            
-    
+            f.savefig(filename)
+            fancy_print(f"Saving plot to {filename}", format_type="log")
+
     def dump_to_file(self, stat_key=None, filename=None):
         if stat_key is not None and not isinstance(stat_key, str):
             return
         if stat_key is not None:
-            filename = self.filename+'_'+stat_key+'.csv'
+            filename = self.filename + "_" + stat_key + ".csv"
         else:
-            filename = self.filename+'.csv'
+            filename = self.filename + ".csv"
         if filename is None:
-            raise ValueError('No filename specified')
-        if stat_key is None and self.probe_type == 'stats':
-            raise ValueError('stat_key must be specified')
-        if stat_key is not None and self.probe_type == 'stats':
-            np.savetxt(filename, self.tvec_values_np[stat_key], delimiter=',')
+            raise ValueError("No filename specified")
+        if stat_key is None and self.probe_type == "stats":
+            raise ValueError("stat_key must be specified")
+        if stat_key is not None and self.probe_type == "stats":
+            np.savetxt(filename, self.tvec_values_np[stat_key], delimiter=",")
         else:
-            np.savetxt(filename, self.tvec_values_np, delimiter=',')
-
+            np.savetxt(filename, self.tvec_values_np, delimiter=",")
 
 
 class Data:
@@ -291,15 +357,30 @@ class Data:
         self.solutions = {}
         self.probe_solutions = ddict(list)
         self.fluxes = ddict(list)
-        self.tvec=[]
-        self.dtvec=[]
-        self.nl_idxvec=[]
+        self.tvec = []
+        self.dtvec = []
+        self.nl_idxvec = []
         self.errors = {}
         self.parameters = ddict(list)
-        #self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
-        self.plots = {'solutions': plt.figure(), 'solver_status': plt.subplots()[0], 'parameters': plt.figure(), 'fluxes': plt.figure()}
-        self.color_list = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
-
+        # self.plots = {'solutions': {'fig': plt.figure(), 'subplots': []}}
+        self.plots = {
+            "solutions": plt.figure(),
+            "solver_status": plt.subplots()[0],
+            "parameters": plt.figure(),
+            "fluxes": plt.figure(),
+        }
+        self.color_list = [
+            "blue",
+            "orange",
+            "green",
+            "red",
+            "purple",
+            "brown",
+            "pink",
+            "gray",
+            "olive",
+            "cyan",
+        ]
 
     def init_solution_files(self, sc, config):
         output_type = config.output_type
@@ -307,89 +388,96 @@ class Data:
         for sp_name, sp in sc.items:
             self.solutions[sp_name] = {}
 
-            self.solutions[sp_name]['num_species'] = sp.compartment.num_species
-            self.solutions[sp_name]['comp_name'] = sp.compartment_name
-            self.solutions[sp_name]['comp_idx'] = int(sp.dof_index)
-            self.solutions[sp_name]['concentration_units'] = sp.concentration_units
+            self.solutions[sp_name]["num_species"] = sp.compartment.num_species
+            self.solutions[sp_name]["comp_name"] = sp.compartment_name
+            self.solutions[sp_name]["comp_idx"] = int(sp.dof_index)
+            self.solutions[sp_name]["concentration_units"] = sp.concentration_units
 
-            if output_type=='vtk':
-                file_str = self.config.directory['solutions'] + '/' + sp_name + '.pvd'
+            if output_type == "vtk":
+                file_str = self.config.directory["solutions"] + "/" + sp_name + ".pvd"
                 self.solutions[sp_name][output_type] = d.File(file_str)
-            elif output_type=='xdmf':
-                file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                self.solutions[sp_name][output_type] = d.XDMFFile(comm,file_str)
-            elif config.flags['store_solutions']==False or output_type==None:
+            elif output_type == "xdmf":
+                file_str = self.config.directory["solutions"] + "/" + sp_name + ".xdmf"
+                self.solutions[sp_name][output_type] = d.XDMFFile(comm, file_str)
+            elif config.flags["store_solutions"] == False or output_type == None:
                 self.solutions[sp_name][output_type] = None
             else:
                 raise Exception("Unknown solution file type")
 
-
     def store_solution_files(self, u, t, config):
         output_type = config.output_type
 
-        if config.flags['store_solutions']==False or output_type==None:
+        if config.flags["store_solutions"] == False or output_type == None:
             return
         for sp_name in self.solutions.keys():
-            comp_name = self.solutions[sp_name]['comp_name']
-            comp_idx = self.solutions[sp_name]['comp_idx']
-            #print("spname: %s" % sp_name)
+            comp_name = self.solutions[sp_name]["comp_name"]
+            comp_idx = self.solutions[sp_name]["comp_idx"]
+            # print("spname: %s" % sp_name)
 
-            if self.solutions[sp_name]['num_species'] == 1:
-                if output_type=='vtk':
-                    self.solutions[sp_name]['vtk'] << (u[comp_name]['u'], t)
-                elif output_type=='xdmf':
-                    #file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
-                    #with d.XDMFFile(file_str) as xdmf:
+            if self.solutions[sp_name]["num_species"] == 1:
+                if output_type == "vtk":
+                    self.solutions[sp_name]["vtk"] << (u[comp_name]["u"], t)
+                elif output_type == "xdmf":
+                    # file_str = self.config.directory['solutions'] + '/' + sp_name + '.xdmf'
+                    # with d.XDMFFile(file_str) as xdmf:
                     #    xdmf.write(u[comp_name]['u'], t)
-                    self.solutions[sp_name][output_type].write_checkpoint(u[comp_name]['u'], "u", t, append=self.append_flag)
+                    self.solutions[sp_name][output_type].write_checkpoint(
+                        u[comp_name]["u"], "u", t, append=self.append_flag
+                    )
                     self.solutions[sp_name][output_type].close()
                 else:
                     raise Exception("Unknown output type")
             else:
-                if output_type=='vtk':
-                    self.solutions[sp_name]['vtk'] << (u[comp_name]['u'].split()[comp_idx], t)
-                elif output_type=='xdmf':
+                if output_type == "vtk":
+                    self.solutions[sp_name]["vtk"] << (
+                        u[comp_name]["u"].split()[comp_idx],
+                        t,
+                    )
+                elif output_type == "xdmf":
                     # writing xdmf on submeshes fails in parallel
                     # TODO: fix me
-                    if comp_name=='cyto':
-                        self.solutions[sp_name][output_type].write_checkpoint(u[comp_name]['u'].split()[comp_idx], "u", t, append=self.append_flag)
+                    if comp_name == "cyto":
+                        self.solutions[sp_name][output_type].write_checkpoint(
+                            u[comp_name]["u"].split()[comp_idx],
+                            "u",
+                            t,
+                            append=self.append_flag,
+                        )
                         self.solutions[sp_name][output_type].close()
                 else:
                     raise Exception("Unknown output type")
 
-        self.append_flag = True # append to xmdf files rather than write over
+        self.append_flag = True  # append to xmdf files rather than write over
 
         Print(f"Solutions dumped into {output_type}.")
-
 
     def compute_function_stats(self, sp):
         """
         Computes and returns min, mean, and max values of a species
         """
-        uvec    = self.model.dolfin_get_function_values(sp)
-        dx      = sp.compartment.dx
-        u       = self.model.u[sp.compartment_name]['u']
+        uvec = self.model.dolfin_get_function_values(sp)
+        dx = sp.compartment.dx
+        u = self.model.u[sp.compartment_name]["u"]
         if self.model.V[sp.compartment_name].num_sub_spaces() == 0:
             usub = u
         else:
             usub = u.sub(sp.dof_index)
 
-        umean   = d.assemble(usub*dx) / d.assemble(1*dx)
-        umin    = uvec.min()
-        umax    = uvec.max()
-        ustd    = uvec.std()
-        return {'min': umin, 'mean': umean, 'max': umax, 'std': ustd}
-
+        umean = d.assemble(usub * dx) / d.assemble(1 * dx)
+        umin = uvec.min()
+        umax = uvec.max()
+        ustd = uvec.std()
+        return {"min": umin, "mean": umean, "max": umax, "std": ustd}
 
     def compute_statistics(self, u, t, dt, sc, pc, cc, fc, nl_idx):
-        #for sp_name in speciesList:
+        # for sp_name in speciesList:
         for sp_name, sp in sc.items:
-            comp_name = self.solutions[sp_name]['comp_name']
-            comp_idx = self.solutions[sp_name]['comp_idx']
+            comp_name = self.solutions[sp_name]["comp_name"]
+            comp_idx = self.solutions[sp_name]["comp_idx"]
 
             # compute statistics and append values
             ustats = self.compute_function_stats(sp)
-            #ustats = dolfin_get_function_stats(sp)
+            # ustats = dolfin_get_function_stats(sp)
             for key, value in ustats.items():
                 if key not in self.solutions[sp_name].keys():
                     self.solutions[sp_name][key] = [value]
@@ -404,17 +492,23 @@ class Data:
         # store fluxes
         flux_names = [flux_name for flux_name, flux in fc.items if flux.track_value]
         # remove forward/reverse flux labels
-        temp = [flux_name.replace(' (r)','') for flux_name in flux_names]
-        temp = [flux_name.replace(' (f)','') for flux_name in temp]
+        temp = [flux_name.replace(" (r)", "") for flux_name in flux_names]
+        temp = [flux_name.replace(" (f)", "") for flux_name in temp]
 
-        flux_indices = set() # indices of fluxes we dont want to sum
-        summed_flux_indices = set() # indices of fluxes we want to sum (in terms of tuples)
-        for i in range(len(temp)-1):
-            for j in range(i+1,len(temp)):
+        flux_indices = set()  # indices of fluxes we dont want to sum
+        summed_flux_indices = (
+            set()
+        )  # indices of fluxes we want to sum (in terms of tuples)
+        for i in range(len(temp) - 1):
+            for j in range(i + 1, len(temp)):
                 if temp[i] == temp[j]:
-                    summed_flux_indices.add((i,j))
+                    summed_flux_indices.add((i, j))
 
-        flatten = lambda tuple_set: set([item for sublist in [list(i) for i in tuple_set] for item in sublist]) # flattens a set of tuples into a set
+        def flatten(tuple_set):
+            return set(
+                [item for sublist in [list(i) for i in tuple_set] for item in sublist]
+            )  # flattens a set of tuples into a set
+
         flux_indices = set(range(len(temp)))
         flux_indices = flux_indices.difference(flatten(summed_flux_indices))
 
@@ -422,29 +516,41 @@ class Data:
         for i in flux_indices:
             flux_name = flux_names[i]
             flux = fc[flux_name]
-            area_units = cc[flux.source_compartment].compartment_units**2
-            scale_to_molecule_per_s = (1*flux_units*area_units).to(unit.molecule/unit.s).magnitude
-            #value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
-            value = d.assemble(flux.dolfin_flux)*scale_to_molecule_per_s
+            area_units = cc[flux.source_compartment].compartment_units ** 2
+            scale_to_molecule_per_s = (
+                (1 * flux_units * area_units).to(unit.molecule / unit.s).magnitude
+            )
+            # value = sum(d.assemble(flux.dolfin_flux))*scale_to_molecule_per_s
+            value = d.assemble(flux.dolfin_flux) * scale_to_molecule_per_s
             self.fluxes[flux_name].append(value)
 
         # compute (assemble) sums of fluxes
-        for i,j in summed_flux_indices:
+        for i, j in summed_flux_indices:
             flux_name_1 = flux_names[i]
             flux_name_2 = flux_names[j]
             flux_1 = fc[flux_name_1]
             flux_2 = fc[flux_name_2]
-            area_units_1 = cc[flux_1.source_compartment].compartment_units**2
-            area_units_2 = cc[flux_2.source_compartment].compartment_units**2
+            area_units_1 = cc[flux_1.source_compartment].compartment_units ** 2
+            area_units_2 = cc[flux_2.source_compartment].compartment_units ** 2
 
-            scale_to_molecule_per_s_1 = (1*flux_1.flux_units*area_units_1).to(unit.molecule/unit.s).magnitude
-            scale_to_molecule_per_s_2 = (1*flux_2.flux_units*area_units_2).to(unit.molecule/unit.s).magnitude
-            new_flux_name = temp[i] + ' (SUM)'
+            scale_to_molecule_per_s_1 = (
+                (1 * flux_1.flux_units * area_units_1)
+                .to(unit.molecule / unit.s)
+                .magnitude
+            )
+            scale_to_molecule_per_s_2 = (
+                (1 * flux_2.flux_units * area_units_2)
+                .to(unit.molecule / unit.s)
+                .magnitude
+            )
+            new_flux_name = temp[i] + " (SUM)"
 
-#            value = sum(d.assemble(flux_1.dolfin_flux))*scale_to_molecule_per_s_1 \
-#                    + sum(d.assemble(flux_2.dolfin_flux))*scale_to_molecule_per_s_2
-            value = d.assemble(flux_1.dolfin_flux)*scale_to_molecule_per_s_1 \
-                    + d.assemble(flux_2.dolfin_flux)*scale_to_molecule_per_s_2
+            #            value = sum(d.assemble(flux_1.dolfin_flux))*scale_to_molecule_per_s_1 \
+            #                    + sum(d.assemble(flux_2.dolfin_flux))*scale_to_molecule_per_s_2
+            value = (
+                d.assemble(flux_1.dolfin_flux) * scale_to_molecule_per_s_1
+                + d.assemble(flux_2.dolfin_flux) * scale_to_molecule_per_s_2
+            )
 
             self.fluxes[new_flux_name].append(value)
 
@@ -455,13 +561,13 @@ class Data:
         else:
             self.nl_idxvec.append(max(nl_idx.values()))
 
-    #def computeProbeValues(self, u, t, dt, sc, pc, cc, fc, nl_idx):
+    # def computeProbeValues(self, u, t, dt, sc, pc, cc, fc, nl_idx):
     def compute_probe_values(self, u, sc):
         """
         Computes the values of functions at various coordinates
         """
-        #x_list = self.config.output['points_x']
-        #y_list = self.config.output['points_y']
+        # x_list = self.config.output['points_x']
+        # y_list = self.config.output['points_y']
 
         for sp_name, coord_list in self.config.probe_plot.items():
             comp = sc[sp_name].compartment
@@ -469,7 +575,7 @@ class Data:
             if sp_name not in self.probe_solutions.keys():
                 self.probe_solutions[sp_name] = {}
             for coords in coord_list:
-                u_coords = u[comp.name]['u'](coords)
+                u_coords = u[comp.name]["u"](coords)
                 if coords not in self.probe_solutions[sp_name].keys():
                     self.probe_solutions[sp_name][coords] = []
 
@@ -480,81 +586,84 @@ class Data:
 
                 self.probe_solutions[sp_name][coords].append(u_eval)
 
-
     def compute_error(self, u, comp_name, errorNormKey):
-        errorNormDict = {'L2': 2, 'Linf': np.Inf}
+        errorNormDict = {"L2": 2, "Linf": np.Inf}
         if comp_name not in self.errors.keys():
             self.errors[comp_name] = {}
-        #for key in errorNormKeys:
+        # for key in errorNormKeys:
         error_norm = errorNormDict[errorNormKey]
-        u_u = u[comp_name]['u'].vector().get_local()
-        u_k = u[comp_name]['k'].vector().get_local()
-        u_n = u[comp_name]['n'].vector().get_local()
+        u_u = u[comp_name]["u"].vector().get_local()
+        u_k = u[comp_name]["k"].vector().get_local()
+        u_n = u[comp_name]["n"].vector().get_local()
         abs_err = np.linalg.norm(u_u - u_k, ord=error_norm)
-        #rel_err = np.linalg.norm((u_u - u_k)/u_n, ord=error_norm)
-        #rel_err = 1.0
-       
+        # rel_err = np.linalg.norm((u_u - u_k)/u_n, ord=error_norm)
+        # rel_err = 1.0
+
         if errorNormKey not in self.errors[comp_name].keys():
-            self.errors[comp_name][errorNormKey] = {'abs': []}
+            self.errors[comp_name][errorNormKey] = {"abs": []}
         #     self.errors[comp_name][errorNormKey]['abs'] = [abs_err]
         #     self.errors[comp_name][errorNormKey]['rel'] = [rel_err]
         # else:
         #     self.errors[comp_name][errorNormKey]['abs'].append(abs_err)
         #     self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
 
-        #self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
-        self.errors[comp_name][errorNormKey]['abs'].append(abs_err)
-        Print("Absolute error [%s] in the %s norm: %f" %(comp_name, errorNormKey, abs_err))
+        # self.errors[comp_name][errorNormKey]['rel'].append(rel_err)
+        self.errors[comp_name][errorNormKey]["abs"].append(abs_err)
+        Print(
+            "Absolute error [%s] in the %s norm: %f"
+            % (comp_name, errorNormKey, abs_err)
+        )
 
         return abs_err
 
-#            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
-#                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
+    #            self.errors[comp_name][errorNormKey].append(np.linalg.norm(u[comp_name]['u'].vector().get_local()
+    #                                    - u[comp_name]['k'].vector().get_local(), ord=error_norm))
 
     def init_plot(self, config, sc, fc):
-        if rank==root:
-            if not os.path.exists(config.directory['plots']):
-                os.makedirs(config.directory['plots'])
-        Print("Created directory %s to store plots" % config.directory['plots'])
+        if rank == root:
+            if not os.path.exists(config.directory["plots"]):
+                os.makedirs(config.directory["plots"])
+        Print("Created directory %s to store plots" % config.directory["plots"])
 
         maxCols = 3
-        # solution plots 
+        # solution plots
         self.groups = list(set([p.group for p in sc]))
-        if 'Null' in self.groups: self.groups.remove('Null')
+        if "Null" in self.groups:
+            self.groups.remove("Null")
         numPlots = len(self.groups)
-        #numPlots = len(self.solutions.keys())
+        # numPlots = len(self.solutions.keys())
         subplotCols = min([maxCols, numPlots])
-        subplotRows = int(np.ceil(numPlots/subplotCols))
+        subplotRows = int(np.ceil(numPlots / subplotCols))
         for idx in range(numPlots):
-            self.plots['solutions'].add_subplot(subplotRows,subplotCols,idx+1)
+            self.plots["solutions"].add_subplot(subplotRows, subplotCols, idx + 1)
 
         # parameter plots
         numPlots = len(self.parameters.keys())
         if numPlots > 0:
             subplotCols = min([maxCols, numPlots])
-            subplotRows = int(np.ceil(numPlots/subplotCols))
+            subplotRows = int(np.ceil(numPlots / subplotCols))
             for idx in range(numPlots):
-                self.plots['parameters'].add_subplot(subplotRows,subplotCols,idx+1)
+                self.plots["parameters"].add_subplot(subplotRows, subplotCols, idx + 1)
 
         # flux plots
         flux_names = [flux_name for flux_name, flux in fc.items if flux.track_value]
         numPlots = len(flux_names)
         if numPlots > 0:
             # remove forward/reverse flux labels
-            temp = [flux_name.replace(' (r)','') for flux_name in flux_names]
-            temp = [flux_name.replace(' (f)','') for flux_name in temp]
-            for i in range(len(temp)-1):
-                for j in range(i+1,len(temp)):
+            temp = [flux_name.replace(" (r)", "") for flux_name in flux_names]
+            temp = [flux_name.replace(" (f)", "") for flux_name in temp]
+            for i in range(len(temp) - 1):
+                for j in range(i + 1, len(temp)):
                     if temp[i] == temp[j]:
                         numPlots -= 1
 
             subplotCols = min([maxCols, numPlots])
-            subplotRows = int(np.ceil(numPlots/subplotCols))
+            subplotRows = int(np.ceil(numPlots / subplotCols))
             if numPlots > 0:
                 for idx in range(numPlots):
-                    self.plots['fluxes'].add_subplot(subplotRows,subplotCols,idx+1)
+                    self.plots["fluxes"].add_subplot(subplotRows, subplotCols, idx + 1)
 
-    def plot_parameters(self, config, figsize=(120,40)):
+    def plot_parameters(self, config, figsize=(120, 40)):
         """
         Plots time dependent parameters
         """
@@ -563,24 +672,35 @@ class Data:
         if len(self.parameters.keys()) > 0:
             for idx, key in enumerate(sorted(self.parameters.keys())):
                 param = self.parameters[key]
-                subplot = self.plots['parameters'].get_axes()[idx]
+                subplot = self.plots["parameters"].get_axes()[idx]
                 subplot.clear()
-                subplot.plot(self.tvec, param, linewidth=plot_settings['linewidth_small'], color='b')
+                subplot.plot(
+                    self.tvec,
+                    param,
+                    linewidth=plot_settings["linewidth_small"],
+                    color="b",
+                )
 
-                subplot = self.plots['parameters'].get_axes()[idx]
+                subplot = self.plots["parameters"].get_axes()[idx]
                 subplot.title.set_text(key)
-                subplot.title.set_fontsize(plot_settings['fontsize_med'])
-            for ax in self.plots['parameters'].axes:
+                subplot.title.set_fontsize(plot_settings["fontsize_med"])
+            for ax in self.plots["parameters"].axes:
                 ax.ticklabel_format(useOffset=False)
-                plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
-                plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
-                ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
+                plt.setp(ax.get_xticklabels(), fontsize=plot_settings["fontsize_small"])
+                plt.setp(ax.get_yticklabels(), fontsize=plot_settings["fontsize_small"])
+                ax.yaxis.get_offset_text().set_fontsize(
+                    fontsize=plot_settings["fontsize_small"]
+                )
 
-            self.plots['parameters'].tight_layout()
-            #plt.tight_layout()
-            self.plots['parameters'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_params', figsize=figsize,dpi=300)#,bbox_inches='tight')
+            self.plots["parameters"].tight_layout()
+            # plt.tight_layout()
+            self.plots["parameters"].savefig(
+                dir_settings["plots"] + "/" + plot_settings["figname"] + "_params",
+                figsize=figsize,
+                dpi=300,
+            )  # ,bbox_inches='tight')
 
-    def plot_fluxes(self, config, figsize=(120,120)):
+    def plot_fluxes(self, config, figsize=(120, 120)):
         """
         Plots assembled fluxes
         Note: assemble(flux) (measure is a surface) [=]
@@ -590,105 +710,158 @@ class Data:
         dir_settings = config.directory
 
         if len(self.fluxes.keys()) > 0:
-            #for idx, (flux_name,flux) in enumerate(self.fluxes.items()):
+            # for idx, (flux_name,flux) in enumerate(self.fluxes.items()):
             for idx, flux_name in enumerate(sorted(self.fluxes.keys())):
                 flux = self.fluxes[flux_name]
-                subplot = self.plots['fluxes'].get_axes()[idx]
+                subplot = self.plots["fluxes"].get_axes()[idx]
                 subplot.clear()
-                subplot.plot(self.tvec, flux, linewidth=plot_settings['linewidth_med'], color='b')
+                subplot.plot(
+                    self.tvec, flux, linewidth=plot_settings["linewidth_med"], color="b"
+                )
 
-                subplot = self.plots['fluxes'].get_axes()[idx]
+                subplot = self.plots["fluxes"].get_axes()[idx]
                 subplot.title.set_text(flux_name)
-                subplot.title.set_fontsize(plot_settings['fontsize_med'])
-            for ax in self.plots['fluxes'].axes:
+                subplot.title.set_fontsize(plot_settings["fontsize_med"])
+            for ax in self.plots["fluxes"].axes:
                 ax.ticklabel_format(useOffset=False)
-                plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
-                plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
-                ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
-            
-            self.plots['fluxes'].suptitle('Fluxes [molecules/s]', fontsize=plot_settings['fontsize_med'])
-            self.plots['fluxes'].tight_layout()
-            #plt.tight_layout()
-            self.plots['fluxes'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_fluxes', figsize=figsize,dpi=300)#,bbox_inches='tight')
+                plt.setp(ax.get_xticklabels(), fontsize=plot_settings["fontsize_small"])
+                plt.setp(ax.get_yticklabels(), fontsize=plot_settings["fontsize_small"])
+                ax.yaxis.get_offset_text().set_fontsize(
+                    fontsize=plot_settings["fontsize_small"]
+                )
 
+            self.plots["fluxes"].suptitle(
+                "Fluxes [molecules/s]", fontsize=plot_settings["fontsize_med"]
+            )
+            self.plots["fluxes"].tight_layout()
+            # plt.tight_layout()
+            self.plots["fluxes"].savefig(
+                dir_settings["plots"] + "/" + plot_settings["figname"] + "_fluxes",
+                figsize=figsize,
+                dpi=300,
+            )  # ,bbox_inches='tight')
 
-    def plot_solutions(self, config, sc, figsize=(160,160)):
+    def plot_solutions(self, config, sc, figsize=(160, 160)):
         plot_settings = config.plot_settings
         dir_settings = config.directory
 
         # plot solutions together by group
 
         for idx, group in enumerate(sorted(self.groups)):
-            subplot = self.plots['solutions'].get_axes()[idx]
+            subplot = self.plots["solutions"].get_axes()[idx]
             subplot.clear()
             sidx = 0
             for param_name, param in sc.items:
                 if param.group == group:
 
-                    soln =  self.solutions[param_name]
-                    subplot.plot(self.tvec, soln['min'], linewidth=plot_settings['linewidth_small']*0.5, color=self.color_list[sidx])
-                    subplot.plot(self.tvec, soln['mean'], linewidth=plot_settings['linewidth_med'], color=self.color_list[sidx], label=param_name)
-                    subplot.plot(self.tvec, soln['max'], linewidth=plot_settings['linewidth_small']*0.5, color=self.color_list[sidx])
+                    soln = self.solutions[param_name]
+                    subplot.plot(
+                        self.tvec,
+                        soln["min"],
+                        linewidth=plot_settings["linewidth_small"] * 0.5,
+                        color=self.color_list[sidx],
+                    )
+                    subplot.plot(
+                        self.tvec,
+                        soln["mean"],
+                        linewidth=plot_settings["linewidth_med"],
+                        color=self.color_list[sidx],
+                        label=param_name,
+                    )
+                    subplot.plot(
+                        self.tvec,
+                        soln["max"],
+                        linewidth=plot_settings["linewidth_small"] * 0.5,
+                        color=self.color_list[sidx],
+                    )
 
-                    unitStr = '{:P}'.format(self.solutions[param_name]['concentration_units'].units)
+                    unitStr = "{:P}".format(
+                        self.solutions[param_name]["concentration_units"].units
+                    )
                     sidx += 1
-            subplot = self.plots['solutions'].get_axes()[idx]
-            subplot.legend(fontsize=plot_settings['fontsize_small'])
-            subplot.title.set_text(group)# + ' [' + unitStr + ']')
-            subplot.title.set_fontsize(plot_settings['fontsize_med'])
+            subplot = self.plots["solutions"].get_axes()[idx]
+            subplot.legend(fontsize=plot_settings["fontsize_small"])
+            subplot.title.set_text(group)  # + ' [' + unitStr + ']')
+            subplot.title.set_fontsize(plot_settings["fontsize_med"])
 
-
-        #self.plots['solutions'].tight_layout()
-        for ax in self.plots['solutions'].axes:
+        # self.plots['solutions'].tight_layout()
+        for ax in self.plots["solutions"].axes:
             ax.ticklabel_format(useOffset=False)
-            plt.setp(ax.get_xticklabels(), fontsize=plot_settings['fontsize_small'])
-            plt.setp(ax.get_yticklabels(), fontsize=plot_settings['fontsize_small'])
-            ax.yaxis.get_offset_text().set_fontsize(fontsize=plot_settings['fontsize_small'])
+            plt.setp(ax.get_xticklabels(), fontsize=plot_settings["fontsize_small"])
+            plt.setp(ax.get_yticklabels(), fontsize=plot_settings["fontsize_small"])
+            ax.yaxis.get_offset_text().set_fontsize(
+                fontsize=plot_settings["fontsize_small"]
+            )
 
-        self.plots['solutions'].tight_layout()
-        #plt.tight_layout()
-        self.plots['solutions'].savefig(dir_settings['plots']+'/'+plot_settings['figname'], figsize=figsize,dpi=300)#,bbox_inches='tight')
-        self.plots['solutions'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'.svg', format='svg', figsize=figsize,dpi=300)#,bbox_inches='tight')
+        self.plots["solutions"].tight_layout()
+        # plt.tight_layout()
+        self.plots["solutions"].savefig(
+            dir_settings["plots"] + "/" + plot_settings["figname"],
+            figsize=figsize,
+            dpi=300,
+        )  # ,bbox_inches='tight')
+        self.plots["solutions"].savefig(
+            dir_settings["plots"] + "/" + plot_settings["figname"] + ".svg",
+            format="svg",
+            figsize=figsize,
+            dpi=300,
+        )  # ,bbox_inches='tight')
 
-
-    def plot_solver_status(self, config, figsize=(85,40)):
+    def plot_solver_status(self, config, figsize=(85, 40)):
         plot_settings = config.plot_settings
         dir_settings = config.directory
-        nticks=14
-        nround=3
+        nticks = 14
+        nround = 3
 
-        plt.close(self.plots['solver_status'])
-        self.plots['solver_status'] = plt.subplots()[0]#.clear()
+        plt.close(self.plots["solver_status"])
+        self.plots["solver_status"] = plt.subplots()[0]  # .clear()
 
-        if len(self.plots['solver_status'].axes) == 1:
-            ax2 = self.plots['solver_status'].axes[0].twinx()
-            ax3 = self.plots['solver_status'].axes[0].twiny()
-        axes = self.plots['solver_status'].axes
+        if len(self.plots["solver_status"].axes) == 1:
+            ax2 = self.plots["solver_status"].axes[0].twinx()
+            ax3 = self.plots["solver_status"].axes[0].twiny()
+        axes = self.plots["solver_status"].axes
 
-        axes[0].set_ylabel('$\Delta$t [ms]', fontsize=plot_settings['fontsize_med']*2, color='blue')
-        axes[0].plot([dt*1000 for dt in self.dtvec], color='blue')
+        axes[0].set_ylabel(
+            "$\Delta$t [ms]", fontsize=plot_settings["fontsize_med"] * 2, color="blue"
+        )
+        axes[0].plot([dt * 1000 for dt in self.dtvec], color="blue")
         dt_ticks = np.geomspace(min(self.dtvec), max(self.dtvec), nticks)
-        dt_ticks = [round_to_n(dt*1000,nround) for dt in dt_ticks]
-        axes[0].set_yscale('log')
-        axes[0].set_xlabel('Solver Iteration', fontsize=plot_settings['fontsize_med']*2)
+        dt_ticks = [round_to_n(dt * 1000, nround) for dt in dt_ticks]
+        axes[0].set_yscale("log")
+        axes[0].set_xlabel(
+            "Solver Iteration", fontsize=plot_settings["fontsize_med"] * 2
+        )
         axes[0].set_yticks(dt_ticks)
-        axes[0].set_yticklabels([str(dt) for dt in dt_ticks], fontsize=plot_settings['fontsize_small']*2)
-        axes[1].set_ylabel('Newton iterations', fontsize=plot_settings['fontsize_med']*2, color='orange')
-        axes[1].plot(self.nl_idxvec, color='orange')
-        axes[1].tick_params(labelsize=plot_settings['fontsize_small']*2)
-        axes[2].set_xlabel('Time [ms]', fontsize=plot_settings['fontsize_med']*2)
-        indices = [int(x) for x in np.linspace(0,len(self.tvec)-1,nticks)]
+        axes[0].set_yticklabels(
+            [str(dt) for dt in dt_ticks], fontsize=plot_settings["fontsize_small"] * 2
+        )
+        axes[1].set_ylabel(
+            "Newton iterations",
+            fontsize=plot_settings["fontsize_med"] * 2,
+            color="orange",
+        )
+        axes[1].plot(self.nl_idxvec, color="orange")
+        axes[1].tick_params(labelsize=plot_settings["fontsize_small"] * 2)
+        axes[2].set_xlabel("Time [ms]", fontsize=plot_settings["fontsize_med"] * 2)
+        indices = [int(x) for x in np.linspace(0, len(self.tvec) - 1, nticks)]
         axes[0].set_xticks(indices)
-        axes[0].set_xticklabels([str(idx) for idx in indices], fontsize=plot_settings['fontsize_small']*2)
-        time_ticks = [np.around(self.tvec[idx]*1000,1) for idx in indices]
-        #axes[2].clear()
+        axes[0].set_xticklabels(
+            [str(idx) for idx in indices], fontsize=plot_settings["fontsize_small"] * 2
+        )
+        time_ticks = [np.around(self.tvec[idx] * 1000, 1) for idx in indices]
+        # axes[2].clear()
         axes[2].set_xticks(indices)
-        axes[2].set_xticklabels([str(t) for t in time_ticks], fontsize=plot_settings['fontsize_small']*2)
+        axes[2].set_xticklabels(
+            [str(t) for t in time_ticks], fontsize=plot_settings["fontsize_small"] * 2
+        )
 
         plt.minorticks_off()
         plt.tight_layout()
-        self.plots['solver_status'].savefig(dir_settings['plots']+'/'+plot_settings['figname']+'_solver', figsize=figsize,dpi=300)
-
+        self.plots["solver_status"].savefig(
+            dir_settings["plots"] + "/" + plot_settings["figname"] + "_solver",
+            figsize=figsize,
+            dpi=300,
+        )
 
     def output_pickle(self):
         """
@@ -697,13 +870,13 @@ class Data:
         newDict = {}
 
         # statistics over entire domain
-        saveKeys = ['min', 'max', 'mean', 'std']
+        saveKeys = ["min", "max", "mean", "std"]
         for sp_name in self.solutions.keys():
             newDict[sp_name] = {}
-            #for key in self.solutions[sp_name].keys():
+            # for key in self.solutions[sp_name].keys():
             for key in saveKeys:
                 newDict[sp_name][key] = self.solutions[sp_name][key]
-        newDict['tvec'] = self.tvec
+        newDict["tvec"] = self.tvec
 
         # fluxes
         for flux_name in self.fluxes.keys():
@@ -715,55 +888,67 @@ class Data:
                 newDict[sp_name][coord] = val
 
         # pickle file
-        stats_dir = self.config.directory['solutions']+'/stats'
+        stats_dir = self.config.directory["solutions"] + "/stats"
         if not os.path.exists(stats_dir):
             os.makedirs(stats_dir)
-        with open(stats_dir+'/'+'pickled_solutions.obj', 'wb') as pickle_file:
+        with open(stats_dir + "/" + "pickled_solutions.obj", "wb") as pickle_file:
             pickle.dump(newDict, pickle_file)
 
-        Print('Solutions dumped into pickle.')
+        Print("Solutions dumped into pickle.")
 
     def output_csv(self):
         """
         Outputs solution statistics as a csv
         """
-        stats_dir = self.config.directory['solutions']+'/stats'
-        probe_dir = self.config.directory['solutions']+'/probe'
+        stats_dir = self.config.directory["solutions"] + "/stats"
+        probe_dir = self.config.directory["solutions"] + "/probe"
         if not os.path.exists(stats_dir):
             os.makedirs(stats_dir)
         if not os.path.exists(probe_dir):
             os.makedirs(probe_dir)
 
         # statistics over entire domain
-        saveKeys = ['min', 'max', 'mean', 'std']
+        saveKeys = ["min", "max", "mean", "std"]
         for sp_name in self.solutions.keys():
-            #for key in self.solutions[sp_name].keys():
+            # for key in self.solutions[sp_name].keys():
             for key in saveKeys:
-                np.savetxt(stats_dir+'/'+sp_name+'_'+str(key)+'.csv', 
-                           self.solutions[sp_name][key], delimiter=',')
-        np.savetxt(stats_dir+'/'+'tvec'+'.csv', self.tvec, delimiter=',')
+                np.savetxt(
+                    stats_dir + "/" + sp_name + "_" + str(key) + ".csv",
+                    self.solutions[sp_name][key],
+                    delimiter=",",
+                )
+        np.savetxt(stats_dir + "/" + "tvec" + ".csv", self.tvec, delimiter=",")
 
         # fluxes
         for flux_name in self.fluxes.keys():
-            np.savetxt(stats_dir+'/'+flux_name+'.csv', 
-                       self.fluxes[flux_name], delimiter=',')
+            np.savetxt(
+                stats_dir + "/" + flux_name + ".csv",
+                self.fluxes[flux_name],
+                delimiter=",",
+            )
 
         # solutions at specific coordinates
         for sp_name in self.probe_solutions.keys():
             for coord, val in self.probe_solutions[sp_name].items():
                 if len(coord) == 2:
-                    coord_str = "({coord[0]:.3f}_{coord[1]:.3f})".replace('.',',')
+                    coord_str = "({coord[0]:.3f}_{coord[1]:.3f})".replace(".", ",")
                 elif len(coord) == 3:
-                    coord_str = "({coord[0]:.3f}_{coord[1]:.3f}_{coord[2]:.3f})".replace('.',',')
-                else: 
+                    coord_str = (
+                        "({coord[0]:.3f}_{coord[1]:.3f}_{coord[2]:.3f})".replace(
+                            ".", ","
+                        )
+                    )
+                else:
                     raise Exception("Coordinates must be in two or three dimensions.")
 
-                coord_str = str(coord).replace(', ','_').replace('.',',')
-                np.savetxt(probe_dir+'/'+sp_name+'_'+coord_str+'.csv', 
-                           val, delimiter=',')
+                coord_str = str(coord).replace(", ", "_").replace(".", ",")
+                np.savetxt(
+                    probe_dir + "/" + sp_name + "_" + coord_str + ".csv",
+                    val,
+                    delimiter=",",
+                )
 
-        Print('Solutions dumped into CSV.')
-
+        Print("Solutions dumped into CSV.")
 
 
 # ====================================================
@@ -803,7 +988,6 @@ class Data:
 #     return recvbuf
 
 
-
 # def dolfinGetFunctionValues(u,species_idx):
 #     """
 #     Returns the values of a VectorFunction. When run in parallel this will *not* double-count overlapping vertices
@@ -823,13 +1007,13 @@ class Data:
 
 
 # def dolfinGetFunctionValuesAtPoint(u, coord, species_idx=None):
-    
-#     Returns the values of a dolfin function at the specified coordinate 
+
+#     Returns the values of a dolfin function at the specified coordinate
 #     :param dolfin.function.function.Function u: Function to extract values from
 #     :param tuple coord: tuple of floats indicating where in space to evaluate u e.g. (x,y,z)
 #     :param int species_idx: index of species
 #     :return: list of values at point. If species_idx is not specified it will return all values
-    
+
 #     if species_idx is not None:
 #         return u(coord)[species_idx]
 #     else:
@@ -891,5 +1075,3 @@ class Data:
 #             return closestPoint, min_dist_global
 #     else:
 #         return closestPoint, minDist
-
-
