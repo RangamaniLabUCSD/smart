@@ -527,6 +527,18 @@ def empty_sbmodel():
     rc = stubs.model_assembly.ReactionContainer()
     return pc, sc, cc, rc 
 
+def sbmodel_from_locals(local_values):
+    # Initialize containers
+    pc, sc, cc, rc = empty_sbmodel()
+    parameters   = [x for x in local_values if isinstance(x, stubs.model_assembly.Parameter)]
+    species      = [x for x in local_values if isinstance(x, stubs.model_assembly.Species)]
+    compartments = [x for x in local_values if isinstance(x, stubs.model_assembly.Compartment)]
+    reactions    = [x for x in local_values if isinstance(x, stubs.model_assembly.Reaction)]
+    # we just reverse the list so that the order is the same as how they were defined
+    parameters.reverse(); species.reverse(); compartments.reverse(); reactions.reverse()
+    pc.add(parameters); sc.add(species); cc.add(compartments); rc.add(reactions)
+    return pc, sc, cc, rc
+
 def pint_unit_to_quantity(pint_unit):
     if not isinstance(pint_unit, pint.Unit):
         raise TypeError("Input must be a pint unit")
@@ -730,3 +742,69 @@ def find_steady_state(reaction_list, constraints=None, return_equations=False, f
         return all_equations, all_species
     else:
         return sympy.solve(all_equations, all_species)
+
+# Get cells and faces for each subdomain
+def face_topology(f, mf3):
+    """Given a face and cell mesh function, return the topology of the face"""
+    localCells = [mf3.array()[c.index()] for c in d.cells(f)] # cells adjacent face
+    if len(localCells) == 1:
+        topology = 'boundary' # boundary face
+    elif len(localCells) == 2 and localCells[0] == localCells[1]:
+        topology = 'internal' # internal face
+    elif len(localCells) == 2:
+        topology = 'interface' # interface face
+    else:
+        raise Exception("Face has more than two cells")
+    return (topology, localCells)
+
+def zplane_condition(cell, z=0.5):
+    return (cell.midpoint().z() > z+d.DOLFIN_EPS)
+
+def cube_condition(cell, xmin=0.3, xmax=0.7):
+    return (xmin-d.DOLFIN_EPS < cell.midpoint().x() < xmax+d.DOLFIN_EPS) and \
+           (xmin-d.DOLFIN_EPS < cell.midpoint().y() < xmax+d.DOLFIN_EPS) and \
+           (xmin-d.DOLFIN_EPS < cell.midpoint().z() < xmax+d.DOLFIN_EPS)
+
+def DemoCuboidsMesh(N=16, condition=cube_condition):
+    """
+    Creates a mesh for use in examples that contains two distinct cuboid subvolumes with a shared interface surface.
+    Cell markers:
+    1 - Default subvolume
+    2 - Subvolume specified by condition function
+
+    Face markers:
+    12 - Interface between subvolumes
+    10 - Boundary of subvolume 1
+    20 - Boundary of subvolume 2
+    0  - Interior faces
+    """
+    # Create a mesh
+    mesh    = d.UnitCubeMesh(N, N, N)
+    # Initialize mesh functions 
+    mf3 = d.MeshFunction("size_t", mesh, 3, 0) 
+    mf2 = d.MeshFunction("size_t", mesh, 2, 0)
+
+    # Mark all cells that satisfy condition as 3, else 1
+    for c in d.cells(mesh):
+        mf3[c] = 2 if condition(c) else 1
+
+    # Mark faces 
+    for f in d.faces(mesh):
+        topology, cellIndices = face_topology(f,mf3)
+        if topology == 'interface':
+            mf2[f] = 12
+        elif topology == 'boundary':
+            mf2[f] = int(cellIndices[0]*10)
+        else:
+            mf2[f] = 0
+    return (mesh, mf2, mf3)
+
+def write_mesh(mesh,mf2,mf3,filename="DemoCuboidMesh"):
+    # Write mesh and meshfunctions to file
+    hdf5 = d.HDF5File(mesh.mpi_comm(), filename+'.h5', 'w')
+    hdf5.write(mesh, '/mesh')
+    hdf5.write(mf3, f"/mf3")
+    hdf5.write(mf2, f"/mf2")
+    # For visualization of domains
+    d.File(filename+'_mf3.pvd') << mf3
+    d.File(filename+'_mf2.pvd') << mf2
