@@ -10,10 +10,8 @@ def make_adjacent_cubes_mesh(N, hdf5_filename):
     mf2 = d.MeshFunction("size_t", mesh, 2, value=0)
     mf3 = d.MeshFunction("size_t", mesh, 3, value=0)
     d.CompiledSubDomain("on_boundary").mark(mf2, 2)
-    d.CompiledSubDomain("on_boundary && near(x[2], 2)").mark(
-        mf2,
-        0,
-    )  # mark some facets near pm as 0
+# mark some facets near pm as 0
+d.CompiledSubDomain("on_boundary && near(x[2], 2)").mark(mf2, 0)
     d.CompiledSubDomain("near(x[2], 0)").mark(mf2, 4)
     d.CompiledSubDomain("x[2] <= 0").mark(mf3, 12)
     d.CompiledSubDomain("x[2] >= 0").mark(mf3, 11)
