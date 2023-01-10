@@ -46,7 +46,7 @@ def make_model():
     Rinit = "(sin(40*y) + cos(40*z) + sin(40*x) + 3) * (y-x)**2"
     R1    = Species('R1'  , Rinit, surf_unit, 0.02, D_unit, 'ERm')
     R1o   = Species('R1o' , 0.0  , surf_unit, 0.02, D_unit, 'ERm')
-    R2    = Species('R2'  , Rinit, surf_unit, 0   , D_unit, 'ERm')
+    #R2    = Species('R2'  , Rinit, surf_unit, 0   , D_unit, 'ERm')
 
     # =============================================================================================
     # Compartments
