@@ -47,7 +47,7 @@ setup(
         'termplotlib'
     ],              # Required packages, pulls from pip if needed; do not use for Conda deployment
     # python_requires=">=3.5",          # Python version restrictions
-
+    extras_require={'dev': ['h5py']},
     # Manual control if final package is compressible or not, set False to prevent the .egg from being made
     # zip_safe=False,
 
