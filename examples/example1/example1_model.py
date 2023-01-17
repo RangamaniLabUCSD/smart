@@ -15,11 +15,12 @@ Geometry is divdied into 4 domains, 2 volumes, and 2 surfaces:
 
 Roughly, this model is similar to an IP3 pulse at the PM, leading to Ca2+ release at the ER
 """
-# Imports
-import stubs
-from stubs.common import empty_sbmodel, sbmodel_from_locals
-from stubs.model_assembly import Parameter, Species, Compartment, Reaction, parse_expr
+
 import sympy as sym
+
+import stubs
+from stubs.common import sbmodel_from_locals
+from stubs.model_assembly import Compartment, Parameter, Reaction, Species
 
 # Aliases - base units
 unit          = stubs.unit # unit registry

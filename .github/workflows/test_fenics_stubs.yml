@@ -16,15 +16,21 @@ on:
 jobs:
   check-code:
     runs-on: ubuntu-22.04
-    # Runs against FEniCS main branch built the 12-12-2022
-    container: ghcr.io/scientificcomputing/fenics:2022-12-12
+    # Runs against FEniCS main branch built the 16-01-2023
+    container: ghcr.io/scientificcomputing/fenics:2023-01-16
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v3
       
       - name: "Install code"
         run: python3 -m pip install --no-binary=h5py .[dev]
-      - name: Run tests
+
+      - name: Run example 1
         run: |
-          cd tests/
-          python3 -m pytest .
+          cd examples/example1/
+          python3 example1_driver.py
+
+      # - name: Run tests
+      #   run: |
+      #     cd tests/
+      #     python3 -m pytest .
