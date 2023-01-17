@@ -31,6 +31,8 @@ from .common import (np_smart_hstack, pint_quantity_to_unit,
 from .config import global_settings as gset
 from .units import unit
 
+import stubs.common as common
+
 Print = PETSc.Sys.Print
 
 
@@ -1707,7 +1709,7 @@ class FieldVariable(ObjectInstance):
         self.v = common.sub(self.compartment.v, 0)
 
     def set_units(self, desired_units):
-        self.desired_units = stubs.common.pint_unit_to_quantity(desired_units)
+        self.desired_units = common.pint_unit_to_quantity(desired_units)
         # Update equation with correct unit scale factor
         # Use the uninitialized unit_scale_factor to get the actual units
         # this is redundant if called by __post_init__
