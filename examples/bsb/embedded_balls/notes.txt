@@ -1,4 +1,0 @@
-embedded_balls.xml consists of an inner ball with radius 0.5 embedded in an outer ball (with a hollowed core) of radius 1.0
-
-the outermost surface has marker value 2, the innermost surface has marker value 4
-the outermost ball has marker value 1, the innermost ball has marker value 3

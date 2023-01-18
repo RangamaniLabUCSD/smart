@@ -11,6 +11,7 @@ from . import model
 from . import model_assembly
 from . import solvers
 from .units import unit
+from . import post_process
 
 __all__ = [
     "config",
@@ -21,4 +22,5 @@ __all__ = [
     "common",
     "mesh",
     "unit",
+    "post_process",
 ]

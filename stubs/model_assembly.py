@@ -24,13 +24,14 @@ from sympy import Symbol
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
 
+import stubs.common as common
+
 from .common import _fancy_print as fancy_print
-from .common import np_smart_hstack
-from .common import pint_quantity_to_unit
-from .common import pint_unit_to_quantity
-from .common import sub
+from .common import np_smart_hstack, pint_quantity_to_unit, pint_unit_to_quantity, sub
 from .config import global_settings as gset
 from .units import unit
+
+import stubs.common as common
 
 Print = PETSc.Sys.Print
 
@@ -527,7 +528,8 @@ class Parameter(ObjectInstance):
         # Parse the given string to create a sympy expression
         if isinstance(sym_expr, str):
             sym_expr = parse_expr(sym_expr)
-        sym_expr = sym_expr.subs({"x": "x[0]", "y": "x[1]", "z": "x[2]"})
+        x, y, z = (Symbol(f"x[{i}]") for i in range(3))
+        sym_expr = sym_expr.subs({"x": x, "y": y, "z": z})
 
         # Check if expression is time/space dependent
         free_symbols = [str(x) for x in sym_expr.free_symbols]
@@ -556,9 +558,7 @@ class Parameter(ObjectInstance):
             if preint_sym_expr:
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
-                preint_sym_expr = preint_sym_expr.subs(
-                    {"x": "x[0]", "y": "x[1]", "z": "x[2]"},
-                )
+                preint_sym_expr = preint_sym_expr.subs({"x": x, "y": y, "z": z})
             else:
                 # try to integrate
                 t = Symbol("t")
@@ -738,10 +738,9 @@ class Species(ObjectInstance):
         elif isinstance(self.initial_condition, int):
             self.initial_condition = float(self.initial_condition)
         elif isinstance(self.initial_condition, str):
+            x, y, z = (Symbol(f"x[{i}]") for i in range(3))
             # Parse the given string to create a sympy expression
-            sym_expr = parse_expr(self.initial_condition).subs(
-                {"x": "x[0]", "y": "x[1]", "z": "x[2]"},
-            )
+            sym_expr = parse_expr(self.initial_condition).subs({"x": x, "y": y, "z": z})
 
             # Check if expression is space dependent
             free_symbols = [str(x) for x in sym_expr.free_symbols]
@@ -1721,7 +1720,7 @@ class FieldVariable(ObjectInstance):
         self.v = common.sub(self.compartment.v, 0)
 
     def set_units(self, desired_units):
-        self.desired_units = stubs.common.pint_unit_to_quantity(desired_units)
+        self.desired_units = common.pint_unit_to_quantity(desired_units)
         # Update equation with correct unit scale factor
         # Use the uninitialized unit_scale_factor to get the actual units
         # this is redundant if called by __post_init__

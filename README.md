@@ -17,9 +17,9 @@ Although FEniCS is a core dependency, because it has many different versions (20
 
 ```bash
 # create a container using DOLFIN built on ubuntu 22.04 with Python 3.10
-jgl:~$ docker run -ti --init ghcr.io/scientificcomputing/fenics:2022-12-12
+jgl:~$ docker run -ti --init ghcr.io/scientificcomputing/fenics:2023-01-16
 # pip install stubs from within the container
-root@jgl:~$ python3 -m pip install stubs
+root@jgl:~$ python3 -m pip install fenics-stubs
 ```
 
 ### Dependencies

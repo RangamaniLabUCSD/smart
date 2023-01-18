@@ -16,7 +16,7 @@ from termcolor import colored
 from .config import global_settings as gset
 from .units import unit
 
-# import trimesh
+import stubs
 
 __all__ = [
     "stubs_expression",
@@ -305,6 +305,223 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
 #                 print()
 #             else:
 #                 print(colored(text, color=color))
+
+
+# ====================================================
+# I/O
+# ====================================================
+
+
+def json_to_ObjectContainer(json_str, data_type=None):
+    """
+    Converts a json_str (either a string of the json itself, or a filepath to
+    the json)
+    """
+    if not data_type:
+        raise Exception(
+            "Please include the type of data this is (parameters, species, compartments, reactions)."
+        )
+
+    if json_str[-5:] == ".json":
+        if not os.path.exists(json_str):
+            raise Exception("Cannot find JSON file, %s" % json_str)
+
+    df = read_json(json_str).sort_index()
+    df = nan_to_none(df)
+    if data_type in ["parameters", "parameter", "param", "p"]:
+        return stubs.model_assembly.ParameterContainer(df)
+    elif data_type in ["species", "sp", "spec", "s"]:
+        return stubs.model_assembly.SpeciesContainer(df)
+    elif data_type in ["compartments", "compartment", "comp", "c"]:
+        return stubs.model_assembly.CompartmentContainer(df)
+    elif data_type in ["reactions", "reaction", "r", "rxn"]:
+        return stubs.model_assembly.ReactionContainer(df)
+    else:
+        raise Exception(
+            "I don't know what kind of ObjectContainer this .json file should be"
+        )
+
+
+# def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
+#     """
+#     Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
+#     a .sbmodel file (a convenient concatenation of .json files with syntax
+#     similar to .xml)
+#     """
+#     f = open(filepath, "w")
+
+#     f.write("<sbmodel>\n")
+#     # parameters
+#     f.write("<parameters>\n")
+#     pdf.df.to_json(f)
+#     f.write("\n</parameters>\n")
+#     # species
+#     f.write("<species>\n")
+#     sdf.df.to_json(f)
+#     f.write("\n</species>\n")
+#     # compartments
+#     f.write("<compartments>\n")
+#     cdf.df.to_json(f)
+#     f.write("\n</compartments>\n")
+#     # reactions
+#     f.write("<reactions>\n")
+#     rdf.df.to_json(f)
+#     f.write("\n</reactions>\n")
+
+#     f.write("</sbmodel>\n")
+#     f.close()
+#     print(f"sbmodel file saved successfully as {filepath}!")
+
+
+def write_sbmodel(filepath, pc, sc, cc, rc):
+    """
+    Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
+    a .sbmodel file (a convenient concatenation of .json files with syntax
+    similar to .xml)
+    """
+    f = open(filepath, "w")
+
+    f.write("<sbmodel>\n")
+    # parameters
+    f.write("<parameters>\n")
+    pdf.df.to_json(f)
+    f.write("\n</parameters>\n")
+    # species
+    f.write("<species>\n")
+    sdf.df.to_json(f)
+    f.write("\n</species>\n")
+    # compartments
+    f.write("<compartments>\n")
+    cdf.df.to_json(f)
+    f.write("\n</compartments>\n")
+    # reactions
+    f.write("<reactions>\n")
+    rdf.df.to_json(f)
+    f.write("\n</reactions>\n")
+
+    f.write("</sbmodel>\n")
+    f.close()
+    print(f"sbmodel file saved successfully as {filepath}!")
+
+
+def read_sbmodel(filepath, output_type=dict):
+    f = open(filepath, "r")
+    lines = f.read().splitlines()
+    if lines[0] != "<sbmodel>":
+        raise Exception(f"Is {filepath} a valid .sbmodel file?")
+
+    p_string = []
+    c_string = []
+    s_string = []
+    r_string = []
+    line_idx = 0
+
+    while True:
+        if line_idx >= len(lines):
+            break
+        line = lines[line_idx]
+        if line == "</sbmodel>":
+            print("Finished reading in sbmodel file")
+            break
+
+        if line == "<parameters>":
+            print("Reading in parameters")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</parameters>":
+                    break
+                p_string.append(lines[line_idx])
+
+        if line == "<species>":
+            print("Reading in species")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</species>":
+                    break
+                s_string.append(lines[line_idx])
+
+        if line == "<compartments>":
+            print("Reading in compartments")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</compartments>":
+                    break
+                c_string.append(lines[line_idx])
+
+        if line == "<reactions>":
+            print("Reading in reactions")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</reactions>":
+                    break
+                r_string.append(lines[line_idx])
+
+        line_idx += 1
+
+    pdf = pandas.read_json("".join(p_string)).sort_index()
+    sdf = pandas.read_json("".join(s_string)).sort_index()
+    cdf = pandas.read_json("".join(c_string)).sort_index()
+    rdf = pandas.read_json("".join(r_string)).sort_index()
+    pc = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
+    sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
+    cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
+    rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
+
+    if output_type == dict:
+        return {
+            "parameter_container": pc,
+            "species_container": sc,
+            "compartment_container": cc,
+            "reaction_container": rc,
+        }
+    elif output_type == tuple:
+        return (pc, sc, cc, rc)
+
+
+# def create_sbmodel(p, s, c, r, output_type=dict):
+#     pc = stubs.model_assembly.ParameterContainer(p)
+#     sc = stubs.model_assembly.SpeciesContainer(s)
+#     cc = stubs.model_assembly.CompartmentContainer(c)
+#     rc = stubs.model_assembly.ReactionContainer(r)
+
+#     if output_type==dict:
+#         return {'parameter_container': pc,   'species_container': sc,
+#                 'compartment_container': cc, 'reaction_container': rc}
+#     elif output_type==tuple:
+#         return (pc, sc, cc, rc)
+
+
+def empty_sbmodel():
+    pc = stubs.model_assembly.ParameterContainer()
+    sc = stubs.model_assembly.SpeciesContainer()
+    cc = stubs.model_assembly.CompartmentContainer()
+    rc = stubs.model_assembly.ReactionContainer()
+    return pc, sc, cc, rc
+
+
+def sbmodel_from_locals(local_values):
+    # Initialize containers
+    pc, sc, cc, rc = empty_sbmodel()
+    parameters = [
+        x for x in local_values if isinstance(x, stubs.model_assembly.Parameter)
+    ]
+    species = [x for x in local_values if isinstance(x, stubs.model_assembly.Species)]
+    compartments = [
+        x for x in local_values if isinstance(x, stubs.model_assembly.Compartment)
+    ]
+    reactions = [
+        x for x in local_values if isinstance(x, stubs.model_assembly.Reaction)
+    ]
+    # we just reverse the list so that the order is the same as how they were defined
+    parameters.reverse()
+    species.reverse()
+    compartments.reverse()
+    reactions.reverse()
+    pc.add(parameters)
+    sc.add(species)
+    cc.add(compartments)
+    rc.add(reactions)
+    return pc, sc, cc, rc
 
 
 def pint_unit_to_quantity(pint_unit):
@@ -720,3 +937,76 @@ def _fancy_print(
     # end spacing
     if new_lines[1] > 0:
         print_out("\n" * (new_lines[1] - 1), filename)
+
+
+# Get cells and faces for each subdomain
+def face_topology(f, mf3):
+    """Given a face and cell mesh function, return the topology of the face"""
+    localCells = [mf3.array()[c.index()] for c in d.cells(f)]  # cells adjacent face
+    if len(localCells) == 1:
+        topology = "boundary"  # boundary face
+    elif len(localCells) == 2 and localCells[0] == localCells[1]:
+        topology = "internal"  # internal face
+    elif len(localCells) == 2:
+        topology = "interface"  # interface face
+    else:
+        raise Exception("Face has more than two cells")
+    return (topology, localCells)
+
+
+def zplane_condition(cell, z=0.5):
+    return cell.midpoint().z() > z + d.DOLFIN_EPS
+
+
+def cube_condition(cell, xmin=0.3, xmax=0.7):
+    return (
+        (xmin - d.DOLFIN_EPS < cell.midpoint().x() < xmax + d.DOLFIN_EPS)
+        and (xmin - d.DOLFIN_EPS < cell.midpoint().y() < xmax + d.DOLFIN_EPS)
+        and (xmin - d.DOLFIN_EPS < cell.midpoint().z() < xmax + d.DOLFIN_EPS)
+    )
+
+
+def DemoCuboidsMesh(N=16, condition=cube_condition):
+    """
+    Creates a mesh for use in examples that contains two distinct cuboid subvolumes with a shared interface surface.
+    Cell markers:
+    1 - Default subvolume
+    2 - Subvolume specified by condition function
+
+    Face markers:
+    12 - Interface between subvolumes
+    10 - Boundary of subvolume 1
+    20 - Boundary of subvolume 2
+    0  - Interior faces
+    """
+    # Create a mesh
+    mesh = d.UnitCubeMesh(N, N, N)
+    # Initialize mesh functions
+    mf3 = d.MeshFunction("size_t", mesh, 3, 0)
+    mf2 = d.MeshFunction("size_t", mesh, 2, 0)
+
+    # Mark all cells that satisfy condition as 3, else 1
+    for c in d.cells(mesh):
+        mf3[c] = 2 if condition(c) else 1
+
+    # Mark faces
+    for f in d.faces(mesh):
+        topology, cellIndices = face_topology(f, mf3)
+        if topology == "interface":
+            mf2[f] = 12
+        elif topology == "boundary":
+            mf2[f] = int(cellIndices[0] * 10)
+        else:
+            mf2[f] = 0
+    return (mesh, mf2, mf3)
+
+
+def write_mesh(mesh, mf2, mf3, filename="DemoCuboidMesh"):
+    # Write mesh and meshfunctions to file
+    hdf5 = d.HDF5File(mesh.mpi_comm(), filename + ".h5", "w")
+    hdf5.write(mesh, "/mesh")
+    hdf5.write(mf3, f"/mf3")
+    hdf5.write(mf2, f"/mf2")
+    # For visualization of domains
+    d.File(filename + "_mf3.pvd") << mf3
+    d.File(filename + "_mf2.pvd") << mf2
