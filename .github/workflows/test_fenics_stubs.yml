@@ -28,7 +28,7 @@ jobs:
       - name: Run example 1
         run: |
           cd examples/example1/
-          jupytext example.ipynb --to py
+          jupytext example1.ipynb --to py
           python3 example1.py
 
       # - name: Run tests
