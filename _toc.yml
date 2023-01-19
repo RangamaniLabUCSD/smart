@@ -1,0 +1,12 @@
+format: jb-book
+root: docs/index
+
+parts:
+  - caption: Getting started
+    chapters:
+    - file: docs/install
+    - file: docs/math
+    - file: docs/faq
+    chapters:
+    - file: "docs/pystubs.rst"
+    - file: "docs/pystubs_verbose.rst"

@@ -23,12 +23,13 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: "Install code"
-        run: python3 -m pip install --no-binary=h5py .[dev]
+        run: python3 -m pip install --no-binary=h5py .[dev] jupytext
 
       - name: Run example 1
         run: |
           cd examples/example1/
-          python3 example1_driver.py
+          jupytext example.ipynb --to py
+          python3 example1.py
 
       # - name: Run tests
       #   run: |
