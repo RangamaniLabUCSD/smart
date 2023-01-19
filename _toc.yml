@@ -7,6 +7,10 @@ parts:
     - file: docs/install
     - file: docs/math
     - file: docs/faq
+  - caption: Demo
+    chapters:
+    - file: examples/example1/example1
+  - caption: API documentation
     chapters:
     - file: "docs/pystubs.rst"
     - file: "docs/pystubs_verbose.rst"

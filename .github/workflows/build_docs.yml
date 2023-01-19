@@ -25,7 +25,7 @@ jobs:
 
   build:
     runs-on: ubuntu-22.04
-    container: ghcr.io/fenics/dolfinx/dolfinx:nightly
+    container: ghcr.io/scientificcomputing/fenics:2023-01-16
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: python3 -m pip install ".[docs]"
+        run: python3 -m pip install --no-binary=h5py ".[docs,dev]"
 
       - name: Build docs
         run: jupyter book build .
@@ -47,7 +47,7 @@ jobs:
 
   # Single deploy job since we're just deploying
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/development'
     needs: build
     environment:
       name: github-pages

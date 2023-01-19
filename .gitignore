@@ -1,4 +1,5 @@
 _build
+examples/example1/mesh/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
