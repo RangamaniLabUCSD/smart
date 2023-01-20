@@ -2,7 +2,7 @@
 Configuration settings for simulation: plotting, reaction types, solution output, etc.
 """
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 import dolfin as d
@@ -180,6 +180,7 @@ class PlottingConfig(BaseConfig):
     figname: str = "figure"  # . Name of figure
 
 
+@dataclass
 class Config():
     """
     Configuration settings.
@@ -191,15 +192,13 @@ class Config():
     :param plot_settings: Options for matplotlib plotting
     :param probe_plot: Dictionary mapping a Function (by its name) to a
         set of coordinates where the function should be mapped
-    :param reaction_database: Look-up of know reaction formulas
     """
-    solver: SolverConfig
-    flags: FlagsConfig
-    loglevel: LogLevelConfig
-    plot_settings: PlottingConfig
-    directory: OutputConfig
-    probe_plot: Dict[str, npt.NDArray[np.float64]]
-    reaction_database: Dict[str, str]
+    solver: SolverConfig = field(default_factory=SolverConfig)
+    flags: FlagsConfig = field(default_factory=FlagsConfig)
+    loglevel: LogLevelConfig = field(default_factory=LogLevelConfig)
+    plot_settings: PlottingConfig = field(default_factory=PlottingConfig)
+    directory: OutputConfig = field(default_factory=OutputConfig)
+    probe_plot: Dict[str, npt.NDArray[np.float64]] = field(default_factory=dict)
 
     def __init__(self):
         self.solver = SolverConfig()
@@ -208,13 +207,13 @@ class Config():
         self.loglevel = LogLevelConfig()
         self.plot_settings = PlottingConfig()
 
-        # self.probe_plot         = {'A': [(0.5,0.0), (1.0,0.0)]}
-        self.probe_plot = {}
-
-        self.reaction_database = {
-            "prescribed": "k",
-            "prescribed_linear": "k*u",
-        }
+    @property
+    def reaction_database(self) -> Dict[str, str]:
+        """
+        Return database of known reactions
+        """
+        return {"prescribed": "k",
+                "prescribed_linear": "k*u"}
 
     def output_type(self):
         return self.directory["output_type"]
