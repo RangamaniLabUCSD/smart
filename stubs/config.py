@@ -95,14 +95,14 @@ class SolverConfig(BaseConfig):
 
     final_t: Optional[float] = None
     use_snes: bool = True
-    snes_preassemble_linear_system: bool = True
+    snes_preassemble_linear_system: bool = False  #: .. warning:: FIXME Currently untested
     initial_dt: Optional[float] = None
     adjust_dt: Optional[Tuple[float, float]] = None
     time_precision: int = 6
     print_assembly: bool = True
     dt_decrease_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
     dt_increase_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    attempt_timestep_restart_on_divergence: bool = False
+    attempt_timestep_restart_on_divergence: bool = False  #: .. warning:: FIXME Currently untested
 
 
 @dataclass
