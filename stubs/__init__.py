@@ -1,15 +1,6 @@
-"""
-stubs
-"""
-# Add imports here
-# import config first
 from . import config
-from . import data_manipulation
-from . import model_assembly
-from . import solvers
-from . import model
-from . import common
-from . import mesh
+from . import (common, data_manipulation, mesh, model, model_assembly,
+               solvers, post_process)
 from .units import unit
 
 __all__ = [
@@ -20,6 +11,6 @@ __all__ = [
     "model",
     "common",
     "mesh",
-    "unit"
+    "unit",
+    "post_process"
 ]
-from . import post_process
