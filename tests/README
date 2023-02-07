@@ -1,4 +1,4 @@
-Ideas for (new) STUBS test cases:
+Ideas for (new) SMART test cases:
 
 (0) Example 1A [Existing]
     - Idealized Purkinjie neurons
@@ -7,7 +7,12 @@ Ideas for (new) STUBS test cases:
     - Diffusion-linear reactions
     - Use as a guide?!
 
-(1) [Henrik/Jørgen] Meyer et la, Potential for Control of Signaling Pathway ... (2006)
+(1) [Henrik/Jørgen?] 
+
+    Meyers, Jason, Jennifer Craig, and David J. Odde. 2006. “Potential
+    for Control of Signaling Pathways via Cell Size and Shape.”
+    Current Biology: CB 16 (17): 1685–93.
+
     - Example with analytical solution for the average concentration
     - Geometry: sphere with boundary
     - Concentration: c_A single species
@@ -16,29 +21,41 @@ Ideas for (new) STUBS test cases:
     - (1a) 2D
     - (1b) 3D
 
-(2) [Henrik/Jørgen?] Ellipsoid 
-    - Cunio et al Rangamani, Scientific Reports, 2013,               
+(2) [Marie?] Ellipsoid 
+
+    Cugno, Andrea, Thomas M. Bartol, Terrence J. Sejnowski, Ravi
+    Iyengar, and Padmini Rangamani. 2019. “Geometric Principles of
+    Second Messenger Dynamics in Dendritic Spines.”
+    Sci. Rep. https://doi.org/10.1038/s41598-019-48028-0.
+
     - Geometry: Sphere within sphere/Ellipsoid with ellipsoid
     - Concentration: C 
     - Localized boundary conditions: flux at outer 
     - Diffusion + first-order reaction
     - Neumann-type boundary conditions
     - Measure the norm of the spatial gradient, extent of gradient etc., compare with analytical solution
-    - Vary diffusion constant, 
+    - Vary diffusion constant
 
-(3) Miriam's paper: more complex boundary reactions
-    - Bell, X, Rangamani: 
+(3) More complicated, nonlinear boundary reactions
+
+    Bell et al, Dendritic spine geometry and spine apparatus organization govern
+    the spatiotemporal dynamics of calcium, 2019
+
     - Concentration: Ca2+
     - Diffusion + complex reactions
     - Nonlinear reaction boundary conditions
     - Single 
 
-(4) Purkinjie neuron
-    - Same model, 
-    - Justin developed simplified case?
+(4) [Emmet] Purkinjie neuron
+    - Same model, simplified clean-version
+    - Different species
 
-(5) Calizo, Bell et al, Scientific Reports, 2020
-   - 17 species
+(5) Calizo, R. C., M. K. Bell, A. Ron, M. Hu, S. Bhattacharya,
+    N. J. Wong, W. G. M. Janssen, et al. 2020. “Cell Shape Regulates
+    Subcellular Organelle Location to Control Early Ca2+ Signal
+    Dynamics in Vascular Smooth Muscle Cells.” Scientific Reports 10
+    (1): 17866. -- has many cases.
+    - 17 species
    - Multicompartment?
    - Stacks of ER 
    - Cytosolic Calcium
