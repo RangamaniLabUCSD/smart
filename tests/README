@@ -1,6 +1,13 @@
-Ideas for new test cases:
+Ideas for (new) STUBS test cases:
 
-(1) Meyer et la, Potential for Control of Signaling Pathway ... (2006)
+(0) Example 1A [Existing]
+    - Idealized Purkinjie neurons
+    - Example with two volumes and one interface
+    - 3 species
+    - Diffusion-linear reactions
+    - Use as a guide?!
+
+(1) [Henrik/Jørgen] Meyer et la, Potential for Control of Signaling Pathway ... (2006)
     - Example with analytical solution for the average concentration
     - Geometry: sphere with boundary
     - Concentration: c_A single species
@@ -9,7 +16,7 @@ Ideas for new test cases:
     - (1a) 2D
     - (1b) 3D
 
-(2) Ellipsoid 
+(2) [Henrik/Jørgen?] Ellipsoid 
     - Cunio et al Rangamani, Scientific Reports, 2013,               
     - Geometry: Sphere within sphere/Ellipsoid with ellipsoid
     - Concentration: C 
@@ -40,8 +47,12 @@ Ideas for new test cases:
    - Turing pattern on the surface
 
 (7) Surface diffusion,
-    - "Decoding Information in Cell Shape" ?
+    - "Decoding Information in Cell Shape..." ?
+
+(8) Fink et al, Morphological Control of Inositol....-Dependent Signal, JCB, 1999
+    - 
 
 Feature requests
 
 (a) Is 2D working?
+
