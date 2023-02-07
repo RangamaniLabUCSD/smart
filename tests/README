@@ -1,0 +1,47 @@
+Ideas for new test cases:
+
+(1) Meyer et la, Potential for Control of Signaling Pathway ... (2006)
+    - Example with analytical solution for the average concentration
+    - Geometry: sphere with boundary
+    - Concentration: c_A single species
+    - Diffusion + first-order reaction
+    - Robin-type boundary condition
+    - (1a) 2D
+    - (1b) 3D
+
+(2) Ellipsoid 
+    - Cunio et al Rangamani, Scientific Reports, 2013,               
+    - Geometry: Sphere within sphere/Ellipsoid with ellipsoid
+    - Concentration: C 
+    - Localized boundary conditions: flux at outer 
+    - Diffusion + first-order reaction
+    - Neumann-type boundary conditions
+    - Measure the norm of the spatial gradient, extent of gradient etc., compare with analytical solution
+    - Vary diffusion constant, 
+
+(3) Miriam's paper: more complex boundary reactions
+    - Bell, X, Rangamani: 
+    - Concentration: Ca2+
+    - Diffusion + complex reactions
+    - Nonlinear reaction boundary conditions
+    - Single 
+
+(4) Purkinjie neuron
+    - Same model, 
+    - Justin developed simplified case?
+
+(5) Calizo, Bell et al, Scientific Reports, 2020
+   - 17 species
+   - Multicompartment?
+   - Stacks of ER 
+   - Cytosolic Calcium
+
+(6) Surface diffusion - toy problem
+   - Turing pattern on the surface
+
+(7) Surface diffusion,
+    - "Decoding Information in Cell Shape" ?
+
+Feature requests
+
+(a) Is 2D working?
