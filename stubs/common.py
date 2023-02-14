@@ -19,6 +19,10 @@ from .units import unit
 
 import stubs
 
+import gmsh
+import meshio
+import os
+
 __all__ = ["stubs_expression", "sub", "ref", "insert_dataframe_col", "nan_to_none", "submesh_dof_to_mesh_dof",
            "submesh_dof_to_vertex", "submesh_to_bmesh", "bmesh_to_parent", "mesh_vertex_to_dof", "round_to_n",
            "interp_limit_dy", "sum_discrete_signals", "np_smart_hstack", "append_meshfunction_to_meshdomains",
@@ -942,6 +946,94 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
         else:
             mf2[f] = 0
     return (mesh, mf2, mf3)
+
+def DemoSpheresMesh(outerRad=0.5, innerRad=0.25):
+    """
+    Creates a mesh for use in examples that contains two distinct sphere subvolumes with a shared interface surface.
+    Cell markers:
+    1 - Default subvolume (cytosol)
+    2 - inner sphere (ER)
+
+    Face markers:
+    12 - Interface between subvolumes
+    10 - Boundary of subvolume 1 (pm)
+    0 - interior faces
+    """
+    # Create the two sphere mesh using gmsh
+    gmsh.initialize()
+    gmsh.model.add("twoSpheres")
+    # first add sphere 1 of radius outerRad and center (0,0,0)
+    sphere1 = gmsh.model.occ.addSphere(0, 0, 0, outerRad, tag=1)
+    if innerRad != 0:
+        # if inner radius is zero, only use sphere 1, otherwise add sphere2 (radius innerRad, center (0,0,0))
+        sphere2 = gmsh.model.occ.addSphere(0, 0, 0, innerRad, tag=2)
+    gmsh.model.occ.synchronize()
+    pm = gmsh.model.occ.addSurfaceLoop([sphere1]) # specifies shell of first sphere
+    if innerRad != 0:
+        erm = gmsh.model.occ.addSurfaceLoop([sphere2]) # specifies shell of inner sphere
+        gmsh.model.occ.addVolume([pm, erm], tag=3) # volume between pm and inner sphere
+        gmsh.model.occ.addVolume([erm], tag=4) # volume inside inner sphere
+        gmsh.model.occ.synchronize()
+        gmsh.model.removeEntities([(3, sphere1)]) # remove volume of sphere1 (keep only surface)
+        gmsh.model.removeEntities([(3, sphere2)]) # remove volume of sphere2 (keep only surface)
+        gmsh.model.add_physical_group(2, [1], tag=10) # label pm with tag=10
+        gmsh.model.add_physical_group(2, [2], tag=12) # label ERM with tag=12
+        gmsh.model.add_physical_group(3, [3], tag=1) # label cytosol with tag=1
+        gmsh.model.add_physical_group(3, [4], tag=2) # label ER volume with tag=2
+    else:
+        gmsh.model.occ.addVolume([pm], tag=3) # specifies volume inside sphere
+        gmsh.model.occ.synchronize()
+        gmsh.model.removeEntities([(3, sphere1)]) # remove volume of sphere1 (keep only surface)
+        gmsh.model.add_physical_group(2, [1], tag=10) # label pm with tag=10
+        gmsh.model.add_physical_group(3, [3], tag=1) # label cytosol with tag=1
+    
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is smallest at the PM currently (0.1*0.5*outerRad)
+        # and the maximum mesh length is 1 (um)
+        R = np.sqrt(x**2 + y**2 + z**2)
+        lc = 0.5*outerRad
+        return min(1,lc*(1.1-R/outerRad))
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    gmsh.model.mesh.generate(3)
+
+    gmsh.write("twoSpheres.msh") #save locally
+    gmsh.finalize()
+
+    # load, convert to xdmf, and save as temp files
+    mesh3d_in = meshio.read("twoSpheres.msh")
+    def create_mesh(mesh, cell_type):
+        cells = mesh.get_cells_type(cell_type)
+        cell_data = mesh.get_cell_data("gmsh:physical", cell_type) #extract values of tags
+        points = mesh.points
+        out_mesh = meshio.Mesh(points=points, cells={cell_type: cells}, cell_data={"mf_data":[cell_data]})
+        return out_mesh
+    tet_mesh = create_mesh(mesh3d_in, 'tetra')
+    tri_mesh = create_mesh(mesh3d_in, 'triangle')
+    meshio.write(f"tempmesh_3dout.xdmf", tet_mesh)
+    meshio.write(f"tempmesh_2dout.xdmf", tri_mesh)
+
+    # convert xdmf mesh to dolfin-style mesh
+    dmesh = d.Mesh()
+    mvc3 = d.MeshValueCollection("size_t", dmesh, 3)
+    with d.XDMFFile(f"tempmesh_3dout.xdmf") as infile:
+        infile.read(dmesh)
+        infile.read(mvc3, "mf_data")
+    mf3  = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
+    mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
+    with d.XDMFFile(f"tempmesh_2dout.xdmf") as infile:
+        infile.read(mvc2, "mf_data")
+    mf2  = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
+
+    # use os to remove temp meshes
+    os.remove(f"tempmesh_2dout.xdmf")
+    os.remove(f"tempmesh_3dout.xdmf")
+    os.remove(f"tempmesh_2dout.h5")
+    os.remove(f"tempmesh_3dout.h5")
+    os.remove(f"twoSpheres.msh")
+    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    return (dmesh, mf2, mf3)
+
 
 def write_mesh(mesh,mf2,mf3,filename="DemoCuboidMesh"):
     # Write mesh and meshfunctions to file
