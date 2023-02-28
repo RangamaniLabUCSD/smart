@@ -19,8 +19,7 @@
       convert_xml_to_hdf5
       cube_condition
       data_path
-      empty_sbmodel
-      face_topology
+      facet_topology
       find_steady_state
       insert_dataframe_col
       interp_limit_dy
@@ -33,7 +32,6 @@
       read_hdf5
       read_sbmodel
       round_to_n
-      sbmodel_from_locals
       stubs_expressions
       sub
       submesh_dof_to_mesh_dof

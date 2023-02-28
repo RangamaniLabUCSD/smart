@@ -35,6 +35,8 @@ import stubs.common as common
 
 Print = PETSc.Sys.Print
 
+__all__ = ["empty_sbmodel", "sbmodel_from_locals", "Compartment",
+           "Parameter", "Reaction", "Species", "sbmodel_from_locals"]
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -1796,3 +1798,37 @@ class FieldVariable(ObjectInstance):
     #     "Convert to a dict that can be used to recreate the object."
     #     keys_to_keep = ['name', 'compartment_name', 'var_map', 'equation_str']
     #     return {key: self.__dict__[key] for key in keys_to_keep}
+
+
+def empty_sbmodel():
+    pc = ParameterContainer()
+    sc = SpeciesContainer()
+    cc = CompartmentContainer()
+    rc = ReactionContainer()
+    return pc, sc, cc, rc
+
+
+def sbmodel_from_locals(local_values):
+    # FIXME: Add typing
+    # Initialize containers
+    pc, sc, cc, rc = empty_sbmodel()
+    parameters = [
+        x for x in local_values if isinstance(x, Parameter)
+    ]
+    species = [x for x in local_values if isinstance(x, Species)]
+    compartments = [
+        x for x in local_values if isinstance(x, Compartment)
+    ]
+    reactions = [
+        x for x in local_values if isinstance(x, Reaction)
+    ]
+    # we just reverse the list so that the order is the same as how they were defined
+    parameters.reverse()
+    species.reverse()
+    compartments.reverse()
+    reactions.reverse()
+    pc.add(parameters)
+    sc.add(species)
+    cc.add(compartments)
+    rc.add(reactions)
+    return pc, sc, cc, rc
