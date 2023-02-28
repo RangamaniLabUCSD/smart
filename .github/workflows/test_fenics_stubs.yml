@@ -17,7 +17,7 @@ jobs:
   check-code:
     runs-on: ubuntu-22.04
     # Runs against FEniCS main branch built the 16-01-2023
-    container: ghcr.io/scientificcomputing/fenics:2023-01-16
+    container: ghcr.io/scientificcomputing/fenics-gmsh:2023-02-17a
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v3

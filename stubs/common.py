@@ -1,11 +1,15 @@
 """
 General functions: array manipulation, data i/o, etc
 """
+import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Tuple
 
 import dolfin as d
+import gmsh
+import meshio
 # import trimesh
 import numpy as np
 import pint
@@ -14,10 +18,10 @@ import sympy
 from pytz import timezone
 from termcolor import colored
 
+import stubs
+
 from .config import global_settings as gset
 from .units import unit
-
-import stubs
 
 __all__ = ["stubs_expression", "sub", "ref", "insert_dataframe_col", "nan_to_none", "submesh_dof_to_mesh_dof",
            "submesh_dof_to_vertex", "submesh_to_bmesh", "bmesh_to_parent", "mesh_vertex_to_dof", "round_to_n",
@@ -300,11 +304,12 @@ def json_to_ObjectContainer(json_str, data_type=None):
     the json)
     """
     if not data_type:
-        raise Exception("Please include the type of data this is (parameters, species, compartments, reactions).")
+        raise Exception(
+            "Please include the type of data this is (parameters, species, compartments, reactions).")
 
     if json_str[-5:] == '.json':
         if not os.path.exists(json_str):
-            raise Exception("Cannot find JSON file, %s"%json_str)   
+            raise Exception("Cannot find JSON file, %s" % json_str)
 
     df = read_json(json_str).sort_index()
     df = nan_to_none(df)
@@ -318,7 +323,6 @@ def json_to_ObjectContainer(json_str, data_type=None):
         return stubs.model_assembly.ReactionContainer(df)
     else:
         raise Exception("I don't know what kind of ObjectContainer this .json file should be")
-
 
 
 # def write_sbmodel(filepath, pdf, sdf, cdf, rdf):
@@ -381,6 +385,7 @@ def write_sbmodel(filepath, pc, sc, cc, rc):
     f.write("</sbmodel>\n")
     f.close()
     print(f"sbmodel file saved successfully as {filepath}!")
+
 
 def read_sbmodel(filepath, output_type=dict):
     f = open(filepath, "r")
@@ -445,10 +450,10 @@ def read_sbmodel(filepath, output_type=dict):
     cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
     rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
 
-    if output_type==dict:
-        return {'parameter_container': pc,   'species_container': sc, 
+    if output_type == dict:
+        return {'parameter_container': pc,   'species_container': sc,
                 'compartment_container': cc, 'reaction_container': rc}
-    elif output_type==tuple:
+    elif output_type == tuple:
         return (pc, sc, cc, rc)
 
 # def create_sbmodel(p, s, c, r, output_type=dict):
@@ -458,29 +463,38 @@ def read_sbmodel(filepath, output_type=dict):
 #     rc = stubs.model_assembly.ReactionContainer(r)
 
 #     if output_type==dict:
-#         return {'parameter_container': pc,   'species_container': sc, 
+#         return {'parameter_container': pc,   'species_container': sc,
 #                 'compartment_container': cc, 'reaction_container': rc}
 #     elif output_type==tuple:
 #         return (pc, sc, cc, rc)
+
 
 def empty_sbmodel():
     pc = stubs.model_assembly.ParameterContainer()
     sc = stubs.model_assembly.SpeciesContainer()
     cc = stubs.model_assembly.CompartmentContainer()
     rc = stubs.model_assembly.ReactionContainer()
-    return pc, sc, cc, rc 
+    return pc, sc, cc, rc
+
 
 def sbmodel_from_locals(local_values):
     # Initialize containers
     pc, sc, cc, rc = empty_sbmodel()
-    parameters   = [x for x in local_values if isinstance(x, stubs.model_assembly.Parameter)]
-    species      = [x for x in local_values if isinstance(x, stubs.model_assembly.Species)]
+    parameters = [x for x in local_values if isinstance(x, stubs.model_assembly.Parameter)]
+    species = [x for x in local_values if isinstance(x, stubs.model_assembly.Species)]
     compartments = [x for x in local_values if isinstance(x, stubs.model_assembly.Compartment)]
-    reactions    = [x for x in local_values if isinstance(x, stubs.model_assembly.Reaction)]
+    reactions = [x for x in local_values if isinstance(x, stubs.model_assembly.Reaction)]
     # we just reverse the list so that the order is the same as how they were defined
-    parameters.reverse(); species.reverse(); compartments.reverse(); reactions.reverse()
-    pc.add(parameters); sc.add(species); cc.add(compartments); rc.add(reactions)
+    parameters.reverse()
+    species.reverse()
+    compartments.reverse()
+    reactions.reverse()
+    pc.add(parameters)
+    sc.add(species)
+    cc.add(compartments)
+    rc.add(reactions)
     return pc, sc, cc, rc
+
 
 def pint_unit_to_quantity(pint_unit):
     if not isinstance(pint_unit, pint.Unit):
@@ -888,26 +902,31 @@ def _fancy_print(
         print_out("\n" * (new_lines[1] - 1), filename)
 
 # Get cells and faces for each subdomain
+
+
 def face_topology(f, mf3):
     """Given a face and cell mesh function, return the topology of the face"""
-    localCells = [mf3.array()[c.index()] for c in d.cells(f)] # cells adjacent face
+    localCells = [mf3.array()[c.index()] for c in d.cells(f)]  # cells adjacent face
     if len(localCells) == 1:
-        topology = 'boundary' # boundary face
+        topology = 'boundary'  # boundary face
     elif len(localCells) == 2 and localCells[0] == localCells[1]:
-        topology = 'internal' # internal face
+        topology = 'internal'  # internal face
     elif len(localCells) == 2:
-        topology = 'interface' # interface face
+        topology = 'interface'  # interface face
     else:
         raise Exception("Face has more than two cells")
     return (topology, localCells)
 
+
 def zplane_condition(cell, z=0.5):
     return (cell.midpoint().z() > z+d.DOLFIN_EPS)
+
 
 def cube_condition(cell, xmin=0.3, xmax=0.7):
     return (xmin-d.DOLFIN_EPS < cell.midpoint().x() < xmax+d.DOLFIN_EPS) and \
            (xmin-d.DOLFIN_EPS < cell.midpoint().y() < xmax+d.DOLFIN_EPS) and \
            (xmin-d.DOLFIN_EPS < cell.midpoint().z() < xmax+d.DOLFIN_EPS)
+
 
 def DemoCuboidsMesh(N=16, condition=cube_condition):
     """
@@ -923,18 +942,18 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
     0  - Interior faces
     """
     # Create a mesh
-    mesh    = d.UnitCubeMesh(N, N, N)
-    # Initialize mesh functions 
-    mf3 = d.MeshFunction("size_t", mesh, 3, 0) 
+    mesh = d.UnitCubeMesh(N, N, N)
+    # Initialize mesh functions
+    mf3 = d.MeshFunction("size_t", mesh, 3, 0)
     mf2 = d.MeshFunction("size_t", mesh, 2, 0)
 
     # Mark all cells that satisfy condition as 3, else 1
     for c in d.cells(mesh):
         mf3[c] = 2 if condition(c) else 1
 
-    # Mark faces 
+    # Mark faces
     for f in d.faces(mesh):
-        topology, cellIndices = face_topology(f,mf3)
+        topology, cellIndices = face_topology(f, mf3)
         if topology == 'interface':
             mf2[f] = 12
         elif topology == 'boundary':
@@ -943,7 +962,120 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
             mf2[f] = 0
     return (mesh, mf2, mf3)
 
-def write_mesh(mesh,mf2,mf3,filename="DemoCuboidMesh"):
+
+def DemoSpheresMesh(outerRad: float = 0.5,
+                    innerRad: float = 0.25,
+                    interface_marker: int = 12,
+                    outer_marker: int = 10,
+                    inner_vol_tag: int = 2,
+                    outer_vol_tag: int = 1) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+    """
+    Creates a mesh for use in examples that contains two distinct sphere subvolumes 
+    with a shared interface surface. If the radius of the inner sphere is 0, mesh a
+    single sphere.
+
+    Args:
+        outerRad: The radius of the outer sphere
+        innerRad: The radius of the inner sphere
+        interface_marker: The value to mark facets on the interface with
+        outer_marker: The value to mark facets on the outer sphere with
+        inner_vol_tag: The value to mark the inner spherical volume with
+        outer_vol_tag: The value to mark the outer spherical volume with
+    Returns:
+        A triplet (mesh, facet_marker, cell_marker)
+    """
+    assert not np.isclose(outerRad, 0)
+    # Create the two sphere mesh using gmsh
+    gmsh.initialize()
+    gmsh.model.add("twoSpheres")
+    # first add sphere 1 of radius outerRad and center (0,0,0)
+    outer_sphere = gmsh.model.occ.addSphere(0, 0, 0, outerRad)
+    if np.isclose(innerRad, 0):
+        # Use outer_sphere only
+        gmsh.model.occ.synchronize()
+        gmsh.model.add_physical_group(3, [outer_sphere], tag=outer_vol_tag)
+        facets = gmsh.model.getBoundary([(3, outer_sphere)])
+        assert (len(facets) == 1)
+        gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
+    else:
+        # Add inner_sphere (radius innerRad, center (0,0,0))
+        inner_sphere = gmsh.model.occ.addSphere(0, 0, 0, innerRad)
+        # Create interface between spheres
+        two_spheres, (outer_sphere_map, inner_sphere_map) = gmsh.model.occ.fragment(
+            [(3, outer_sphere)], [(3, inner_sphere)])
+        gmsh.model.occ.synchronize()
+
+        # Get the outer boundary
+        outer_shell = gmsh.model.getBoundary(two_spheres, oriented=False)
+        assert (len(outer_shell) == 1)
+        # Get the inner boundary
+        inner_shell = gmsh.model.getBoundary(inner_sphere_map, oriented=False)
+        assert (len(inner_shell) == 1)
+        # Add physical markers for facets
+        gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
+        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
+
+        # Physical markers for
+        all_volumes = [tag[1] for tag in outer_sphere_map]
+        inner_volume = [tag[1] for tag in inner_sphere_map]
+        outer_volume = []
+        for vol in all_volumes:
+            if vol not in inner_volume:
+                outer_volume.append(vol)
+        gmsh.model.add_physical_group(3, outer_volume, tag=outer_vol_tag)
+        gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
+
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is smallest at the PM currently (0.5*outerRad)
+        # and the maximum mesh length is 1 (um)
+        # If inner sphere minimum mesh length is 0.9*innerRad
+        R = np.sqrt(x**2 + y**2 + z**2)
+        lc = 0.5*outerRad if np.isclose(innerRad, 0) else 0.9*innerRad
+        return min(lc, lc*(1.1-R/outerRad))
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+
+    gmsh.model.mesh.generate(3)
+    gmsh.write("twoSpheres.msh")  # save locally
+    gmsh.finalize()
+
+    # load, convert to xdmf, and save as temp files
+    mesh3d_in = meshio.read("twoSpheres.msh")
+
+    def create_mesh(mesh, cell_type):
+        cells = mesh.get_cells_type(cell_type)
+        cell_data = mesh.get_cell_data("gmsh:physical", cell_type)  # extract values of tags
+        out_mesh = meshio.Mesh(points=mesh.points, cells={cell_type: cells}, cell_data={
+                               "mf_data": [cell_data]})
+        return out_mesh
+    tet_mesh = create_mesh(mesh3d_in, 'tetra')
+    tri_mesh = create_mesh(mesh3d_in, 'triangle')
+    meshio.write(f"tempmesh_3dout.xdmf", tet_mesh)
+    meshio.write(f"tempmesh_2dout.xdmf", tri_mesh)
+
+    # convert xdmf mesh to dolfin-style mesh
+    dmesh = d.Mesh()
+    mvc3 = d.MeshValueCollection("size_t", dmesh, 3)
+    with d.XDMFFile(f"tempmesh_3dout.xdmf") as infile:
+        infile.read(dmesh)
+        infile.read(mvc3, "mf_data")
+    mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
+    mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
+    with d.XDMFFile(f"tempmesh_2dout.xdmf") as infile:
+        infile.read(mvc2, "mf_data")
+    mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
+
+    # use os to remove temp meshes
+    os.remove(f"tempmesh_2dout.xdmf")
+    os.remove(f"tempmesh_3dout.xdmf")
+    os.remove(f"tempmesh_2dout.h5")
+    os.remove(f"tempmesh_3dout.h5")
+    os.remove(f"twoSpheres.msh")
+    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    return (dmesh, mf2, mf3)
+
+
+def write_mesh(mesh, mf2, mf3, filename="DemoCuboidMesh"):
     # Write mesh and meshfunctions to file
     hdf5 = d.HDF5File(mesh.mpi_comm(), filename+'.h5', 'w')
     hdf5.write(mesh, '/mesh')
