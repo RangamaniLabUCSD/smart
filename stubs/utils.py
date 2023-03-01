@@ -4,8 +4,12 @@
 # ====================================================
 
 import os
+
+import numpy as np
 from pandas import read_json
 
+from .model_assembly import (CompartmentContainer, ParameterContainer,
+                             ReactionContainer, SpeciesContainer, nan_to_none)
 
 __all__ = ["json_to_ObjectContainer"]
 

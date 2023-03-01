@@ -29,14 +29,13 @@ from .common import _fancy_print as fancy_print
 from .common import (np_smart_hstack, pint_quantity_to_unit,
                      pint_unit_to_quantity, sub)
 from .config import global_settings as gset
+from .deprecation import deprecated
 from .units import unit
-
-import stubs.common as common
 
 Print = PETSc.Sys.Print
 
 __all__ = ["empty_sbmodel", "sbmodel_from_locals", "Compartment",
-           "Parameter", "Reaction", "Species", "sbmodel_from_locals"]
+           "Parameter", "Reaction", "Species", "sbmodel_from_locals", "nane_to_none", "read_sbmodel", "write_sbmodel"]
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -1832,3 +1831,119 @@ def sbmodel_from_locals(local_values):
     cc.add(compartments)
     rc.add(reactions)
     return pc, sc, cc, rc
+
+def nan_to_none(df):
+    return df.replace({np.nan: None})
+
+
+# ====================================================
+# I/O
+# ====================================================
+
+@deprecated
+def write_sbmodel(filepath, pc, sc, cc, rc):
+    """
+    Takes a ParameterDF, SpeciesDF, CompartmentDF, and ReactionDF, and generates
+    a .sbmodel file (a convenient concatenation of .json files with syntax
+    similar to .xml)
+    """
+
+    # FIXME: This function cannot work due to undefined parameters
+    f = open(filepath, "w")
+
+    f.write("<sbmodel>\n")
+    # parameters
+    f.write("<parameters>\n")
+    pdf.df.to_json(f)
+    f.write("\n</parameters>\n")
+    # species
+    f.write("<species>\n")
+    sdf.df.to_json(f)
+    f.write("\n</species>\n")
+    # compartments
+    f.write("<compartments>\n")
+    cdf.df.to_json(f)
+    f.write("\n</compartments>\n")
+    # reactions
+    f.write("<reactions>\n")
+    rdf.df.to_json(f)
+    f.write("\n</reactions>\n")
+
+    f.write("</sbmodel>\n")
+    f.close()
+    print(f"sbmodel file saved successfully as {filepath}!")
+
+@deprecated
+def read_sbmodel(filepath, output_type=dict):
+    f = open(filepath, "r")
+    lines = f.read().splitlines()
+    if lines[0] != "<sbmodel>":
+        raise Exception(f"Is {filepath} a valid .sbmodel file?")
+
+    p_string = []
+    c_string = []
+    s_string = []
+    r_string = []
+    line_idx = 0
+
+    while True:
+        if line_idx >= len(lines):
+            break
+        line = lines[line_idx]
+        if line == "</sbmodel>":
+            print("Finished reading in sbmodel file")
+            break
+
+        if line == "<parameters>":
+            print("Reading in parameters")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</parameters>":
+                    break
+                p_string.append(lines[line_idx])
+
+        if line == "<species>":
+            print("Reading in species")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</species>":
+                    break
+                s_string.append(lines[line_idx])
+
+        if line == "<compartments>":
+            print("Reading in compartments")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</compartments>":
+                    break
+                c_string.append(lines[line_idx])
+
+        if line == "<reactions>":
+            print("Reading in reactions")
+            while True:
+                line_idx += 1
+                if lines[line_idx] == "</reactions>":
+                    break
+                r_string.append(lines[line_idx])
+
+        line_idx += 1
+
+    pdf = pandas.read_json("".join(p_string)).sort_index()
+    sdf = pandas.read_json("".join(s_string)).sort_index()
+    cdf = pandas.read_json("".join(c_string)).sort_index()
+    rdf = pandas.read_json("".join(r_string)).sort_index()
+    import pdb; pdb.set_trace()
+    pc = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
+    sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
+    cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))
+    rc = stubs.model_assembly.ReactionContainer(nan_to_none(rdf))
+
+    if output_type == dict:
+        return {
+            "parameter_container": pc,
+            "species_container": sc,
+            "compartment_container": cc,
+            "reaction_container": rc,
+        }
+    elif output_type == tuple:
+        return (pc, sc, cc, rc)
