@@ -17,7 +17,7 @@ config = stubs.config.Config()
 
 errors = []
 for dt in [0.012, 0.01, 0.008, 0.006, 0.004, 0.002]:
-    pc, sc, cc, rc = stubs.common.read_sbmodel('model.sbmodel')
+    pc, sc, cc, rc = stubs.model_assembly.read_sbmodel('model.sbmodel')
 
     # Define solvers
     mps = stubs.solvers.MultiphysicsSolver('iterative')

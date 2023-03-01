@@ -2,8 +2,7 @@ import pytest
 import math
 
 import stubs
-from stubs.model_assembly import Parameter, Species, Compartment, Reaction
-from stubs.utils import empty_sbmodel
+from stubs.model_assembly import Parameter, Species, Compartment, Reaction, empty_sbmodel
 
 # Fixtures
 
@@ -23,7 +22,7 @@ def stubs_model(stubs_mesh):
     # parameters
     pc.add([
         Parameter('kf', 5.0, meter/sec, 'forward rate'),
-        #Parameter.from_expression('kf_t' , '5.0+t', meter/sec),
+        # Parameter.from_expression('kf_t' , '5.0+t', meter/sec),
         Parameter('kr', 1.0, um/sec, 'reverse rate'),
         Parameter('kdeg_B', 2.0, 1/sec, 'degradation rate'),
         Parameter('kdeg_Xpm', 2.0, 1/sec, 'degradation rate'),
@@ -33,7 +32,7 @@ def stubs_model(stubs_mesh):
     # species
     sc.add([
         Species('A', 10, uM, 100, um**2/sec, 'cytosol'),
-        #Species('A'   , '5*(x+1)+2' , uM            , 100, um**2/sec, 'cytosol'),
+        # Species('A'   , '5*(x+1)+2' , uM            , 100, um**2/sec, 'cytosol'),
         Species('B', 10, uM, 100, um**2/sec, 'cytosol'),
         Species('A_er', 3, uM, 100, um**2/sec, 'er_vol'),
         Species('X_pm', 100, molecule/um**2, 10, um**2/sec, 'pm'),
@@ -69,7 +68,7 @@ def stubs_model(stubs_mesh):
     # mps = stubs.solvers.MultiphysicsSolver()
     # nls = stubs.solvers.NonlinearNewtonSolver()
     # ls = stubs.solvers.DolfinKrylovSolver()
-    #solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01)
+    # solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01)
 
     model = stubs.model.Model(
         pc, sc, cc, rc, stubs_config, stubs_mesh)
