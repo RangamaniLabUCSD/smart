@@ -23,8 +23,7 @@ from sympy import Symbol, integrate
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
 
-import stubs.common as common
-
+from . import common
 from .common import _fancy_print as fancy_print
 from .common import (np_smart_hstack, pint_quantity_to_unit,
                      pint_unit_to_quantity, sub)

@@ -44,11 +44,13 @@ setup(
         "termplotlib",
         "meshio",
         "gmsh",
-        "h5py"
+        "h5py",
     ],  # Required packages, pulls from pip if needed; do not use for Conda deployment
     # python_requires=">=3.5",          # Python version restrictions
-    extras_require={"docs": [
-        "jupyter-book@git+https://github.com/executablebooks/jupyter-book.git@master"]},
+    extras_require={
+        "docs": ["jupyter-book"],
+        "test": ["pytest", "pytest-cov"],
+    },
     # Manual control if final package is compressible or not, set False to prevent the .egg from being made
     # zip_safe=False,
 )
