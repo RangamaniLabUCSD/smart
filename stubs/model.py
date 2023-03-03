@@ -21,13 +21,12 @@ from ufl.form import sub_forms_by_domain
 from .common import Stopwatch
 from .common import _fancy_print as fancy_print
 from .common import sub
-from .utils import empty_sbmodel
 from .config import Config
 from .mesh import ChildMesh, ParentMesh
 from .model_assembly import (Compartment, CompartmentContainer, FluxContainer,
                              Form, FormContainer, Parameter,
                              ParameterContainer, Reaction, ReactionContainer,
-                             Species, SpeciesContainer)
+                             Species, SpeciesContainer, empty_sbmodel)
 from .solvers import stubsSNESProblem
 from .units import unit
 
