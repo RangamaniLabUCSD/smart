@@ -965,6 +965,7 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
 
 def DemoSpheresMesh(outerRad: float = 0.5,
                     innerRad: float = 0.25,
+                    hEdge: float = 0,
                     interface_marker: int = 12,
                     outer_marker: int = 10,
                     inner_vol_tag: int = 2,
@@ -977,6 +978,7 @@ def DemoSpheresMesh(outerRad: float = 0.5,
     Args:
         outerRad: The radius of the outer sphere
         innerRad: The radius of the inner sphere
+        hEdge: maximum mesh size at the outer edge
         interface_marker: The value to mark facets on the interface with
         outer_marker: The value to mark facets on the outer sphere with
         inner_vol_tag: The value to mark the inner spherical volume with
@@ -985,6 +987,8 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         A triplet (mesh, facet_marker, cell_marker)
     """
     assert not np.isclose(outerRad, 0)
+    if np.isclose(hEdge, 0):
+        hEdge = 0.1*outerRad
     # Create the two sphere mesh using gmsh
     gmsh.initialize()
     gmsh.model.add("twoSpheres")
@@ -1026,14 +1030,26 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
 
     def meshSizeCallback(dim, tag, x, y, z, lc):
-        # mesh length is smallest at the PM currently (0.5*outerRad)
-        # and the maximum mesh length is 1 (um)
-        # If inner sphere minimum mesh length is 0.9*innerRad
+        # mesh length is hEdge at the PM (defaults to 0.1*outerRad, or set when calling function) 
+        # and 0.2*innerRad at the ERM (and inside)
+        # between these, the value is interpolated based on R
+        # if innerRad=0, then the mesh length is interpolated between hEdge at the PM and 0.2*outerRad in the center
+        # if hEdge > 0.2*outerRad, then lc = 0.2*outerRad
         R = np.sqrt(x**2 + y**2 + z**2)
-        lc = 0.5*outerRad if np.isclose(innerRad, 0) else 0.9*innerRad
-        return min(lc, lc*(1.1-R/outerRad))
+        lc1 = hEdge
+        lc2 = 0.2*outerRad if np.isclose(innerRad, 0) else 0.2*innerRad
+        if R > innerRad:
+            lcTest = lc1 + (lc2-lc1)*(outerRad-R)/(outerRad-innerRad)
+        else:
+            lcTest = lc2
+        return min(lc2, lcTest)
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    gmsh.option.setNumber("Mesh.Algorithm", 5) # this changes the algorithm from Frontal-Delaunay to Delaunay, which may provide better results when there are larger gradients in mesh size
 
     gmsh.model.mesh.generate(3)
     gmsh.write("twoSpheres.msh")  # save locally
@@ -1060,10 +1076,12 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         infile.read(dmesh)
         infile.read(mvc3, "mf_data")
     mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
+    mf3.array()[np.where(mf3.array()>1e9)[0]]=0 #   set unassigned volumes to tag=0
     mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
     with d.XDMFFile(f"tempmesh_2dout.xdmf") as infile:
         infile.read(mvc2, "mf_data")
     mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
+    mf2.array()[np.where(mf2.array()>1e9)[0]]=0 #   set inner faces to tag=0
 
     # use os to remove temp meshes
     os.remove(f"tempmesh_2dout.xdmf")

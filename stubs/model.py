@@ -1201,17 +1201,27 @@ class Model:
             # Define the function/jacobian blocks
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
+            self.solver.setType('newtonls')
+            self.solver.setTolerances(rtol=1e-5)
+            def monitor(snes, it, fgnorm):
+                print("  " + str(it) + " SNES Function norm " + "{:e}".format(fgnorm)) # prints out residual at each Newton iteration
+            self.solver.setMonitor(monitor)
+            opts = PETSc.Options()
+            opts['snes_linesearch_type'] = 'l2'
+            self.solver.setFromOptions()
 
             # These are some reasonable preconditioner/linear solver settings for block systems
             # Krylov solver
             # biconjugate gradient stabilized. in most cases probably the best option
             self.solver.ksp.setType("bcgs")
-            self.solver.ksp.setTolerances(rtol=1e-6)  # 1e-5 is too small
+            self.solver.ksp.setTolerances(rtol=1e-5)
             # Some other reasonable krylov solvers: (I don't think they work with block systems)
             # bcgsl, ibcgs (improved stabilized bcgs)
             # fbcgsr, fbcgs (flexible bcgs)
 
             # Field split preconditioning
+            # Note from Emmet - can we solve this directly using LU? (suggestion from Marie) 
+            #self.solver.ksp.pc.setType("lu")
             self.solver.ksp.pc.setType("fieldsplit")
             # Set the indices
             nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
@@ -1695,6 +1705,35 @@ class Model:
 
             # self.residuals.append(residuals)
 
+            # confirm that the solution is greater than or equal to zero, otherwise reduce timestep and recompute
+            negVals = False
+            for idx in range(self.num_active_compartments):
+                curSub = self.u["u"].sub(idx)
+                curVec = curSub.vector()
+                if any(curVec < -1e-6): # if value is "too negative", we reduce time step and recompute
+                    negVals = True
+                    break
+                for zeroIdx in np.asarray(curVec < 0).nonzero():
+                    curSub.vector()[zeroIdx] = 0
+                d.assign(self.u["u"].sub(idx), curSub)
+            
+            if negVals:
+                self.reset_timestep()
+                # Re-initialize SNES solver
+                # self.initialize_discrete_variational_problem_and_solver()
+                if len(self.problem.global_sizes) == 1:
+                    self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
+                else:
+                    self._ubackend = PETSc.Vec().createNest(
+                        [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                    )
+                self._failed_to_converge = True
+                self.monolithic_solve()
+            else:
+                # fix values potentially less than zero in ubackend
+                for idx in np.asarray(self._ubackend.array < 0).nonzero():
+                    self._ubackend.array[idx] = 0
+
             if not self.solver.converged:
                 if not self.config.solver["attempt_timestep_restart_on_divergence"]:
                     raise RuntimeError(
@@ -1776,13 +1815,13 @@ class Model:
                 self.idx_l[-1],
                 self.tvec[-1],
                 self.dtvec[-1],
-                self.residuals[-1],
+                #self.residuals[-1],
                 self.solver.getConvergedReason(),
             )
         )
         # Remove previous values
         self.idx = int(self.idx) - 1
-        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec, self.residuals]:
+        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec]:#, self.residuals]:
             data.pop()
         # Undo the solution to the previous time-step
         self.update_solution(ukeys=["u"], unew="n")
