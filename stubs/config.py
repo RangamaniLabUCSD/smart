@@ -200,13 +200,6 @@ class Config():
     directory: OutputConfig = field(default_factory=OutputConfig)
     probe_plot: Dict[str, npt.NDArray[np.float64]] = field(default_factory=dict)
 
-    def __init__(self):
-        self.solver = SolverConfig()
-        self.flags = FlagsConfig()
-        self.directory = OutputConfig()
-        self.loglevel = LogLevelConfig()
-        self.plot_settings = PlottingConfig()
-
     @property
     def reaction_database(self) -> Dict[str, str]:
         """
