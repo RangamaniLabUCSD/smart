@@ -807,7 +807,7 @@ def DemoSpheresMesh(outerRad: float = 0.5,
     if np.isclose(hEdge, 0):
         hEdge = 0.1*outerRad
     if np.isclose(hInnerEdge, 0):
-        hEdge = 0.2*innerRad
+        hInnerEdge = 0.2*outerRad if np.isclose(innerRad, 0) else 0.2*innerRad
     # Create the two sphere mesh using gmsh
     gmsh.initialize()
     gmsh.model.add("twoSpheres")
