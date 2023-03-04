@@ -1705,33 +1705,26 @@ class Model:
             # self.residuals.append(residuals)
 
             # confirm that the solution is greater than or equal to zero, otherwise reduce timestep and recompute
-            negVals = False
-            for idx in range(self.num_active_compartments):
-                curSub = self.u["u"].sub(idx)
-                curVec = curSub.vector()
-                if any(curVec < -1e-6): # if value is "too negative", we reduce time step and recompute
-                    negVals = True
-                    break
-                for zeroIdx in np.asarray(curVec < 0).nonzero():
-                    curSub.vector()[zeroIdx] = 0
-                d.assign(self.u["u"].sub(idx), curSub)
-            
-            if negVals:
-                self.reset_timestep()
-                # Re-initialize SNES solver
-                # self.initialize_discrete_variational_problem_and_solver()
-                if len(self.problem.global_sizes) == 1:
-                    self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
-                else:
-                    self._ubackend = PETSc.Vec().createNest(
-                        [usub.vector().vec().copy() for usub in self.u["u"]._functions]
-                    )
-                self._failed_to_converge = True
-                self.monolithic_solve()
-            else:
-                # fix values potentially less than zero in ubackend
-                for idx in np.asarray(self._ubackend.array < 0).nonzero():
-                    self._ubackend.array[idx] = 0
+            if self.config.solver["reset_timestep_for_negative_solution"]:
+                negVals = False
+                for idx in range(self.num_active_compartments):
+                    curSub = self.u["u"].sub(idx)
+                    curVec = curSub.vector()
+                    if any(curVec < -1e-6): # if value is "too negative", we reduce time step and recompute
+                        negVals = True
+                        break
+                if negVals:
+                    self.reset_timestep()
+                    # Re-initialize SNES solver
+                    # self.initialize_discrete_variational_problem_and_solver()
+                    if len(self.problem.global_sizes) == 1:
+                        self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
+                    else:
+                        self._ubackend = PETSc.Vec().createNest(
+                            [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                        )
+                    self._failed_to_converge = True
+                    self.monolithic_solve()
 
             if not self.solver.converged:
                 if not self.config.solver["attempt_timestep_restart_on_divergence"]:
