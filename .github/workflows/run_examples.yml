@@ -14,7 +14,11 @@ on:
     # The CI is executed every day at 8am
     - cron: "0 8 * * *"
 jobs:
-  check-code:
+  run-examples:
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [1, 2, 3, 4]
     runs-on: ubuntu-22.04
     # Runs against FEniCS main branch built the 16-01-2023
     container: ghcr.io/scientificcomputing/fenics-gmsh:2023-02-17a
@@ -25,13 +29,8 @@ jobs:
       - name: "Install code"
         run: python3 -m pip install --no-binary=h5py .[dev] jupytext
 
-      - name: Run example 1
+      - name: Run example ${{ matrix.example }}
         run: |
-          cd examples/example1/
-          jupytext example1.ipynb --to py
-          python3 example1.py
-
-      # - name: Run tests
-      #   run: |
-      #     cd tests/
-      #     python3 -m pytest .
+          cd examples/example${{ matrix.example }}/
+          jupytext example${{ matrix.example }}.ipynb --to py
+          python3 example${{ matrix.example }}.py
