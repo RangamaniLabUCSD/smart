@@ -11,7 +11,6 @@ rank = comm.rank
 size = comm.size
 root = 0
 
-
 class _Mesh:
     """
     General mesh class

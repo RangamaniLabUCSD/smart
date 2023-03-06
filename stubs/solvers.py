@@ -103,6 +103,7 @@ class stubsSNESProblem:
         self.comm = mpi_comm_world
         self.rank = self.comm.rank
         self.size = self.comm.size
+        print(f"setting solver for cpu {self.rank} out of {self.size}")
 
         # save sparsity patterns of block matrices
         self.tensors = [[None] * len(Jij_list) for Jij_list in self.Jforms_all]

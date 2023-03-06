@@ -102,7 +102,8 @@ class SolverConfig(BaseConfig):
     print_assembly: bool = True
     dt_decrease_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
     dt_increase_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    attempt_timestep_restart_on_divergence: bool = False  #: .. warning:: FIXME Currently untested
+    attempt_timestep_restart_on_divergence: bool = False  #testing in progress
+    reset_timestep_for_negative_solution: bool = False
 
 
 @dataclass
