@@ -11,6 +11,7 @@ rank = comm.rank
 size = comm.size
 root = 0
 
+commSelf = d.MPI.comm_world
 
 class _Mesh:
     """
@@ -205,12 +206,18 @@ class ParentMesh(_Mesh):
 
     def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
         # mesh, mfs = common.read_hdf5(hdf5_filename)
-        self.dolfin_mesh = d.Mesh(comm)
-        hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
-        hdf5.read(self.dolfin_mesh, "/mesh", use_partition)
+        if not use_partition:
+            self.dolfin_mesh = d.Mesh(commSelf)
+            hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
+            hdf5.read(self.dolfin_mesh, "/mesh", use_partition)
+            hdf5.close()
+        else:
+            self.dolfin_mesh = d.Mesh(comm)
+            hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
+            hdf5.read(self.dolfin_mesh, "/mesh", use_partition)
 
-        d.MPI.comm_world.Barrier()
-        hdf5.close()
+            d.MPI.comm_world.Barrier()
+            hdf5.close()
 
         self.dimensionality = self.dolfin_mesh.topology().dim()
         self.dolfin_mesh.init(self.dimensionality - 1)

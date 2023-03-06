@@ -185,7 +185,7 @@ class Model:
         self.config.set_logger_levels()
 
         # MPI
-        self.mpi_comm_world = d.MPI.comm_world
+        self.mpi_comm_world = d.MPI.comm_self
         self.mpi_rank = self.mpi_comm_world.rank
         self.mpi_size = self.mpi_comm_world.size
         self.mpi_root = 0
