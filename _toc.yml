@@ -12,4 +12,4 @@ parts:
     - file: examples/example1/example1
   - caption: API documentation
     chapters:
-    - file: "docs/pystubs_verbose.rst"
+    - file: "docs/api.rst"
