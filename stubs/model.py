@@ -46,7 +46,8 @@ Print = PETSc.Sys.Print
 @dataclass
 class Model:
     """
-    Main stubs class. Consists of parameters, species, compartments, reactions, and can be simulated.
+    Main stubs class. Consists of parameters,
+    species, compartments, reactions, and can be simulated.
     """
 
     pc: ParameterContainer
@@ -107,10 +108,6 @@ class Model:
 
     def __post_init__(self):
         # # Check that solver_system is valid
-        # self.solver_system.check_solver_system_validity()
-        # self.solver_system.make_dolfin_parameter_dict()
-
-        # self.params = ddict(list)
 
         # FunctionSpaces, Functions, etc
         self.V = dict()
@@ -122,11 +119,7 @@ class Model:
         self.idx = 0
         self.idx_nl = list()
         self.idx_l = list()
-        # self.nl_idx = {} # dictionary: compartment name -> # of nonlinear iterations needed
-        # self.success = {} # dictionary: compartment name -> success or failure to converge nonlinear solver
-        # self.data = {'newton_iter': list(),
-        #              'tvec': list(),
-        #              'dtvec': list(),}
+
         self.stopping_conditions = {
             "F_abs": {},
             "F_rel": {},
@@ -136,8 +129,10 @@ class Model:
         self.reset_dt = False
 
         self._failed_to_converge = False
-        self.failed_solves = list()  # idx, idx_nl, idx_l, t, dt, residuals, reason
-        self.residuals = list()  # list of dicts
+        # idx, idx_nl, idx_l, t, dt, residuals, reason
+        self.failed_solves = list()
+        # list of dicts
+        self.residuals = list()
 
         # Timers
         stopwatch_names = [
@@ -174,7 +169,8 @@ class Model:
 
         if self.mpi_size > 1:
             fancy_print(
-                f"CPU {self.mpi_rank}: Model '{self.name}' has been parallelized (size={self.mpi_size}).",
+                f"CPU {self.mpi_rank}: Model '{self.name}' "
+                f"has been parallelized (size={self.mpi_size}).",
                 format_type="log_urgent",
             )
 
@@ -199,9 +195,9 @@ class Model:
         self.parent_mesh.max_dim = dim
         return dim
 
-    # ==============================================================================
+    # ===========================================
     # Model - Initialization
-    # ==============================================================================
+    # ===========================================
     def initialize(self, initialize_solver=True):
         """
         Notes:
@@ -217,9 +213,6 @@ class Model:
         self.dt = self.rounded_decimal(self.config.solver["initial_dt"])
         self.final_t = self.rounded_decimal(self.config.solver["final_t"])
         assert self.config.solver["time_precision"] in range(1, 30)
-        # getcontext().prec = self.config.solver['time_precision']
-        # quantize precision
-        # getcontext().prec = self.config.solver['time_precision']
 
         self.T = d.Constant(self.t)
         self.dT = d.Constant(self.dt)
@@ -252,7 +245,8 @@ class Model:
         )
 
     def _init_2(self):
-        "Cross-container dependent initializations (requires information from multiple containers)"
+        """Cross-container dependent initializations
+        (requires information from multiple containers)"""
         fancy_print(
             "Cross-Container Dependent Initializations (step 2 of ZZ)",
             format_type="title",
@@ -265,7 +259,7 @@ class Model:
         self._init_2_6_link_species_to_compartments()
         self._init_2_7_get_species_compartment_indices()
         fancy_print(
-            "Step 2 of initialization completed successfully!", text_color="magenta"
+            "Step 2 of initialization completed " "successfully!", text_color="magenta"
         )
 
     def _init_3(self):
@@ -318,13 +312,16 @@ class Model:
             )
         if self.max_dim > self.parent_mesh.dimensionality:
             raise ValueError(
-                "Maximum dimension of a compartment is higher than the topological dimension of parent mesh."
+                "Maximum dimension of a compartment is "
+                "higher than the topological dimension of parent mesh."
             )
-        # This is possible to simulate but could be unintended. (e.g. if you have a 3d mesh you could choose to only simulate on the surface)
+        # This is possible to simulate but could be unintended.
+        # (e.g. if you have a 3d mesh you could choose to only simulate on the surface)
         if self.max_dim != self.parent_mesh.dimensionality:
             fancy_print(
-                f"Parent mesh has geometric dimension: {self.parent_mesh.dimensionality} which"
-                + f" is not the same as the maximum compartment dimension: {self.max_dim}.",
+                "Parent mesh has geometric dimension: "
+                f"{self.parent_mesh.dimensionality} which"
+                f" is not the same as the maximum compartment dimension: {self.max_dim}.",
                 format_type="warning",
             )
 
@@ -339,14 +336,17 @@ class Model:
             self._all_keys = self._all_keys.union(keys)
         if sum([c.size for c in containers]) != len(self._all_keys):
             raise ValueError(
-                "Model has a namespace conflict. There are two parameters/species/compartments/reactions with the same name."
+                "Model has a namespace conflict. There are "
+                "two parameters/species/compartments/reactions with the same name."
             )
 
         protected_names = {"x[0]", "x[1]", "x[2]", "t", "unit_scale_factor"}
-        # Protect the variable names 'x[0]', 'x[1]', 'x[2]' and 't' because they are used for spatial dimensions and time
+        # Protect the variable names 'x[0]', 'x[1]', 'x[2]' and 't' because they are
+        # used for spatial dimensions and time
         if not protected_names.isdisjoint(self._all_keys):
             raise ValueError(
-                "An object is using a protected variable name ('x[0]', 'x[1]', 'x[2]', 't', or 'unit_scale_factor'). Please change the name."
+                "An object is using a protected variable name "
+                "('x[0]', 'x[1]', 'x[2]', 't', or 'unit_scale_factor'). Please change the name."
             )
 
         # Make sure there are no overlapping markers or markers with value 0
@@ -368,22 +368,25 @@ class Model:
     def _init_1_3_check_parameter_dimensionality(self):
         if "x[2]" in self._all_keys and self.max_dim < 3:
             raise ValueError(
-                "An object has the variable name 'x[2]' but there are less than 3 spatial dimensions."
+                "An object has the variable name 'x[2]' but there "
+                "are less than 3 spatial dimensions."
             )
         if "x[1]" in self._all_keys and self.max_dim < 2:
             raise ValueError(
-                "An object has the variable name 'x[1]' but there are less than 2 spatial dimensions."
+                "An object has the variable name 'x[1]' but there are "
+                "less than 2 spatial dimensions."
             )
 
     # Step 2 - Cross-container Dependent Initialization
 
     def _init_2_1_reactions_to_symbolic_strings(self):
-        fancy_print(
-            "Turning reactions into unsigned symbolic flux strings", format_type="log"
-        )
         """
         Turn all reactions into unsigned symbolic flux strings
         """
+        fancy_print(
+            "Turning reactions into unsigned symbolic flux strings", format_type="log"
+        )
+
         for reaction in self.rc:
             # Mass action has a forward and reverse flux
             if reaction.reaction_type == "mass_action":
@@ -443,7 +446,8 @@ class Model:
                 if len(param_set) + len(species_set) != len(var_set):
                     diff_set = var_set.difference(param_set.union(species_set))
                     raise NameError(
-                        f"Reaction {reaction.name} refers to a parameter or species ({diff_set}) that is not in the model."
+                        f"Reaction {reaction.name} refers to a parameter or "
+                        f"species ({diff_set}) that is not in the model."
                     )
 
     def _init_2_3_link_reaction_properties(self):
@@ -484,24 +488,28 @@ class Model:
             elif len(is_volume) == 2:
                 if all(is_volume):
                     raise NotImplementedError(
-                        f"Reaction {reaction.name} has two volumes - the adjoining surface must be specified "
-                        f"using reaction.explicit_restriction_to_domain"
+                        f"Reaction {reaction.name} has two volumes - "
+                        "the adjoining surface must be specified "
+                        "using reaction.explicit_restriction_to_domain"
                     )
                     # reaction.topology = 'volume_volume'
                 elif not any(is_volume):
                     raise Exception(
-                        f"Reaction {reaction.name} involves two surfaces. This is not supported."
+                        f"Reaction {reaction.name} involves two surfaces. "
+                        "This is not supported."
                     )
                 else:
                     reaction.topology = "volume_surface"
             elif len(is_volume) == 3:
                 if sum(is_volume) == 3:
                     raise Exception(
-                        f"Reaction {reaction.name} involves three volumes. This is not supported."
+                        f"Reaction {reaction.name} involves three volumes. "
+                        "This is not supported."
                     )
                 elif sum(is_volume) < 2:
                     raise Exception(
-                        f"Reaction {reaction.name} involves two or more surfaces. This is not supported."
+                        f"Reaction {reaction.name} involves two or more surfaces. "
+                        "This is not supported."
                     )
                 else:
                     reaction.topology = "volume_surface_volume"
@@ -520,7 +528,10 @@ class Model:
         all_species = set(chain.from_iterable([r.species for r in self.rc]))
         all_compartments = set(chain.from_iterable([r.compartments for r in self.rc]))
         if all_parameters != set(self.pc.keys):
-            print_str = f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, are unused in any reactions."
+            print_str = (
+                f"Parameter(s), {set(self.pc.keys).difference(all_parameters)}, "
+                "are unused in any reactions."
+            )
             if self.config.flags["allow_unused_components"]:
                 for parameter in set(self.pc.keys).difference(all_parameters):
                     self.pc.remove(parameter)
@@ -532,7 +543,10 @@ class Model:
             else:
                 raise ValueError(print_str)
         if all_species != set(self.sc.keys):
-            print_str = f"Species, {set(self.sc.keys).difference(all_species)}, are unused in any reactions."
+            print_str = (
+                f"Species, {set(self.sc.keys).difference(all_species)}, "
+                "are unused in any reactions."
+            )
             if self.config.flags["allow_unused_components"]:
                 for species in set(self.sc.keys).difference(all_species):
                     self.sc.remove(species)
@@ -543,7 +557,10 @@ class Model:
             else:
                 raise ValueError(print_str)
         if all_compartments != set(self.cc.keys):
-            print_str = f"Compartment(s), {set(self.cc.keys).difference(all_compartments)}, are unused in any reactions."
+            print_str = (
+                f"Compartment(s), {set(self.cc.keys).difference(all_compartments)}, "
+                "are unused in any reactions."
+            )
             if self.config.flags["allow_unused_components"]:
                 for compartment in set(self.cc.keys).difference(all_compartments):
                     self.cc.remove(compartment)
@@ -566,7 +583,8 @@ class Model:
 
     def _init_2_6_link_species_to_compartments(self):
         fancy_print("Linking species to compartments", format_type="log")
-        # An species is considered to be "in a compartment" if it is involved in a reaction there
+        # An species is considered to be "in a compartment" if it is
+        # involved in a reaction there
         for species in self.sc:
             species.compartment.species.update({species.name: species})
         for compartment in self.cc:
@@ -599,7 +617,8 @@ class Model:
     def _init_3_2_read_parent_mesh_functions_from_file(self):
         """
         Reads mesh functions from an .xml or .hdf5 file.
-        If told that a child mesh consists of a list of markers, creates a separate mesh function
+        If told that a child mesh consists of a list of markers,
+        creates a separate mesh function
         for the list and for the combined list (can be used for post-processing)
         """
         fancy_print("Defining parent mesh functions", format_type="log")
@@ -617,13 +636,12 @@ class Model:
             "Building MeshView mappings between all child mesh pairs",
             format_type="log",
         )
-        # import sys
-        # with open(f"output{rank}.out", 'w') as f:
-        #     sys.stdout = f
 
-        # not creating maps with build_mapping() will lead to a segfault when trying to assemble
+        # not creating maps with build_mapping() will lead to a
+        # segfault when trying to assemble
         # we also suppress the c++ output because it prints a lot of 'errors'
-        # even though the mapping was successfully built (when (surface intersect volume) != surface)
+        # even though the mapping was successfully built
+        # (when (surface intersect volume) != surface)
         # with common._stdout_redirected():
         for child_mesh in self.parent_mesh.child_surface_meshes:
             for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
@@ -644,19 +662,25 @@ class Model:
 
     def _init_3_5_get_child_mesh_intersections(self):
         """
-        Parent mesh functions are used to create submeshes, which then define measures.
-        There are two reasons we would need a child mesh function:
+        Parent mesh functions are used to create submeshes,
+        which then define measures. There are two reasons we would
+        need a child mesh function:
         1) Holding values from a list of marker values (for post-processing)
-        2) "intersection_map", a MeshFunction defining a mapping between child mesh cells of n-1 <-> topological dimension.
-        This is required for volume-surface-volume flux types, where it may be required to restrict a surface's
+        2) "intersection_map", a MeshFunction defining a mapping between
+            child mesh cells of n-1 <-> topological dimension.
+
+        This is required for volume-surface-volume flux types,
+        where it may be required to restrict a surface's
         integration measure for proper construction of the flux
 
-        Gets mappings between sibling meshes of different dimensions (n cell <-> n-1 cell)
+        Gets mappings between sibling meshes of different
+        dimensions (n cell <-> n-1 cell)
         """
         fancy_print("Defining child mesh functions", format_type="log")
 
         for child_mesh in self.parent_mesh.child_meshes.values():
-            # 1) If child mesh has a list of markers, create a mesh function so it can be used for post-processing
+            # 1) If child mesh has a list of markers, create a
+            # mesh function so it can be used for post-processing
             if child_mesh.marker_list is not None:
                 child_mesh.init_marker_list_mesh_function()
         # 2) get intersections with siblings of higher dimension
@@ -676,7 +700,8 @@ class Model:
                 )
 
     def _init_3_6_get_intersection_submeshes(self):
-        """Use dolfin.MeshView.create() to extract submeshes of child mesh intersections"""
+        """Use dolfin.MeshView.create() to extract submeshes
+        of child mesh intersections"""
         fancy_print(
             "Creating submeshes for child mesh intersections using MeshView",
             format_type="log",
@@ -704,9 +729,12 @@ class Model:
     def _init_4_0_initialize_dolfin_parameters(self):
         """
         Create dolfin objects for each parameter
-        Because we don't want to re-create dolfin constants each time (will cause fenics to recompile form)
-        we only define them once here. That means that once the model is initialized, changing a parameter's
-        value does not change the underlying dolfin object. Values must be assigned via paramter.dolfin_constant.assign()
+        Because we don't want to re-create dolfin constants
+        each time (will cause fenics to recompile form)
+        we only define them once here. That means that once
+        the model is initialized, changing a parameter's
+        value does not change the underlying dolfin object.
+        Values must be assigned via paramter.dolfin_constant.assign()
         """
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:
@@ -726,14 +754,6 @@ class Model:
         Arrange the compartments based on the number of degrees of freedom they have
         (We want to have the highest number of dofs first)
         """
-        # self._active_compartments = self.cc.sort_by('num_dofs')[0]
-        # for compartment in self._active_compartments:
-        #     if compartment.num_dofs < 1:
-        #         self._active_compartments.remove(compartment)
-
-        # for idx, compartment in enumerate(self._active_compartments):
-        #     compartment.dof_index = idx
-
         # addressing https://github.com/justinlaughlin/stubs/issues/36
         self._active_compartments = list(self.cc.Dict.values())
         self._all_compartments = list(self.cc.Dict.values())
@@ -758,8 +778,10 @@ class Model:
         for compartment in self._active_compartments:
             # Aliases
             fancy_print(
-                f"Defining function space for {compartment.name}{' '*(max_compartment_name-len(compartment.name))} "
-                f"(dim: {compartment.dimensionality}, species: {compartment.num_species}, dofs: {compartment.num_dofs})",
+                f"Defining function space for {compartment.name}"
+                f"{' '*(max_compartment_name-len(compartment.name))} "
+                f"(dim: {compartment.dimensionality}, "
+                f"species: {compartment.num_species}, dofs: {compartment.num_dofs})",
                 format_type="log",
             )
 
@@ -787,10 +809,12 @@ class Model:
 
         u.split()[idx] is equivalent to u.sub(idx)
 
-        d.split(u)[idx] (same thing as ufl.split(u)) gives us ufl objects (ufl.indexed.Indexed)
+        d.split(u)[idx] (same thing as ufl.split(u)) gives us
+        ufl objects (ufl.indexed.Indexed)
         that can be used in variational formulations.
 
-        u.sub(idx) can be used in a variational formulation but it won't behave properly.
+        u.sub(idx) can be used in a variational formulation but
+        it won't behave properly.
         E.g. consider u as a 2d function
         V  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
         u  = d.Function(V)
@@ -806,7 +830,8 @@ class Model:
 
         Using u0,u1 = d.split(u) will give the right results
 
-        For TestFunctions/TrialFunctions, we will always get a ufl.indexed.Indexed object
+        For TestFunctions/TrialFunctions, we will always get a
+        ufl.indexed.Indexed object
         # type(v) == d.function.argument.Argument
         v = d.TestFunction(V)
         v[0] == d.split(v)[0]
@@ -836,17 +861,20 @@ class Model:
             # functions
             for key, func in self.u.items():
                 # compartment.u[key] = sub(func,cidx) #func.sub(cidx)
-                # u is a function from a MixedFunctionSpace so u.sub() is appropriate here
+                # u is a function from a MixedFunctionSpace so u.sub()
+                # is appropriate here
                 compartment.u[key] = sub(func, cidx)  # func.sub(cidx)
                 if compartment.u[key].num_sub_spaces() > 1:
-                    # _usplit are the actual functions we use to construct variational forms
+                    # _usplit are the actual functions we use to construct
+                    # variational forms
                     compartment._usplit[key] = d.split(compartment.u[key])
                 else:
                     compartment._usplit[key] = (
                         compartment.u[key],
                     )  # one element tuple
 
-            # since we are using TrialFunctions() and TestFunctions() this is the proper
+            # since we are using TrialFunctions() and TestFunctions()
+            # this is the proper
             # syntax even if there is just one compartment
             compartment.ut = sub(self.ut, cidx)  # self.ut[cidx]
             compartment.v = sub(self.v, cidx)  # self.v[cidx]
@@ -965,11 +993,13 @@ class Model:
             )
             flux_form_units = flux.equation_units * flux.measure_units
             # Determine if flux is linear w.r.t. compartment functions
-            # Use flux.is_linear_wrt_comp and combine with linear_wrt_comp (prioritizing former). If compartment is not relevant to flux then it is linear
+            # Use flux.is_linear_wrt_comp and combine with linear_wrt_comp
+            # (prioritizing former). If compartment is not relevant to flux then it is linear
             linearity_dict = {
                 k: flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys
             }
-            # linearity_dict = nonlinear_wrt_comp#{k : flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
+            # linearity_dict = nonlinear_wrt_comp#{k :
+            # flux.is_linear_wrt_comp.setdefault(k, True) for k in self.cc.keys}
             self.forms.add(
                 Form(
                     f"{flux.name}",
@@ -993,7 +1023,8 @@ class Model:
             # diffusion term
             if species.D == 0:
                 fancy_print(
-                    f"Species {species.name} has a diffusion coefficient of 0. Skipping creation of diffusive form.",
+                    f"Species {species.name} has a diffusion coefficient of 0. "
+                    "Skipping creation of diffusive form.",
                     format_type="log",
                 )
             else:
@@ -1076,23 +1107,12 @@ class Model:
         u = self.u["u"]._functions
         self.global_sizes = self.get_global_sizes(u)
 
-        # Because it is a little tricky (see comment on d.extract_blocks(F) in model.get_block_system()),
-        # we are only going to separate fluxes that are linear with respect to all compartments
+        # Because it is a little tricky (see comment on d.extract_blocks(F)
+        # in model.get_block_system()),
+        # we are only going to separate fluxes that are linear with
+        # respect to all compartments
         self.Fsum_all = sum([f.lhs for f in self.forms])  # Sum of all forms
         if self.config.solver["snes_preassemble_linear_system"]:
-            # self.Fsum_linear = None
-            # self.Fsum_nonlinear = None
-            # for f in self.forms:
-            #     is_linear = int(all(z==True for z in f.linear_wrt_comp.values()))
-            #     is_nonlinear = int(not all(z==True for z in f.linear_wrt_comp.values()))
-            #     if self.Fsum_linear is None:
-            #         self.Fsum_linear = is_linear*f.lhs
-            #     else:
-            #         self.Fsum_linear += is_linear*f.lhs
-            #     if self.Fsum_nonlinear is None:
-            #         self.Fsum_nonlinear = is_nonlinear*f.lhs
-            #     else:
-            #         self.Fsum_nonlinear += is_nonlinear*f.lhs
 
             self.Fsum_linear = sum(
                 [
@@ -1108,15 +1128,6 @@ class Model:
                     if not all(z is True for z in f.linear_wrt_comp.values())
                 ]
             )
-            # self.Fsum_all       = self.Fsum_linear + self.Fsum_nonlinear
-
-            # # Separating linear/non-linear Jacobian components
-            # fancy_print("Getting linear block Jacobian components", format_type='log')
-            # self.Jblocks_linear    = self.get_block_J(self.Fsum_linear, u)
-            # fancy_print("Getting non-linear block Jacobian components", format_type='log')
-            # self.Jblocks_nonlinear = self.get_block_J(self.Fsum_nonlinear, u)
-            # self.Fblocks_all       = self.get_block_F(self.Fsum_all, u)
-            # self.Jblocks_all       = self.get_block_J(self.Fsum_all, u)
 
             # debug attempt
             fancy_print("Getting linear block Jacobian components", format_type="log")
@@ -1134,10 +1145,7 @@ class Model:
 
         # Not separating linear/non-linear components (everything assumed non-linear)
         else:
-            # self.Fsum_all          = sum([f.lhs for f in self.forms]) # Sum of all forms
             self.Fblocks_all = self.get_block_F(self.Fsum_all, u)
-            # self.Jblocks_linear    = None
-            # self.Jblocks_nonlinear = self.get_block_J(self.Fsum_all, u)
             self.Jblocks_all = self.get_block_J(self.Fsum_all, u)
 
         # Print the residuals per compartment
@@ -1149,7 +1157,8 @@ class Model:
             )
             if res > 1:
                 fancy_print(
-                    f"Warning! Initial L2-norm of compartment {compartment.name} is {res} (possibly too large).",
+                    f"Warning! Initial L2-norm of compartment {compartment.name} is "
+                    f"{res} (possibly too large).",
                     format_type="log_urgent",
                 )
 
@@ -1238,23 +1247,30 @@ class Model:
 
     def get_block_system(self, Fsum, u):
         """
-        The high level dolfin.solve(F==0, u) eventually calls cpp.fem.MixedNonlinearVariationalSolver,
-        but first modifies F and defines J into a specific structure that is required for d.assemble_mixed()
+        The high level dolfin.solve(F==0, u) eventually
+        calls cpp.fem.MixedNonlinearVariationalSolver,
+        but first modifies F and defines J into a specific
+        structure that is required for d.assemble_mixed()
 
         ====================================================
-        Comments on d.extract_blocks(F) (which is just a wrapper around ufl.algorithms.formsplitter)
+        Comments on d.extract_blocks(F) (which is just a wrapper
+        around ufl.algorithms.formsplitter)
         ====================================================
-        There is some indexing going on behind the scenes, so just manually summing what we know to be the
-        components of Fblock[0] will not be the same as extract_blocks(F)[0]. Here is an example:
+        There is some indexing going on behind the scenes, so just
+        manually summing what we know to be the
+        components of Fblock[0] will not be the same as extract_blocks(F)[0].
+        Here is an example:
 
         F  = sum([f.lhs for f in model.forms]) # single form
-        F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol']) # first compartment
+        # first compartment
+        F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
         Fb0 = extract_blocks(F)[0] # tuple of forms
 
         F0.equals(Fb0) -> False
         I0 = F0.integrals()[0].integrand()
         Ib0 = Fb0.integrals()[0].integrand()
-        I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
+        # (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
+        I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False
         I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
         I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
@@ -1278,7 +1294,8 @@ class Model:
         # =====================================================================
         # doflin.fem.problem.MixedNonlinearVariationalProblem()
         # =====================================================================
-        # basically is a wrapper around the cpp class that finalizes preparing F and J into the right format
+        # basically is a wrapper around the cpp class that finalizes preparing
+        # F and J into the right format
         # TODO: add dirichlet BCs
 
         # Add in placeholders for empty blocks of F
@@ -1305,7 +1322,8 @@ class Model:
 
         # Decompose F blocks into subforms based on domain of integration
         # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
-        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]] If a form has integrals on multiple domains, they are split into a list
+        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]]
+        # If a form has integrals on multiple domains, they are split into a list
         Flist = list()
         for idx, Fi in enumerate(Fblock):
             if Fi is None or Fi.empty():
@@ -1320,7 +1338,8 @@ class Model:
                     if Fsub is None or Fsub.empty():
                         domain = self.get_mesh_by_id(Fsub.mesh().id()).name
                         fancy_print(
-                            f"F{idx} = F[{self.cc.get_index(idx).name}] is empty on integration domain {domain}",
+                            f"F{idx} = F[{self.cc.get_index(idx).name}] "
+                            "is empty on integration domain {domain}",
                             format_type="logred",
                         )
                         Fs.append(d.cpp.fem.Form(1, 0))
@@ -1335,7 +1354,8 @@ class Model:
             idx_i, idx_j = divmod(idx, len(u))
             if Ji is None or Ji.empty():
                 fancy_print(
-                    f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}] is empty",
+                    f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
+                    f"/du[{self.cc.get_index(idx_j).name}] is empty",
                     format_type="logred",
                 )
                 Jlist.append([d.cpp.fem.Form(2, 0)])
@@ -1345,7 +1365,8 @@ class Model:
                     if Jsub is None or Jsub.empty():
                         domain = self.get_mesh_by_id(Jsub.mesh().id()).name
                         fancy_print(
-                            f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}]"
+                            f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
+                            f"/du[{self.cc.get_index(idx_j).name}]"
                             f"is empty on integration domain {domain}",
                             format_type="logred",
                         )
@@ -1374,7 +1395,8 @@ class Model:
         assert len(Fblock) == len(u)
         # Decompose F blocks into subforms based on domain of integration
         # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
-        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]] If a form has integrals on multiple domains, they are split into a list
+        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]]
+        # If a form has integrals on multiple domains, they are split into a list
         Flist = list()
         for idx, Fi in enumerate(Fblock):
             if Fi is None or Fi.empty():
@@ -1389,7 +1411,8 @@ class Model:
                     if Fsub is None or Fsub.empty():
                         domain = self.get_mesh_by_id(Fsub.mesh().id()).name
                         fancy_print(
-                            f"F{idx} = F[{self.cc.get_index(idx).name}] is empty on integration domain {domain}",
+                            f"F{idx} = F[{self.cc.get_index(idx).name}] is empty "
+                            f"on integration domain {domain}",
                             format_type="logred",
                         )
                         Fs.append(d.cpp.fem.Form(1, 0))
@@ -1417,7 +1440,8 @@ class Model:
             idx_i, idx_j = divmod(idx, len(u))
             if Ji is None or Ji.empty():
                 fancy_print(
-                    f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}] is empty",
+                    f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
+                    f"/du[{self.cc.get_index(idx_j).name}] is empty",
                     format_type="logred",
                 )
                 Jlist.append([d.cpp.fem.Form(2, 0)])
@@ -1427,7 +1451,8 @@ class Model:
                     if Jsub is None or Jsub.empty():
                         domain = self.get_mesh_by_id(Jsub.mesh().id()).name
                         fancy_print(
-                            f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])/du[{self.cc.get_index(idx_j).name}]"
+                            f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
+                            f"/du[{self.cc.get_index(idx_j).name}]"
                             f"is empty on integration domain {domain}",
                             format_type="logred",
                         )
@@ -1448,13 +1473,15 @@ class Model:
     # solve():
     #   - highest level solve. solves over all timesteps
     # solve_single_timestep()
-    #   - recommended level to solve at. time-loop must be in driver script but this allows explicit pre/post processing
-    # monolithic_solve(), iterative_mpsolve()
+    #   - recommended level to solve at. time-loop must be in driver script but
+    #     this allows explicit pre/post processing
+    #     monolithic_solve(), iterative_mpsolve()
     #   - multiphysics level (for now, we are only considering monolithic formulation)
-    # newton_solve(), picard_solve()
+    #     newton_solve(), picard_solve()
     #   - nonlinear level. Only relevant for iterative_mpsolve().
-    # linear solve
-    #   - For any kind of non-linear problem these should simply be parameters passed to the non-linear solver
+    #     linear solve
+    #   - For any kind of non-linear problem these should simply be parameters passed
+    #     to the non-linear solver
     #     (we don't want nonlinear solve implemented at the python level)
     # ===============================================================================
     def solve(self, plot_period=1):
@@ -1481,7 +1508,8 @@ class Model:
     #     end_simulation = self.t >= self.final_t
     #     if end_simulation:
     #         self.stopwatch("Total simulation", stop=True)
-    #         fancy_print(f"Model \'{self.name}\' finished simulating (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
+    #         fancy_print(f"Model \'{self.name}\' finished simulating
+    #         (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
 
     #     return end_simulation
     # ===============================================================================
@@ -1532,7 +1560,8 @@ class Model:
         if self.reset_dt or tadjust == tnow:
             self.set_dt(dtadjust)
             fancy_print(
-                f"[{self.idx}, t={tnow}] Adjusted time-step (dt = {dtnow} -> {self.dt}) to match config specified value",
+                f"[{self.idx}, t={tnow}] Adjusted time-step "
+                f"(dt = {dtnow} -> {self.dt}) to match config specified value",
                 format_type="log",
             )
             del self.config.solver["adjust_dt"][0]
@@ -1544,20 +1573,27 @@ class Model:
                 "tadjust (Next time to adjust dt) is smaller than current time."
             )
 
-        # If true, this means taking a full time-step with current values of t and dt would pass a checkpoint to adjust dt
+        # If true, this means taking a full time-step with current values of
+        # t and dt would pass a checkpoint to adjust dt
         if tnow < tadjust <= tnext:
-            # Safeguard against taking ridiculously small time-steps which may cause convergence issues
-            # (e.g. current time is tnow=0.999999999, tadjust=1.0, dtadjust=0.01, instead of changing current dt to tadjust-tnow, we change it to dtadjust)
+            # Safeguard against taking ridiculously small time-steps which may
+            # cause convergence issues
+            # (e.g. current time is tnow=0.999999999, tadjust=1.0,
+            # dtadjust=0.01, instead of changing current dt to tadjust-tnow,
+            # we change it to dtadjust)
             print(f"tadjust = {tadjust}")
             print(f"tnow = {tnow}")
             print(f"dtadjust = {dtadjust}")
-            # this is needed otherwise very small time-steps might be taken which wont converge
+            # this is needed otherwise very small time-steps might be
+            # taken which wont converge
             new_dt = self.rounded_decimal(max([tadjust - tnow, dtadjust]))
             print(f"newdt = {new_dt}")
 
             if dtadjust > tadjust - tnow:
                 fancy_print(
-                    f"[{self.idx}, t={tnow}] Adjusted time-step (dt = {dtnow} -> {new_dt}) to match config specified value (adjusted early because dt_adjust > t_adjust-t_now)",
+                    f"[{self.idx}, t={tnow}] Adjusted time-step "
+                    f"(dt = {dtnow} -> {new_dt}) to match config specified "
+                    "value (adjusted early because dt_adjust > t_adjust-t_now)",
                     format_type="log",
                 )
                 self.set_dt(new_dt)
@@ -1565,7 +1601,8 @@ class Model:
                 self.reset_dt = False
             else:
                 fancy_print(
-                    f"[{self.idx}, t={tnow}] Adjusting time-step (dt = {dtnow} -> {new_dt}) to avoid passing reset dt checkpoint",
+                    f"[{self.idx}, t={tnow}] Adjusting time-step "
+                    f"(dt = {dtnow} -> {new_dt}) to avoid passing reset dt checkpoint",
                     format_type="log_important",
                 )
                 self.set_dt(new_dt)
@@ -1582,7 +1619,8 @@ class Model:
             if self.config.solver["time_precision"] is not None:
                 new_dt = round(new_dt, self.config.solver["time_precision"])
             fancy_print(
-                f"[{self.idx}, t={self.t}] Adjusting time-step (dt = {self.dt} -> {new_dt}) to avoid passing final time",
+                f"[{self.idx}, t={self.t}] Adjusting time-step "
+                f"(dt = {self.dt} -> {new_dt}) to avoid passing final time",
                 format_type="log",
             )
             self.set_dt(new_dt)
@@ -1606,7 +1644,8 @@ class Model:
         self.idx += 1
         # start a timer for the total time step
         self.stopwatches["Total time step"].start()
-        # Adjust dt if necessary (if the last time-step did not converge then it is already adjusted)
+        # Adjust dt if necessary (if the last time-step did not
+        # converge then it is already adjusted)
         if not self._failed_to_converge:
             # check if there is a manually prescribed time-step size
             self.adjust_dt_if_prescribed()
@@ -1616,7 +1655,9 @@ class Model:
 
         # Take a step forward in time and update time-dependent parameters
         # update time-dependent parameters
-        self.forward_time_step()  # march forward in time and update time-dependent parameters
+
+        # march forward in time and update time-dependent parameters
+        self.forward_time_step()
         fancy_print(
             f"Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]",
             new_lines=[1, 0],
@@ -1679,17 +1720,8 @@ class Model:
                 format_type="log",
             )
 
-            # fancy_print(f"Total residual: {self.get_total_residual(norm=2)}", format_type='log')
-            # residuals = dict()
-            # for compartment in self._active_compartments:
-            #     residuals[compartment.name] = self.get_compartment_residual(compartment, norm=2)
-            #     fancy_print(f"L2-norm of compartment {compartment.name} is {residuals[compartment.name]}", format_type='log')
-            #     if residuals[compartment.name] > 1:
-            #         fancy_print(f"Warning! L2-norm of compartment {compartment.name} is {residuals[compartment.name]} (possibly too large).", format_type='log_urgent')
-
-            # self.residuals.append(residuals)
-
-            # confirm that the solution is greater than or equal to zero, otherwise reduce timestep and recompute
+            # confirm that the solution is greater than or equal to zero,
+            # otherwise reduce timestep and recompute
             if self.config.solver["reset_timestep_for_negative_solution"]:
                 negVals = False
                 for idx in range(self.num_active_compartments):
@@ -1703,7 +1735,6 @@ class Model:
                 if negVals:
                     self.reset_timestep()
                     # Re-initialize SNES solver
-                    # self.initialize_discrete_variational_problem_and_solver()
                     if len(self.problem.global_sizes) == 1:
                         self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                     else:
@@ -1719,7 +1750,8 @@ class Model:
             if not self.solver.converged:
                 if not self.config.solver["attempt_timestep_restart_on_divergence"]:
                     raise RuntimeError(
-                        f"Model {self.name}: SNES diverged and attempt_timestep_restart_on_divergence is False. Exiting."
+                        f"Model {self.name}: SNES diverged and "
+                        "attempt_timestep_restart_on_divergence is False. Exiting."
                     )
                 self.stopwatches["Total time step"].stop()
                 fancy_print(
@@ -1764,7 +1796,8 @@ class Model:
                 )
                 if residuals[compartment.name] > 1:
                     fancy_print(
-                        f"Warning! L2-norm of compartment {compartment.name} is {residuals[compartment.name]} (possibly too large).",
+                        f"Warning! L2-norm of compartment {compartment.name} "
+                        f"is {residuals[compartment.name]} (possibly too large).",
                         format_type="log_urgent",
                     )
 
@@ -1814,7 +1847,7 @@ class Model:
         self.update_solution(ukeys=["u"], unew="n")
 
     def update_time_dependent_parameters(self):
-        """Updates all time dependent parameters. Time-dependent parameters are
+        r"""Updates all time dependent parameters. Time-dependent parameters are
         either defined either symbolically or through a data file, and each of
         these can either be defined as a direct function of t, p(t), or a
         "pre-integrated expression", \int_{t_n}^{t_{n+1}} P(tau) dtau, which allows for
@@ -1823,7 +1856,8 @@ class Model:
         a certain amount of flux independent of time-stepping.
 
         Backward Euler is essentially making the approximation:
-        du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \int_{t_n}^{t_{n+1}} f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
+        du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \int_{t_n}^{t_{n+1}}
+        f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
         If some portion of f is only dependent on t, e.g. f=f_1+f_2+...+f_n, f_i=f_i(t),
         we can use the exact expression where F_i(t) is the anti-derivative of f_i(t).
         \int_{t_n}^{t_{n+1}} f_i(t_{n+1}) -> (F_i(t_{n+1}) - F_i(t_n))
@@ -1842,7 +1876,8 @@ class Model:
             if not parameter.is_time_dependent:
                 continue
             if not parameter.use_preintegration:
-                # Parameters that are defined as dolfin expressions will automatically be updated by model.T.assign(t)
+                # Parameters that are defined as dolfin expressions will
+                # automatically be updated by model.T.assign(t)
                 if parameter.type == "expression":
                     parameter.value = parameter.sym_expr.subs({"t": t}).evalf()
                     parameter.value_vector = np.vstack(
@@ -1863,7 +1898,8 @@ class Model:
                         np.interp(t, t_data, p_data, left=np.nan, right=np.nan)
                     )
                     fancy_print(
-                        f"Time-dependent parameter {parameter_name} updated by data. New value is {new_value}",
+                        f"Time-dependent parameter {parameter_name} updated by data. "
+                        "New value is {new_value}",
                         format_type="log",
                     )
 
@@ -1873,7 +1909,8 @@ class Model:
                     b = parameter.preint_sym_expr.subs({"t": t}).evalf()
                     new_value = float((b - a) / dt)
                     fancy_print(
-                        f"Time-dependent parameter {parameter_name} updated by pre-integrated expression. New value is {new_value}",
+                        f"Time-dependent parameter {parameter_name} updated by "
+                        "pre-integrated expression. New value is {new_value}",
                         format_type="log",
                     )
                 if parameter.type == "from_file":
@@ -1886,7 +1923,8 @@ class Model:
                     )
                     new_value = float((b - a) / dt)
                     fancy_print(
-                        f"Time-dependent parameter {parameter_name} updated by pre-integrated data. New value is {new_value}",
+                        f"Time-dependent parameter {parameter_name} updated by "
+                        f"pre-integrated data. New value is {new_value}",
                         format_type="log",
                     )
 
@@ -1900,75 +1938,6 @@ class Model:
             else:
                 # Time dependent but nothing assigned
                 raise AssertionError()
-
-    # def stopwatch(self, key, stop=False, pause=False):
-    #     "Keep track of timers. When timer is stopped, appends value to the dictionary self.timings"
-    #     if key not in self.timers.keys(): # initialize timer
-    #         self.timers[key] = d.Timer()
-    #     if pause:
-    #         self.timers[key].stop()
-    #         return
-    #     if not stop:
-    #         self.timers[key].start()
-    #     if stop:
-    #         elapsed_time = self.timers[key].elapsed()[0]
-    #         time_str = str(elapsed_time)[0:8]
-    #         fancy_print(f"{key} finished in {time_str} seconds", format_type='log')
-    #         self.timers[key].stop()
-    #         self.timings[key].append(elapsed_time)
-    #         return elapsed_time
-
-    # def update_solution_boundary_to_volume(self):
-    #     for comp_name in self.cc.keys:
-    #         for key in self.u[comp_name].keys():
-    #             if key[0:2] == 'v_': # fixme
-    #                 d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
-    #                 parent_comp_name = key[2:]
-    #                 Print("Projected values from surface %s to volume %s" % (comp_name, parent_comp_name))
-
-    # def update_solution_volume_to_boundary(self):
-    #     for comp_name in self.cc.keys:
-    #         for key in self.u[comp_name].keys():
-    #             if key[0:2] == 'b_': # fixme
-    #                 #self.u[comp_name][key].interpolate(self.u[comp_name]['u'])
-    #                 d.LagrangeInterpolator.interpolate(self.u[comp_name][key], self.u[comp_name]['u'])
-    #                 sub_comp_name = key[2:]
-    #                 Print("Projected values from volume %s to surface %s" % (comp_name, sub_comp_name))
-
-    # def boundary_reactions_forward(self, dt_factor=1, bcs=[]):
-    #     self.stopwatch("Boundary reactions forward")
-
-    #     # solve boundary problem(s)
-    #     for comp_name, comp in self.cc.items:
-    #         if comp.dimensionality < self.cc.max_dim:
-    #             self.nonlinear_solve(comp_name, dt_factor=dt_factor)
-    #     self.stopwatch("Boundary reactions forward", stop=True)
-
-    # def volume_reactions_forward(self, dt_factor=1, bcs=[], time_step=True):
-    #     self.stopwatch("Volume reactions forward")
-
-    #     # solve volume problem(s)
-    #     for comp_name, comp in self.cc.items:
-    #         if comp.dimensionality == self.cc.max_dim:
-    #             self.nonlinear_solve(comp_name, dt_factor=dt_factor)
-    #     self.stopwatch("Volume reactions forward", stop=True)
-
-    # def nonlinear_solve(self, comp_name, dt_factor=1.0):
-    #     """
-    #     A switch for choosing a nonlinear solver
-    #     """
-    #     if self.solver_system.nonlinear_solver.method == 'newton':
-    #         self.stopwatch("Newton's method [%s]" % comp_name)
-    #         self.nl_idx[comp_name], self.success[comp_name] = self.nonlinear_solver[comp_name].solve()
-    #         self.stopwatch("Newton's method [%s]" % comp_name, stop=True)
-    #         Print(f"{self.nl_idx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
-    #     # elif self.solver_system.nonlinear_solver.method == 'picard':
-    #     #     self.stopwatch("Picard iteration method [%s]" % comp_name)
-    #     #     self.nl_idx[comp_name], self.success[comp_name] = self.picard_loop(comp_name, dt_factor=dt_factor)
-    #     #     self.stopwatch("Picard iteration method [%s]" % comp_name)
-    #     #     Print(f"{self.nl_idx[comp_name]} Newton iterations required for convergence on compartment {comp_name}.")
-    #     else:
-    #         raise ValueError("Unknown nonlinear solver method")
 
     def update_solution(self, ukeys=["n"], unew="u"):
         """
@@ -1984,184 +1953,6 @@ class Model:
             # for a function from a mixed function space
             for idx in range(self.num_active_compartments):
                 self.u[ukey].sub(idx).assign(self.u[unew].sub(idx))
-
-    # def adjust_dt(self):
-    #     # check if time step should be changed based on number of nonlinear iterations
-    #     if all([x <= self.solver_system.nonlinear_solver.min_nonlinear for x in self.nl_idx.values()]):
-    #        self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_increase_factor)
-    #        Print("Increasing step size")
-    #     elif any([x > self.solver_system.nonlinear_solver.max_nonlinear for x in self.nl_idx.values()]):
-    #        self.set_time(self.t, dt=self.dt*self.solver_system.nonlinear_solver.dt_decrease_factor)
-    #        Print("Decreasing step size")
-
-    # check if time step should be changed based on number of multiphysics iterations
-    # if self.mpidx <= self.solver_system.multiphysics_solver.min_multiphysics:
-    #     self.set_time(self.t, dt=self.dt*self.solver_system.multiphysics_solver.dt_increase_factor)
-    #     Print("Increasing step size")
-    # elif self.mpidx > self.solver_system.multiphysics_solver.max_multiphysics:
-    #     self.set_time(self.t, dt=self.dt*self.solver_system.multiphysics_solver.dt_decrease_factor)
-    #     Print("Decreasing step size")
-
-    # ===============================================================================
-    # Model - Solving (iterative multiphysics solver)
-    # ===============================================================================
-    # def compute_stopping_conditions(self, norm_type=np.inf):
-    #     # Mostly related to iterative_mpsolve()
-    #     raise AssertionError("Needs to be revisited")
-
-    #     for comp_name in self.u.keys():
-    #         # dolfin norm() is not really robust so we get vectors and use numpy.linalg.norm
-    #         #Fabs = d.norm(d.assemble(self.F[comp_name]), norm_type)
-    #         #udiff = self.u[comp_name]['u'] - self.u[comp_name]['k']
-    #         #udiff_abs = d.norm(udiff, norm_type)
-    #         #udiff_rel = udiff_abs/d.norm(self.u[comp_name]['u'], norm_type)
-
-    #         Fvec = d.assemble(self.F[comp_name]).get_local()
-
-    #         Fabs = np.linalg.norm(Fvec, ord=norm_type)
-
-    #         self.stopping_conditions['F_abs'].update({comp_name: Fabs})
-
-    #     for sp_name, sp in self.sc.items:
-    #         uvec = self.dolfin_get_function_values(sp, ukey='u')
-    #         ukvec = self.dolfin_get_function_values(sp, ukey='k')
-    #         udiff = uvec - ukvec
-
-    #         udiff_abs = np.linalg.norm(udiff, ord=norm_type)
-    #         udiff_rel = udiff_abs/np.linalg.norm(uvec, ord=norm_type)
-
-    #         self.stopping_conditions['udiff_abs'].update({sp_name: udiff_abs})
-    #         self.stopping_conditions['udiff_rel'].update({sp_name: udiff_rel})
-
-    # def iterative_mpsolve(self, bcs=[]):
-    #     """
-    #     Iterate between boundary and volume problems until convergence
-    #     """
-    #     raise AssertionError(f"Currently focusing on just monolithic - haven't updated.")
-    #     Print('\n\n\n')
-    #     self.idx += 1
-    #     self.check_dt_adjust()      # check if there is a manually prescribed time-step size
-    #     self.check_dt_pass_tfinal() # check that we don't pass tfinal
-    #     fancy_print(f'Beginning time-step {self.idx} [time={self.t}, dt={self.dt}]', format_type='timestep')
-
-    #     self.stopwatch("Total time step") # start a timer for the total time step
-
-    #     self.forward_time_step() # march forward in time and update time-dependent parameters
-
-    #     self.mpidx = 0
-    #     while True:
-    #         self.mpidx += 1
-    #         fancy_print(f'Multiphysics iteration {self.mpidx} for time-step {self.idx} [time={self.t}]', format_type='solverstep')
-    #         # solve volume problem(s)
-    #         self.volume_reactions_forward()
-    #         self.update_solution_volume_to_boundary()
-    #         # solve boundary problem(s)
-    #         self.boundary_reactions_forward()
-    #         self.update_solution_boundary_to_volume()
-    #         # decide whether to stop iterations
-    #         self.compute_stopping_conditions()
-    #         if self.solver_system.multiphysics_solver.eps_Fabs is not None:
-    #             max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
-    #             if all([x<self.solver_system.multiphysics_solver.eps_Fabs for x in self.stopping_conditions['F_abs'].values()]):
-    #                 fancy_print(f"All F_abs are below tolerance ({self.solver_system.multiphysics_solver.eps_Fabs:.4e}", format_type='log_important')
-    #                 fancy_print(f"Max F_abs is {max_Fabs:.4e} from compartment {max_comp_name}", format_type='log_important')
-    #                 fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
-    #                 break
-    #             else:
-    #                 #max_comp_name, max_Fabs = max(self.stopping_conditions['F_abs'].items(), key=operator.itemgetter(1))
-    #                 #color_print(f"{'One or more F_abs are above tolerance. Max F_abs is from compartment '+max_comp_name+': ': <40} {max_Fabs:.4e}", color='green')
-    #                 fancy_print(f"One or more F_abs are above tolerance ({self.solver_system.multiphysics_solver.eps_Fabs:.4e}", format_type='log')
-    #                 fancy_print(f"Max F_abs is {max_Fabs:.4e} from compartment {max_comp_name}", format_type='log')
-
-    #         if self.solver_system.multiphysics_solver.eps_udiff_abs is not None:
-    #             max_sp_name, max_udiffabs = max(self.stopping_conditions['udiff_abs'].items(), key=operator.itemgetter(1))
-    #             if all([x<self.solver_system.multiphysics_solver.eps_udiff_abs for x in self.stopping_conditions['udiff_abs'].values()]):
-    #                 #color_print(f"All udiff_abs are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_abs}." \
-    #                 #              f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
-    #                 fancy_print(f"All udiff_abs are below tolerance ({self.solver_system.multiphysics_solver.eps_udiff_abs:.4e})", format_type='log_important')
-    #                 fancy_print(f"Max udiff_abs is {max_udiffabs:.4e} from species {max_sp_name}", format_type='log_important')
-    #                 fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
-    #                 break
-    #             else:
-    #                 #color_print(f"{'One or more udiff_abs are above tolerance. Max udiff_abs is from species '+max_sp_name+': ': <40} {max_udiffabs:.4e}", color='green')
-    #                 fancy_print(f"One or more udiff_abs are above tolerance ({self.solver_system.multiphysics_solver.eps_udiff_abs:.4e}", format_type='log')
-    #                 fancy_print(f"Max udiff_abs is {max_udiffabs:.4e} from species {max_sp_name}", format_type='log')
-
-    #         if self.solver_system.multiphysics_solver.eps_udiff_rel is not None:
-    #             max_sp_name, max_udiffrel = max(self.stopping_conditions['udiff_rel'].items(), key=operator.itemgetter(1))
-    #             if all([x<self.solver_system.multiphysics_solver.eps_udiff_rel for x in self.stopping_conditions['udiff_rel'].values()]):
-    #                 #color_print(f"All udiff_rel are below tolerance, {self.solver_system.multiphysics_solver.eps_udiff_rel}." \
-    #                 #              f" Exiting multiphysics loop ({self.mpidx} iterations).\n", color='green')
-    #                 fancy_print(f"All udiff_rel are below tolerance ({self.solver_system.multiphysics_solver.eps_udiff_rel:.4e})", format_type='log_important')
-    #                 fancy_print(f"Max udiff_rel is {max_udiffrel:.4e} from species {max_sp_name}", format_type='log_important')
-    #                 fancy_print(f"Exiting multiphysics loop ({self.mpidx} iterations)", format_type='log_important')
-    #                 break
-    #             else:
-    #                 max_sp_name, max_udiffrel = max(self.stopping_conditions['udiff_rel'].items(), key=operator.itemgetter(1))
-    #                 #color_print(f"{'One or more udiff_rel are above tolerance. Max udiff_rel is from species '+max_sp_name+': ': <40} {max_udiffrel:.4e}", color='green')
-    #                 fancy_print(f"One or more udiff_rel are above tolerance ({self.solver_system.multiphysics_solver.eps_udiff_rel:.4e}", format_type='log')
-    #                 fancy_print(f"Max udiff_rel is {max_udiffabs:.4e} from species {max_sp_name}", format_type='log')
-
-    #         # update previous (iteration) solution
-    #         self.update_solution(ukeys=['k'])
-
-    #     self.update_solution() # assign most recently computed solution to "previous solution"
-    #     self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
-    #     self.stopwatch("Total time step", stop=True, color='cyan')
-
-    # ===============================================================================
-    # Nonlinear solvers:
-    #  - Timestep
-    #  - Update time dependent parameters
-    #  - Solve
-    #  - Assign new solution to old solution unless otherwise stated
-    # ===============================================================================
-
-    #     def picard_loop(self, comp_name, dt_factor=1, bcs=[]):
-    #         """
-    #         Continue picard iterations until a specified tolerance or count is
-    #         reached.
-    #         """
-    #         self.stopwatch("Picard loop [%s]" % comp_name)
-    #         t0 = self.t
-    #         self.forward_time_step(dt_factor=dt_factor) # increment time afterwards
-    #         self.pidx = 0 # count the number of picard iterations
-    #         success = True
-
-    #         # main loop
-    #         while True:
-    #             self.pidx += 1
-    #             #linear_solver_settings = self.config.dolfin_krylov_solver
-
-    #             # solve
-    #             self.linear_solver[comp_name].solve()
-    #             #d.solve(self.a[comp_name]==self.L[comp_name], self.u[comp_name]['u'], bcs, solver_parameters=linear_solver_settings)
-
-    #             # update temporary value of u
-    #             self.data.compute_error(self.u, comp_name, self.solver_system.nonlinear_solver.picard_norm)
-    #             self.u[comp_name]['k'].assign(self.u[comp_name]['u'])
-
-    #             # Exit if error tolerance or max iterations is reached
-    #             Print('Linf norm (%s) : %f ' % (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-    #             if self.data.errors[comp_name]['Linf']['abs'][-1] < self.solver_system.nonlinear_solver.absolute_tolerance:
-    #                 #print("Norm (%f) is less than linear_abstol (%f), exiting picard loop." %
-    #                  #(self.data.errors[comp_name]['Linf'][-1], self.config.solver['linear_abstol']))
-    #                 break
-    # #            if self.data.errors[comp_name]['Linf']['rel'][-1] < self.config.solver['linear_reltol']:
-    # #                print("Norm (%f) is less than linear_reltol (%f), exiting picard loop." %
-    # #                (self.data.errors[comp_name]['Linf']['rel'][-1], self.config.solver['linear_reltol']))
-    # #                break
-
-    #             if self.pidx >= self.solver_system.nonlinear_solver.maximum_iterations:
-    #                 Print("Max number of picard iterations reached (%s), exiting picard loop with abs error %f." %
-    #                 (comp_name, self.data.errors[comp_name]['Linf']['abs'][-1]))
-    #                 success = False
-    #                 break
-
-    #         self.stopwatch("Picard loop [%s]" % comp_name, stop=True)
-
-    #         Print("%d Picard iterations required for convergence." % self.pidx)
-    #         return self.pidx, success
 
     # ===============================================================================
     # Model - Post-processing
@@ -2190,10 +1981,11 @@ class Model:
         self.data.plot_fluxes(self.config)
         self.data.plot_solver_status(self.config)
 
-    # ===============================================================================
+    # =========================================================
     # Model - Data manipulation
-    # ===============================================================================
-    # get the values of function u from subspace idx of some mixed function space, V
+    # =========================================================
+    # get the values of function u from subspace idx of some
+    # mixed function space, V
     @staticmethod
     def dolfin_get_dof_indices(species):  # V, species_idx):
         """
@@ -2205,36 +1997,16 @@ class Model:
         if species.dof_map is not None:
             return species.dof_map
         species_idx = species.dof_index
-        # V           = species.compartment.V
-        V = sub(species.compartment.V, species_idx, collapse_function_space=False)
-        # V           = species.V.sub(species_idx)
 
-        # if V.num_sub_spaces() > 1:
-        #     indices = np.array(V.sub(species_idx).dofmap().dofs())
-        # else:
+        V = sub(species.compartment.V, species_idx, collapse_function_space=False)
+
         indices = np.array(V.dofmap().dofs())
-        first_idx, last_idx = V.dofmap().ownership_range()  # indices that this CPU owns
+        # indices that this CPU owns
+        first_idx, last_idx = V.dofmap().ownership_range()
 
         return (
             indices - first_idx
         )  # subtract index offset to go from global -> local indices
-
-    # @staticmethod
-    # def reduce_vector(u):
-    #     """
-    #     comm.allreduce() only works when the incoming vectors all have the same length. We use comm.Gatherv() to gather vectors
-    #     with different lengths
-    #     """
-    #     sendcounts = np.array(comm.gather(len(u), root)) # length of vectors being sent by workers
-    #     if rank == root:
-    #         print("reduceVector(): CPUs sent me %s length vectors, total length: %d"%(sendcounts, sum(sendcounts)))
-    #         recvbuf = np.empty(sum(sendcounts), dtype=float)
-    #     else:
-    #         recvbuf = None
-
-    #     comm.Gatherv(sendbuf=u, recvbuf=(recvbuf, sendcounts), root=root)
-
-    #     return recvbuf
 
     def dolfin_get_function_values(self, sp, ukey="u"):
         """
@@ -2260,12 +2032,6 @@ class Model:
         :return: list of values at point. If species_idx is not specified it will return all values
         """
         return sp.u["u"](coord)
-        # u = self.u[sp.compartment_name]['u']
-        # if sp.compartment.V.num_sub_spaces() == 0:
-        #     return u(coord)
-        # else:
-        #     species_idx = sp.dof_index
-        #     return u(coord)[species_idx]
 
     def dolfin_set_function_values(self, sp, ukey, unew):
         """
@@ -2281,17 +2047,6 @@ class Model:
         else:
             # unew is a vector with the same length as u
             raise NotImplementedError
-            # #u = self.u[ukey][sp.compartment_name][ukey]
-            # u = self.cc[sp.compartment_name].u[ukey]
-
-            # #indices = self.dolfin_get_dof_indices(sp)
-            # indices = sp.dof_map
-            # uvec    = u.vector()
-            # values  = uvec.get_local()
-            # values[indices] = unew
-
-            # uvec.set_local(values)
-            # uvec.apply('insert')
 
     @property
     def num_active_compartments(self):
@@ -2336,14 +2091,6 @@ class Model:
         else:
             return np.linalg.norm(res_vec, norm)
 
-    # Needs to use scalar_form somehow....
-    # def get_species_residual(self, species, norm=None):
-    #     res_vec = sum([d.assemble_mixed(form.form).get_local() for form in self.forms if form.species == species])
-    #     if norm is None:
-    #         return res_vec
-    #     else:
-    #         return np.linalg.norm(res_vec, norm)
-
     def get_total_residual(self, norm=None):
         res_vec = np.hstack(
             [
@@ -2370,46 +2117,9 @@ class Model:
             else:
                 raise ValueError(f"No mesh with id {mesh_id}")
 
-    # def assign_initial_conditions(self):
-    #     ukeys = ['k', 'n', 'u']
-    #     for sp_name, sp in self.sc.items:
-    #         comp_name = sp.compartment_name
-    #         for ukey in ukeys:
-    #             self.dolfin_set_function_values(sp, ukey, sp.initial_condition)
-    #         if rank==root: print("Assigned initial condition for species %s" % sp.name)
-
-    #     # project to boundary/volume functions
-    #     self.update_solution_volume_to_boundary()
-    #     self.update_solution_boundary_to_volume()
-
-    # def dolfinFindClosestPoint(mesh, coords):
-    #     """
-    #     Given some point and a mesh, returns the coordinates of the nearest vertex
-    #     """
-    #     p = d.Point(coords)
-    #     L = list(d.vertices(mesh))
-    #     distToVerts = [np.linalg.norm(p.array() - x.midpoint().array()) for x in L]
-    #     minDist = min(distToVerts)
-    #     minIdx = distToVerts.index(minDist) # returns the local index (wrt the cell) of the closest point
-
-    #     closestPoint = L[minIdx].midpoint().array()
-
-    #     if size > 1:
-    #         min_dist_global, min_idx = comm.allreduce((minDist,rank), op=pyMPI.MINLOC)
-
-    #         if rank == min_idx:
-    #             comm.Send(closestPoint, dest=root)
-
-    #         if rank == root:
-    #             comm.Recv(closestPoint, min_idx)
-    #             print("CPU with rank %d has the closest point to %s: %s. The distance is %s" % (min_idx, coords, closestPoint, min_dist_global))
-    #             return closestPoint, min_dist_global
-    #     else:
-    #         return closestPoint, minDist
-
-    # ==============================================================================
+    # ============================================================
     # Model - Printing
-    # ==============================================================================
+    # ============================================================
     def print_meshes(self, tablefmt="fancy_grid"):
         if self.mpi_am_i_root:
             properties_to_print = [
@@ -2419,14 +2129,14 @@ class Model:
                 "num_cells",
                 "num_facets",
                 "num_vertices",
-            ]  # , 'cell_marker', '_nvolume']
+            ]
             df = pandas.DataFrame()
 
             # parent mesh
             tempdict = odict()
             for key in properties_to_print:
                 tempdict[key] = getattr(self.parent_mesh, key)
-            # tempdict = odict({key: getattr(self.parent_mesh, key) for key in properties_to_print})
+
             tempseries = pandas.Series(tempdict, name=self.parent_mesh.name)
             df = df.append(tempseries, ignore_index=True)
             # child meshes
