@@ -75,4 +75,3 @@ highlight ColorColumn ctermbg=7" >> $FENICS_HOME/.vimrc
 
 # source bashrc
 RUN ["/bin/bash", "-c", "source $FENICS_HOME/.bashrc"]
-

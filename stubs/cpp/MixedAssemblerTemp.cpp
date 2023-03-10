@@ -857,7 +857,7 @@ PYBIND11_MODULE(SIGNATURE, m)
   //       }
   //       return dolfin::PETScDMCollectionTemp(_V);
   //     }))
-    // // Create function that transfers unknown 
+    // // Create function that transfers unknown
     // .def("create_transfer_matrix", &PETScDMCollectionTemp::create_transfer_matrix)
     // .def("create_transfer_matrix", [](py::object V_coarse, py::object V_fine)
     //   {

@@ -27,16 +27,24 @@ from tabulate import tabulate
 
 from . import common
 from .common import _fancy_print as fancy_print
-from .common import (pint_quantity_to_unit,
-                     pint_unit_to_quantity, sub)
+from .common import pint_quantity_to_unit, pint_unit_to_quantity, sub
 from .config import global_settings as gset
-from .deprecation import deprecated
 from .units import unit
 
 Print = PETSc.Sys.Print
 
-__all__ = ["empty_sbmodel", "sbmodel_from_locals", "Compartment",
-           "Parameter", "Reaction", "Species", "sbmodel_from_locals", "nane_to_none", "read_sbmodel", "write_sbmodel"]
+__all__ = [
+    "empty_sbmodel",
+    "sbmodel_from_locals",
+    "Compartment",
+    "Parameter",
+    "Reaction",
+    "Species",
+    "sbmodel_from_locals",
+    "nane_to_none",
+    "read_sbmodel",
+    "write_sbmodel",
+]
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -44,7 +52,9 @@ size = comm.size
 root = 0
 
 
-def _np_smart_hstack(x1: Union[list, npt.ArrayLike], x2: Union[list, npt.ArrayLike]) -> npt.ArrayLike:
+def _np_smart_hstack(
+    x1: Union[list, npt.ArrayLike], x2: Union[list, npt.ArrayLike]
+) -> npt.ArrayLike:
     """
     Quality of life function. Converts two (N,) numpy arrays or two lists into a
     (Nx2) array
@@ -71,6 +81,7 @@ def _np_smart_hstack(x1: Union[list, npt.ArrayLike], x2: Union[list, npt.ArrayLi
     if isinstance(x2, list):
         x2 = np.array(x2)
     return np.hstack([x1.reshape(-1, 1), x2.reshape(-1, 1)])
+
 
 # ====================================================
 # ====================================================
@@ -141,7 +152,7 @@ class ObjectContainer:
             else:
                 # check if input is an iterable and if so add it item by item
                 try:
-                    iterator = iter(data)
+                    iter(data)
                 except:
                     raise TypeError(
                         "Data being added to ObjectContainer must be either the ObjectClass or an iterator."
@@ -579,9 +590,7 @@ class Parameter(ObjectInstance):
             if preint_sym_expr:
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
-                preint_sym_expr = preint_sym_expr.subs(
-                    {"x": x, "y": y, "z": z}
-                )
+                preint_sym_expr = preint_sym_expr.subs({"x": x, "y": y, "z": z})
             else:
                 # try to integrate
                 t = Symbol("t")
@@ -759,9 +768,7 @@ class Species(ObjectInstance):
         elif isinstance(self.initial_condition, str):
             x, y, z = (Symbol(f"x[{i}]") for i in range(3))
             # Parse the given string to create a sympy expression
-            sym_expr = parse_expr(self.initial_condition).subs(
-                {"x": x, "y": y, "z": z}
-            )
+            sym_expr = parse_expr(self.initial_condition).subs({"x": x, "y": y, "z": z})
 
             # Check if expression is space dependent
             free_symbols = [str(x) for x in sym_expr.free_symbols]
@@ -775,7 +782,7 @@ class Species(ObjectInstance):
                 sym.printing.ccode(sym_expr), degree=1
             )
         else:
-            raise TypeError(f"initial_condition must be a float or string.")
+            raise TypeError("initial_condition must be a float or string.")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -888,7 +895,7 @@ class Compartment(ObjectInstance):
             and not all([isinstance(m, int) for m in self.cell_marker])
             or not isinstance(self.cell_marker, (int, list))
         ):
-            raise TypeError(f"cell_marker must be an int or list of ints.")
+            raise TypeError("cell_marker must be an int or list of ints.")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -1841,16 +1848,10 @@ def sbmodel_from_locals(local_values):
     # FIXME: Add typing
     # Initialize containers
     pc, sc, cc, rc = empty_sbmodel()
-    parameters = [
-        x for x in local_values if isinstance(x, Parameter)
-    ]
+    parameters = [x for x in local_values if isinstance(x, Parameter)]
     species = [x for x in local_values if isinstance(x, Species)]
-    compartments = [
-        x for x in local_values if isinstance(x, Compartment)
-    ]
-    reactions = [
-        x for x in local_values if isinstance(x, Reaction)
-    ]
+    compartments = [x for x in local_values if isinstance(x, Compartment)]
+    reactions = [x for x in local_values if isinstance(x, Reaction)]
     # we just reverse the list so that the order is the same as how they were defined
     parameters.reverse()
     species.reverse()

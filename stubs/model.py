@@ -23,10 +23,20 @@ from .common import _fancy_print as fancy_print
 from .common import sub
 from .config import Config
 from .mesh import ChildMesh, ParentMesh
-from .model_assembly import (Compartment, CompartmentContainer, FluxContainer,
-                             Form, FormContainer, Parameter,
-                             ParameterContainer, Reaction, ReactionContainer,
-                             Species, SpeciesContainer, empty_sbmodel)
+from .model_assembly import (
+    Compartment,
+    CompartmentContainer,
+    FluxContainer,
+    Form,
+    FormContainer,
+    Parameter,
+    ParameterContainer,
+    Reaction,
+    ReactionContainer,
+    Species,
+    SpeciesContainer,
+    empty_sbmodel,
+)
 from .solvers import stubsSNESProblem
 from .units import unit
 
@@ -68,29 +78,16 @@ class Model:
     def from_dict(cls, input_dict):
         pc, sc, cc, rc = empty_sbmodel()
         pc.add(
-            [
-                Parameter.from_dict(parameter)
-                for parameter in input_dict["parameters"]
-            ]
+            [Parameter.from_dict(parameter) for parameter in input_dict["parameters"]]
         )
-        sc.add(
-            [
-                Species.from_dict(species)
-                for species in input_dict["species"]
-            ]
-        )
+        sc.add([Species.from_dict(species) for species in input_dict["species"]])
         cc.add(
             [
                 Compartment.from_dict(compartment)
                 for compartment in input_dict["compartments"]
             ]
         )
-        rc.add(
-            [
-                Reaction.from_dict(reaction)
-                for reaction in input_dict["reactions"]
-            ]
-        )
+        rc.add([Reaction.from_dict(reaction) for reaction in input_dict["reactions"]])
         config = Config()
         config.__dict__ = input_dict["config"]
         parent_mesh = ParentMesh(
@@ -159,9 +156,7 @@ class Model:
         # nicer printing for timers
         print_buffer = max([len(stopwatch_name) for stopwatch_name in stopwatch_names])
         self.stopwatches = {
-            stopwatch_name: Stopwatch(
-                stopwatch_name, print_buffer=print_buffer
-            )
+            stopwatch_name: Stopwatch(stopwatch_name, print_buffer=print_buffer)
             for stopwatch_name in stopwatch_names
         }
 
@@ -238,7 +233,7 @@ class Model:
         self._init_4()
         self._init_5(initialize_solver)
 
-        fancy_print(f"Model finished initialization!", format_type="title")
+        fancy_print("Model finished initialization!", format_type="title")
         if self.config.flags["print_verbose_info"]:
             self.pc.print()
             self.sc.print()
@@ -248,18 +243,18 @@ class Model:
 
     def _init_1(self):
         "Checking validity of model"
-        fancy_print(f"Checking validity of model (step 1 of ZZ)", format_type="title")
+        fancy_print("Checking validity of model (step 1 of ZZ)", format_type="title")
         self._init_1_1_check_mesh_dimensionality()
         self._init_1_2_check_namespace_conflicts()
         self._init_1_3_check_parameter_dimensionality()
         fancy_print(
-            f"Step 1 of initialization completed successfully!", text_color="magenta"
+            "Step 1 of initialization completed successfully!", text_color="magenta"
         )
 
     def _init_2(self):
         "Cross-container dependent initializations (requires information from multiple containers)"
         fancy_print(
-            f"Cross-Container Dependent Initializations (step 2 of ZZ)",
+            "Cross-Container Dependent Initializations (step 2 of ZZ)",
             format_type="title",
         )
         self._init_2_1_reactions_to_symbolic_strings()
@@ -270,28 +265,28 @@ class Model:
         self._init_2_6_link_species_to_compartments()
         self._init_2_7_get_species_compartment_indices()
         fancy_print(
-            f"Step 2 of initialization completed successfully!", text_color="magenta"
+            "Step 2 of initialization completed successfully!", text_color="magenta"
         )
 
     def _init_3(self):
         "Mesh-related initializations"
-        fancy_print(f"Mesh-related Initializations (step 3 of ZZ)", format_type="title")
+        fancy_print("Mesh-related Initializations (step 3 of ZZ)", format_type="title")
         self._init_3_1_define_child_meshes()
         self._init_3_2_read_parent_mesh_functions_from_file()
         self._init_3_3_extract_submeshes()
         self._init_3_4_build_submesh_mappings()
-        fancy_print(f"DEBUGGING 3_5, 3_6 (mesh intersections)", format_type="warning")
+        fancy_print("DEBUGGING 3_5, 3_6 (mesh intersections)", format_type="warning")
         # self._init_3_5_get_child_mesh_intersections()
         # self._init_3_6_get_intersection_submeshes()
         self._init_3_7_get_integration_measures()
         fancy_print(
-            f"Step 3 of initialization completed successfully!",
+            "Step 3 of initialization completed successfully!",
             format_type="log_important",
         )
 
     def _init_4(self):
         "Dolfin function initializations"
-        fancy_print(f"Dolfin Initializations (step 4 of ZZ)", format_type="title")
+        fancy_print("Dolfin Initializations (step 4 of ZZ)", format_type="title")
         self._init_4_0_initialize_dolfin_parameters()
         self._init_4_1_get_active_compartments()
         self._init_4_2_define_dolfin_function_spaces()
@@ -303,7 +298,7 @@ class Model:
 
     def _init_5(self, initialize_solver):
         fancy_print(
-            f"Dolfin fluxes, forms, and problems+solvers (step 5 of ZZ)",
+            "Dolfin fluxes, forms, and problems+solvers (step 5 of ZZ)",
             format_type="title",
         )
         self._init_5_1_reactions_to_fluxes()
@@ -315,7 +310,7 @@ class Model:
 
     def _init_1_1_check_mesh_dimensionality(self):
         fancy_print(
-            f"Check that mesh/compartment dimensionalities match", format_type="log"
+            "Check that mesh/compartment dimensionalities match", format_type="log"
         )
         if (self.max_dim - self.min_dim) not in [0, 1]:
             raise ValueError(
@@ -337,7 +332,7 @@ class Model:
             compartment.is_volume = compartment.dimensionality == self.max_dim
 
     def _init_1_2_check_namespace_conflicts(self):
-        fancy_print(f"Checking for namespace conflicts", format_type="log")
+        fancy_print("Checking for namespace conflicts", format_type="log")
         self._all_keys = set()
         containers = [self.pc, self.sc, self.cc, self.rc]
         for keys in [c.keys for c in containers]:
@@ -366,7 +361,7 @@ class Model:
                 if marker in self._all_markers:
                     raise ValueError(f"Two compartments have the same marker: {marker}")
                 elif marker == 0:
-                    raise ValueError(f"Marker cannot have the value 0")
+                    raise ValueError("Marker cannot have the value 0")
                 else:
                     self._all_markers.add(marker)
 
@@ -384,7 +379,7 @@ class Model:
 
     def _init_2_1_reactions_to_symbolic_strings(self):
         fancy_print(
-            f"Turning reactions into unsigned symbolic flux strings", format_type="log"
+            "Turning reactions into unsigned symbolic flux strings", format_type="log"
         )
         """
         Turn all reactions into unsigned symbolic flux strings
@@ -433,7 +428,7 @@ class Model:
 
     def _init_2_2_check_reaction_validity(self):
         fancy_print(
-            f"Make sure all reactions have parameters/species defined",
+            "Make sure all reactions have parameters/species defined",
             format_type="log",
         )
         # Make sure all reactions have parameters/species defined
@@ -453,7 +448,7 @@ class Model:
 
     def _init_2_3_link_reaction_properties(self):
         fancy_print(
-            f"Linking parameters, species, and compartments to reactions",
+            "Linking parameters, species, and compartments to reactions",
             format_type="log",
         )
 
@@ -517,7 +512,7 @@ class Model:
 
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
         fancy_print(
-            f"Checking for unused parameters, species, or compartments",
+            "Checking for unused parameters, species, or compartments",
             format_type="log",
         )
 
@@ -531,7 +526,7 @@ class Model:
                     self.pc.remove(parameter)
                 fancy_print(print_str, format_type="log_urgent")
                 fancy_print(
-                    f"Removing unused parameter(s) from model!",
+                    "Removing unused parameter(s) from model!",
                     format_type="log_urgent",
                 )
             else:
@@ -543,7 +538,7 @@ class Model:
                     self.sc.remove(species)
                 fancy_print(print_str, format_type="log_urgent")
                 fancy_print(
-                    f"Removing unused species(s) from model!", format_type="log_urgent"
+                    "Removing unused species(s) from model!", format_type="log_urgent"
                 )
             else:
                 raise ValueError(print_str)
@@ -554,7 +549,7 @@ class Model:
                     self.cc.remove(compartment)
                 fancy_print(print_str, format_type="log_urgent")
                 fancy_print(
-                    f"Removing unused compartment(s) from model!",
+                    "Removing unused compartment(s) from model!",
                     format_type="log_urgent",
                 )
             else:
@@ -562,7 +557,7 @@ class Model:
 
     def _init_2_5_link_compartments_to_species(self):
         fancy_print(
-            f"Linking compartments and compartment dimensionality to species",
+            "Linking compartments and compartment dimensionality to species",
             format_type="log",
         )
         for species in self.sc:
@@ -570,7 +565,7 @@ class Model:
             species.dimensionality = self.cc[species.compartment_name].dimensionality
 
     def _init_2_6_link_species_to_compartments(self):
-        fancy_print(f"Linking species to compartments", format_type="log")
+        fancy_print("Linking species to compartments", format_type="log")
         # An species is considered to be "in a compartment" if it is involved in a reaction there
         for species in self.sc:
             species.compartment.species.update({species.name: species})
@@ -579,7 +574,7 @@ class Model:
 
     def _init_2_7_get_species_compartment_indices(self):
         fancy_print(
-            f"Getting indices for species for each compartment", format_type="log"
+            "Getting indices for species for each compartment", format_type="log"
         )
         for compartment in self.cc:
             index = 0
@@ -589,7 +584,7 @@ class Model:
 
     # Step 3 - Mesh Initializations
     def _init_3_1_define_child_meshes(self):
-        fancy_print(f"Defining child meshes", format_type="log")
+        fancy_print("Defining child meshes", format_type="log")
         # Check that there is a parent mesh loaded
         if not isinstance(self.parent_mesh, ParentMesh):
             raise ValueError("There is no parent mesh.")
@@ -607,19 +602,19 @@ class Model:
         If told that a child mesh consists of a list of markers, creates a separate mesh function
         for the list and for the combined list (can be used for post-processing)
         """
-        fancy_print(f"Defining parent mesh functions", format_type="log")
+        fancy_print("Defining parent mesh functions", format_type="log")
         self.parent_mesh.read_parent_mesh_functions_from_file()
 
     def _init_3_3_extract_submeshes(self):
         """Use dolfin.MeshView.create() to extract submeshes"""
-        fancy_print(f"Extracting submeshes using MeshView", format_type="log")
+        fancy_print("Extracting submeshes using MeshView", format_type="log")
         # Loop through child meshes and extract submeshes
         for child_mesh in self.child_meshes.values():
             child_mesh.extract_submesh()
 
     def _init_3_4_build_submesh_mappings(self):
         fancy_print(
-            f"Building MeshView mappings between all child mesh pairs",
+            "Building MeshView mappings between all child mesh pairs",
             format_type="log",
         )
         # import sys
@@ -658,7 +653,7 @@ class Model:
 
         Gets mappings between sibling meshes of different dimensions (n cell <-> n-1 cell)
         """
-        fancy_print(f"Defining child mesh functions", format_type="log")
+        fancy_print("Defining child mesh functions", format_type="log")
 
         for child_mesh in self.parent_mesh.child_meshes.values():
             # 1) If child mesh has a list of markers, create a mesh function so it can be used for post-processing
@@ -683,7 +678,7 @@ class Model:
     def _init_3_6_get_intersection_submeshes(self):
         """Use dolfin.MeshView.create() to extract submeshes of child mesh intersections"""
         fancy_print(
-            f"Creating submeshes for child mesh intersections using MeshView",
+            "Creating submeshes for child mesh intersections using MeshView",
             format_type="log",
         )
         for child_mesh in self.parent_mesh.child_surface_meshes:
@@ -700,7 +695,7 @@ class Model:
 
     def _init_3_7_get_integration_measures(self):
         fancy_print(
-            f"Getting integration measures for parent mesh and child meshes",
+            "Getting integration measures for parent mesh and child meshes",
             format_type="log",
         )
         for mesh in self.parent_mesh.all_meshes.values():
@@ -752,7 +747,7 @@ class Model:
 
     def _init_4_2_define_dolfin_function_spaces(self):
         fancy_print(
-            f"Defining dolfin function spaces for compartments", format_type="log"
+            "Defining dolfin function spaces for compartments", format_type="log"
         )
         # Aliases
         max_compartment_name = max(
@@ -823,7 +818,7 @@ class Model:
         we can use sub() to get the subfunctions
 
         """
-        fancy_print(f"Defining dolfin functions", format_type="log")
+        fancy_print("Defining dolfin functions", format_type="log")
         # dolfin functions created from MixedFunctionSpace
         self.u["u"] = d.Function(self.W)
         # self.u['k'] = d.Function(self.W)
@@ -861,7 +856,7 @@ class Model:
 
     def _init_4_4_get_species_u_v_V_dofmaps(self):
         fancy_print(
-            f"Extracting subfunctions/function spaces/dofmap for each species",
+            "Extracting subfunctions/function spaces/dofmap for each species",
             format_type="log",
         )
         for compartment in self._active_compartments:
@@ -883,7 +878,7 @@ class Model:
                 species.ut = sub(compartment.ut, species.dof_index)
 
     def _init_4_5_name_functions(self):
-        fancy_print(f"Naming functions and subfunctions", format_type="log")
+        fancy_print("Naming functions and subfunctions", format_type="log")
         for compartment in self._active_compartments:
             # name of the compartment function
             for key in self.u.keys():
@@ -899,7 +894,7 @@ class Model:
     def _init_4_6_check_dolfin_function_validity(self):
         "Sanity check... If an error occurs here it is likely an internal bug..."
         fancy_print(
-            f"Checking that dolfin functions were created correctly", format_type="log"
+            "Checking that dolfin functions were created correctly", format_type="log"
         )
         # sanity check
         for compartment in self._active_compartments:  # self.cc:
@@ -931,7 +926,7 @@ class Model:
 
     def _init_4_7_set_initial_conditions(self):
         "Sets the function values to initial conditions"
-        fancy_print(f"Set function values to initial conditions", format_type="log")
+        fancy_print("Set function values to initial conditions", format_type="log")
         for species in self.sc:
             for ukey in species.u.keys():
                 if isinstance(species.initial_condition, float):
@@ -944,7 +939,7 @@ class Model:
                     )
 
     def _init_5_1_reactions_to_fluxes(self):
-        fancy_print(f"Convert reactions to flux objects", format_type="log")
+        fancy_print("Convert reactions to flux objects", format_type="log")
         for reaction in self.rc:
             reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
@@ -956,7 +951,7 @@ class Model:
         F(u;v) =    Muform      +   Munform   +       Dform         +         Rform           = 0
                  linear wrt u         (v)         linear wrt u       possibly nonlinear wrt u
         """
-        fancy_print(f"Creating functional forms", format_type="log")
+        fancy_print("Creating functional forms", format_type="log")
 
         # default dictionary (linear w.r.t all compartment functions)
         linear_wrt_comp = {k: True for k in self.cc.keys}
@@ -1103,14 +1098,14 @@ class Model:
                 [
                     f.lhs
                     for f in self.forms
-                    if all(z == True for z in f.linear_wrt_comp.values())
+                    if all(z is True for z in f.linear_wrt_comp.values())
                 ]
             )
             self.Fsum_nonlinear = sum(
                 [
                     f.lhs
                     for f in self.forms
-                    if not all(z == True for z in f.linear_wrt_comp.values())
+                    if not all(z is True for z in f.linear_wrt_comp.values())
                 ]
             )
             # self.Fsum_all       = self.Fsum_linear + self.Fsum_nonlinear
@@ -1160,7 +1155,7 @@ class Model:
 
         # if use snes
         if self.config.solver["use_snes"]:
-            fancy_print(f"Using SNES solver", format_type="log")
+            fancy_print("Using SNES solver", format_type="log")
             self.problem = stubsSNESProblem(
                 self.u["u"],
                 self.Fblocks_all,
@@ -1187,15 +1182,16 @@ class Model:
             # Define the function/jacobian blocks
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
-            self.solver.setType('newtonls')
+            self.solver.setType("newtonls")
             self.solver.setTolerances(rtol=1e-5)
 
             def monitor(snes, it, fgnorm):
                 # prints out residual at each Newton iteration
                 print("  " + str(it) + " SNES Function norm " + "{:e}".format(fgnorm))
+
             self.solver.setMonitor(monitor)
             opts = PETSc.Options()
-            opts['snes_linesearch_type'] = 'l2'
+            opts["snes_linesearch_type"] = "l2"
             self.solver.setFromOptions()
 
             # These are some reasonable preconditioner/linear solver settings for block systems
@@ -1229,7 +1225,7 @@ class Model:
 
         else:
             fancy_print(
-                f"Using dolfin MixedNonlinearVariationalSolver", format_type="log"
+                "Using dolfin MixedNonlinearVariationalSolver", format_type="log"
             )
             self._ubackend = [u[i]._cpp_object for i in range(len(u))]
             self.problem = d.cpp.fem.MixedNonlinearVariationalProblem(
@@ -1628,7 +1624,7 @@ class Model:
         )
         self.update_time_dependent_parameters()
         if self.config.solver["use_snes"]:
-            fancy_print(f"Solving using PETSc.SNES Solver", format_type="log")
+            fancy_print("Solving using PETSc.SNES Solver", format_type="log")
             self.stopwatches["snes all"].start()
 
             # Solve
@@ -1699,7 +1695,9 @@ class Model:
                 for idx in range(self.num_active_compartments):
                     curSub = self.u["u"].sub(idx)
                     curVec = curSub.vector()
-                    if any(curVec < -1e-6):  # if value is "too negative", we reduce time step and recompute
+                    if any(
+                        curVec < -1e-6
+                    ):  # if value is "too negative", we reduce time step and recompute
                         negVals = True
                         break
                 if negVals:
@@ -1710,7 +1708,10 @@ class Model:
                         self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                     else:
                         self._ubackend = PETSc.Vec().createNest(
-                            [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                            [
+                                usub.vector().vec().copy()
+                                for usub in self.u["u"]._functions
+                            ]
                         )
                     self._failed_to_converge = True
                     self.monolithic_solve()
@@ -1726,7 +1727,7 @@ class Model:
                     format_type="log",
                 )
                 fancy_print(
-                    f"(https://petsc.org/main/docs/manualpages/SNES/SNESConvergedReason.html)",
+                    "(https://petsc.org/main/docs/manualpages/SNES/SNESConvergedReason.html)",
                     format_type="log",
                 )
                 self.reset_timestep()
@@ -1744,7 +1745,7 @@ class Model:
                 self._failed_to_converge = False
         else:
             fancy_print(
-                f"Solving using dolfin.MixedNonlinearVariationalSolver()",
+                "Solving using dolfin.MixedNonlinearVariationalSolver()",
                 format_type="log",
             )
             self.solver.solve()
@@ -1802,7 +1803,12 @@ class Model:
         )
         # Remove previous values
         self.idx = int(self.idx) - 1
-        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec]:  # , self.residuals]:
+        for data in [
+            self.idx_nl,
+            self.idx_l,
+            self.tvec,
+            self.dtvec,
+        ]:  # , self.residuals]:
             data.pop()
         # Undo the solution to the previous time-step
         self.update_solution(ukeys=["u"], unew="n")

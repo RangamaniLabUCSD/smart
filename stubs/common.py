@@ -4,7 +4,6 @@ General functions: array manipulation, data i/o, etc
 import os
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import dolfin as d
@@ -57,7 +56,7 @@ def stubs_expressions(
             input = {"sin": ufl.sin}
             output = stubs_expressions(input)
 
-        Output is then a dictionary that maps "sin" to a function :code:`sin(x)` that takes in a 
+        Output is then a dictionary that maps "sin" to a function :code:`sin(x)` that takes in a
         function with a unit and returns :code:`ufl.sin(x.to(unit.dimensionless).magnitude)`
     """
     return {
@@ -581,29 +580,29 @@ def DemoSpheresMesh(
 
     tet_mesh = create_mesh(mesh3d_in, "tetra")
     tri_mesh = create_mesh(mesh3d_in, "triangle")
-    meshio.write(f"tempmesh_3dout.xdmf", tet_mesh)
-    meshio.write(f"tempmesh_2dout.xdmf", tri_mesh)
+    meshio.write("tempmesh_3dout.xdmf", tet_mesh)
+    meshio.write("tempmesh_2dout.xdmf", tri_mesh)
 
     # convert xdmf mesh to dolfin-style mesh
     dmesh = d.Mesh()
     mvc3 = d.MeshValueCollection("size_t", dmesh, 3)
-    with d.XDMFFile(f"tempmesh_3dout.xdmf") as infile:
+    with d.XDMFFile("tempmesh_3dout.xdmf") as infile:
         infile.read(dmesh)
         infile.read(mvc3, "mf_data")
     mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
     mf3.array()[np.where(mf3.array() > 1e9)[0]] = 0  # set unassigned volumes to tag=0
     mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
-    with d.XDMFFile(f"tempmesh_2dout.xdmf") as infile:
+    with d.XDMFFile("tempmesh_2dout.xdmf") as infile:
         infile.read(mvc2, "mf_data")
     mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
     mf2.array()[np.where(mf2.array() > 1e9)[0]] = 0  # set inner faces to tag=0
 
     # use os to remove temp meshes
-    os.remove(f"tempmesh_2dout.xdmf")
-    os.remove(f"tempmesh_3dout.xdmf")
-    os.remove(f"tempmesh_2dout.h5")
-    os.remove(f"tempmesh_3dout.h5")
-    os.remove(f"twoSpheres.msh")
+    os.remove("tempmesh_2dout.xdmf")
+    os.remove("tempmesh_3dout.xdmf")
+    os.remove("tempmesh_2dout.h5")
+    os.remove("tempmesh_3dout.h5")
+    os.remove("twoSpheres.msh")
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 

@@ -147,7 +147,7 @@ class stubsSNESProblem:
         # This assembly routine is the exact same as d.assemble_mixed() except init_global_tensor() is commented out
         # Thanks to Prof. Kamensky and his student for the idea
         # https://github.com/hanzhao2020/PENGoLINS/blob/main/PENGoLINS/cpp/transfer_matrix.cpp
-        path_to_script_dir = os.path.dirname(os.path.realpath(__file__))
+        os.path.dirname(os.path.realpath(__file__))
         # cpp_file = open(path_to_script_dir+"/cpp/MixedAssemblerTemp.cpp","r")
         # cpp_code = cpp_file.read()
         # cpp_file.close()
@@ -257,7 +257,7 @@ class stubsSNESProblem:
     def init_petsc_vecnest(self):
         dim = self.dim
         if self.print_assembly:
-            fancy_print(f"Initializing block residual vector", format_type="assembly")
+            fancy_print("Initializing block residual vector", format_type="assembly")
 
         Fpetsc = []
         for j in range(dim):
@@ -308,7 +308,7 @@ class stubsSNESProblem:
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
         if self.print_assembly:
-            fancy_print(f"Assembling block Jacobian", format_type="assembly")
+            fancy_print("Assembling block Jacobian", format_type="assembly")
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
@@ -384,7 +384,7 @@ class stubsSNESProblem:
     def assemble_Fnest(self, Fnest):
         dim = self.dim
         if self.print_assembly:
-            fancy_print(f"Assembling block residual vector", format_type="assembly")
+            fancy_print("Assembling block residual vector", format_type="assembly")
         self.stopwatches["snes residual assemble"].start()
 
         if self.is_single_domain:
