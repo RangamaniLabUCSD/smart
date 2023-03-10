@@ -175,7 +175,7 @@ def insert_dataframe_col(
     """
     if items is None:
         items = [{} for x in range(df.shape[0])]
-    if columnNumber == None:
+    if columnNumber is None:
         columnNumber = df.columns.size
     df.insert(columnNumber, columnName, items)
 
@@ -540,7 +540,7 @@ def find_steady_state(
     )
     if num_constraints_nom != len(constraints):
         _fancy_print(
-            f"Warning: system may be under or overdetermined.",
+            "Warning: system may be under or overdetermined.",
             format_type="log",
             filename=filename,
         )
@@ -787,7 +787,7 @@ def DemoSpheresMesh(outerRad: float = 0.5,
                     inner_vol_tag: int = 2,
                     outer_vol_tag: int = 1) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
-    Creates a mesh for use in examples that contains two distinct sphere subvolumes 
+    Creates a mesh for use in examples that contains two distinct sphere subvolumes
     with a shared interface surface. If the radius of the inner sphere is 0, mesh a
     single sphere.
 
@@ -849,7 +849,7 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
 
     def meshSizeCallback(dim, tag, x, y, z, lc):
-        # mesh length is hEdge at the PM (defaults to 0.1*outerRad, or set when calling function) 
+        # mesh length is hEdge at the PM (defaults to 0.1*outerRad, or set when calling function)
         # and hInnerEdge at the ERM (defaults to 0.2*innerRad, or set when calling function)
         # between these, the value is interpolated based on R, and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
         # if innerRad=0, then the mesh length is interpolated between hEdge at the PM and 0.2*outerRad in the center
@@ -887,29 +887,29 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         return out_mesh
     tet_mesh = create_mesh(mesh3d_in, 'tetra')
     tri_mesh = create_mesh(mesh3d_in, 'triangle')
-    meshio.write(f"tempmesh_3dout.xdmf", tet_mesh)
-    meshio.write(f"tempmesh_2dout.xdmf", tri_mesh)
+    meshio.write("tempmesh_3dout.xdmf", tet_mesh)
+    meshio.write("tempmesh_2dout.xdmf", tri_mesh)
 
     # convert xdmf mesh to dolfin-style mesh
     dmesh = d.Mesh()
     mvc3 = d.MeshValueCollection("size_t", dmesh, 3)
-    with d.XDMFFile(f"tempmesh_3dout.xdmf") as infile:
+    with d.XDMFFile("tempmesh_3dout.xdmf") as infile:
         infile.read(dmesh)
         infile.read(mvc3, "mf_data")
     mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
     mf3.array()[np.where(mf3.array()>1e9)[0]]=0 #   set unassigned volumes to tag=0
     mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
-    with d.XDMFFile(f"tempmesh_2dout.xdmf") as infile:
+    with d.XDMFFile("tempmesh_2dout.xdmf") as infile:
         infile.read(mvc2, "mf_data")
     mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
     mf2.array()[np.where(mf2.array()>1e9)[0]]=0 #   set inner faces to tag=0
 
     # use os to remove temp meshes
-    os.remove(f"tempmesh_2dout.xdmf")
-    os.remove(f"tempmesh_3dout.xdmf")
-    os.remove(f"tempmesh_2dout.h5")
-    os.remove(f"tempmesh_3dout.h5")
-    os.remove(f"twoSpheres.msh")
+    os.remove("tempmesh_2dout.xdmf")
+    os.remove("tempmesh_3dout.xdmf")
+    os.remove("tempmesh_2dout.h5")
+    os.remove("tempmesh_3dout.h5")
+    os.remove("twoSpheres.msh")
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 

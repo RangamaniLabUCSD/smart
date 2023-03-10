@@ -3,27 +3,18 @@
 
 .. automodule:: stubs.config
 
-   
-   
-   
 
-   
-   
-   
 
-   
-   
+
+
+
+
+
+
+
+
    .. rubric:: Classes
 
    .. autosummary::
-   
+
       Config
-   
-   
-
-   
-   
-   
-
-
-

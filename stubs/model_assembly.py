@@ -110,7 +110,7 @@ class ObjectContainer:
             else:
                 # check if input is an iterable and if so add it item by item
                 try:
-                    iterator = iter(data)
+                    iter(data)
                 except:
                     raise TypeError(
                         "Data being added to ObjectContainer must be either the ObjectClass or an iterator."
@@ -744,7 +744,7 @@ class Species(ObjectInstance):
                 sym.printing.ccode(sym_expr), degree=1
             )
         else:
-            raise TypeError(f"initial_condition must be a float or string.")
+            raise TypeError("initial_condition must be a float or string.")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -857,7 +857,7 @@ class Compartment(ObjectInstance):
             and not all([isinstance(m, int) for m in self.cell_marker])
             or not isinstance(self.cell_marker, (int, list))
         ):
-            raise TypeError(f"cell_marker must be an int or list of ints.")
+            raise TypeError("cell_marker must be an int or list of ints.")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()

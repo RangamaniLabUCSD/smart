@@ -399,7 +399,7 @@ class Data:
             elif output_type == "xdmf":
                 file_str = self.config.directory["solutions"] + "/" + sp_name + ".xdmf"
                 self.solutions[sp_name][output_type] = d.XDMFFile(comm, file_str)
-            elif config.flags["store_solutions"] == False or output_type == None:
+            elif config.flags["store_solutions"] is False or output_type is None:
                 self.solutions[sp_name][output_type] = None
             else:
                 raise Exception("Unknown solution file type")
@@ -407,7 +407,7 @@ class Data:
     def store_solution_files(self, u, t, config):
         output_type = config.output_type
 
-        if config.flags["store_solutions"] == False or output_type == None:
+        if config.flags["store_solutions"] is False or output_type is None:
             return
         for sp_name in self.solutions.keys():
             comp_name = self.solutions[sp_name]["comp_name"]
@@ -472,8 +472,8 @@ class Data:
     def compute_statistics(self, u, t, dt, sc, pc, cc, fc, nl_idx):
         # for sp_name in speciesList:
         for sp_name, sp in sc.items:
-            comp_name = self.solutions[sp_name]["comp_name"]
-            comp_idx = self.solutions[sp_name]["comp_idx"]
+            self.solutions[sp_name]["comp_name"]
+            self.solutions[sp_name]["comp_idx"]
 
             # compute statistics and append values
             ustats = self.compute_function_stats(sp)
@@ -594,7 +594,7 @@ class Data:
         error_norm = errorNormDict[errorNormKey]
         u_u = u[comp_name]["u"].vector().get_local()
         u_k = u[comp_name]["k"].vector().get_local()
-        u_n = u[comp_name]["n"].vector().get_local()
+        u[comp_name]["n"].vector().get_local()
         abs_err = np.linalg.norm(u_u - u_k, ord=error_norm)
         # rel_err = np.linalg.norm((u_u - u_k)/u_n, ord=error_norm)
         # rel_err = 1.0
@@ -775,7 +775,7 @@ class Data:
                         color=self.color_list[sidx],
                     )
 
-                    unitStr = "{:P}".format(
+                    "{:P}".format(
                         self.solutions[param_name]["concentration_units"].units
                     )
                     sidx += 1
@@ -817,8 +817,8 @@ class Data:
         self.plots["solver_status"] = plt.subplots()[0]  # .clear()
 
         if len(self.plots["solver_status"].axes) == 1:
-            ax2 = self.plots["solver_status"].axes[0].twinx()
-            ax3 = self.plots["solver_status"].axes[0].twiny()
+            self.plots["solver_status"].axes[0].twinx()
+            self.plots["solver_status"].axes[0].twiny()
         axes = self.plots["solver_status"].axes
 
         axes[0].set_ylabel(

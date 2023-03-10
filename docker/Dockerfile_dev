@@ -14,7 +14,7 @@ FROM ghcr.io/scientificcomputing/fenics:2023-01-16
 
 
 # ======================================================
-# pull and build our forked version of dolfin 
+# pull and build our forked version of dolfin
 #RUN echo "Downloading forked version of dolfin"
 #RUN export FENICS_SRC_DIR=/usr/local/src && \
 #    cd /usr/local/src && \

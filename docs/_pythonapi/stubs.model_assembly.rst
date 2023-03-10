@@ -3,20 +3,20 @@
 
 .. automodule:: stubs.model_assembly
 
-   
-   
-   
 
-   
-   
-   
 
-   
-   
+
+
+
+
+
+
+
+
    .. rubric:: Classes
 
    .. autosummary::
-   
+
       Compartment
       CompartmentContainer
       FieldVariable
@@ -32,12 +32,3 @@
       ReactionContainer
       Species
       SpeciesContainer
-   
-   
-
-   
-   
-   
-
-
-

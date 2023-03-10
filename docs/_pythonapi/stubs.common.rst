@@ -3,16 +3,16 @@
 
 .. automodule:: stubs.common
 
-   
-   
-   
 
-   
-   
+
+
+
+
+
    .. rubric:: Functions
 
    .. autosummary::
-   
+
       DemoCuboidsMesh
       append_meshfunction_to_meshdomains
       bmesh_to_parent
@@ -41,23 +41,14 @@
       write_mesh
       write_sbmodel
       zplane_condition
-   
-   
 
-   
-   
+
+
+
+
    .. rubric:: Classes
 
    .. autosummary::
-   
+
       Stopwatch
       ref
-   
-   
-
-   
-   
-   
-
-
-

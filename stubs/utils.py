@@ -5,7 +5,6 @@
 
 import os
 
-import numpy as np
 from pandas import read_json
 
 from .model_assembly import (CompartmentContainer, ParameterContainer,

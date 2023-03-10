@@ -1,4 +1,4 @@
-adjacent_cubes.xml consists of two cubes, centered at [0,0,-1] and [0,0,1] - both cubes have an edge length of 2. 
+adjacent_cubes.xml consists of two cubes, centered at [0,0,-1] and [0,0,1] - both cubes have an edge length of 2.
 They are merged at a common face on the xy-plane at z=0 (min z value is -2 and max z value is 2).
 Bounds of coordinates are min=[-1,-1,-2] and max=[1,1,2]
 
@@ -11,6 +11,3 @@ Volume(11) = Volume(12) = 8
 
 Area(2) = 40
 Area(4) = 4
-
-
-

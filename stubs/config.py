@@ -84,8 +84,8 @@ class SolverConfig(BaseConfig):
     :param use_snes: Use PETScSNES solver if true, else use DOLFINs NewtonSolver
     :param snes_preassemble_linear_system: If True separate linear components during assembly
     :param initial_dt: Initial time-stepping
-    :param adjust_dt: A tuple (t, dt) of floats indicating when to next adjust the 
-        time-stepping and to what value 
+    :param adjust_dt: A tuple (t, dt) of floats indicating when to next adjust the
+        time-stepping and to what value
     :param dt: Number of digits for rounding `dt`
     :param print_assembly: Print information during assembly process
     :param dt_decrease_factor:
@@ -138,7 +138,7 @@ class OutputConfig(BaseConfig):
 @dataclass
 class LogLevelConfig(BaseConfig):
     """
-    Settings for logging 
+    Settings for logging
 
     :param FFC: LogLevel for FFC
     :param UFL: LogLevel for UFL
