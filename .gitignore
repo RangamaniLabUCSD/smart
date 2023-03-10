@@ -97,3 +97,7 @@ Dockerfile_jgl
 #debug_stubs.py
 #debug_*
 jitfailure*
+
+_autosummary
+*.vtu
+*.pvd

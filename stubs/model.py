@@ -165,21 +165,8 @@ class Model:
             for stopwatch_name in stopwatch_names
         }
 
-        # self.timers = {} self.timings = ddict(list)
-
         # Functional forms
         self.forms = FormContainer()
-        # self.a = {}
-        # self.L = {}
-        # self.F = {}
-
-        # Solvers
-        # self.nonlinear_solver = {}
-        # self.linear_solver = {}
-        # self.scipy_odes = {}
-
-        # Post processed data
-        # self.data = stubs.data_manipulation.Data(self, self.config)
 
         # Set loggers to logging levels defined in config
         self.config.set_logger_levels()
@@ -1202,8 +1189,10 @@ class Model:
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
             self.solver.setType('newtonls')
             self.solver.setTolerances(rtol=1e-5)
+
             def monitor(snes, it, fgnorm):
-                print("  " + str(it) + " SNES Function norm " + "{:e}".format(fgnorm)) # prints out residual at each Newton iteration
+                # prints out residual at each Newton iteration
+                print("  " + str(it) + " SNES Function norm " + "{:e}".format(fgnorm))
             self.solver.setMonitor(monitor)
             opts = PETSc.Options()
             opts['snes_linesearch_type'] = 'l2'
@@ -1219,8 +1208,8 @@ class Model:
             # fbcgsr, fbcgs (flexible bcgs)
 
             # Field split preconditioning
-            # Note from Emmet - can we solve this directly using LU? (suggestion from Marie) 
-            #self.solver.ksp.pc.setType("lu")
+            # Note from Emmet - can we solve this directly using LU? (suggestion from Marie)
+            # self.solver.ksp.pc.setType("lu")
             self.solver.ksp.pc.setType("fieldsplit")
             # Set the indices
             nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
@@ -1710,7 +1699,7 @@ class Model:
                 for idx in range(self.num_active_compartments):
                     curSub = self.u["u"].sub(idx)
                     curVec = curSub.vector()
-                    if any(curVec < -1e-6): # if value is "too negative", we reduce time step and recompute
+                    if any(curVec < -1e-6):  # if value is "too negative", we reduce time step and recompute
                         negVals = True
                         break
                 if negVals:
@@ -1807,13 +1796,13 @@ class Model:
                 self.idx_l[-1],
                 self.tvec[-1],
                 self.dtvec[-1],
-                #self.residuals[-1],
+                # self.residuals[-1],
                 self.solver.getConvergedReason(),
             )
         )
         # Remove previous values
         self.idx = int(self.idx) - 1
-        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec]:#, self.residuals]:
+        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec]:  # , self.residuals]:
             data.pop()
         # Undo the solution to the previous time-step
         self.update_solution(ukeys=["u"], unew="n")
