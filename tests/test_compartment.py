@@ -4,6 +4,7 @@ import stubs
 
 
 def test_Compartment_initialization(compartment_kwargs_Cyto):
+    """Test that we can initialize a Compartment"""
     Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
 
     assert Cyto.V is None
@@ -51,3 +52,20 @@ def test_Compartment_access_num_vertices(compartment_kwargs_Cyto):
 def test_Compartment_access_nvolume(compartment_kwargs_Cyto):
     Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.nvolume
+
+
+def test_CompartmentContainer(compartment_kwargs_Cyto, compartment_kwargs_PM):
+    """Test that we can initialize a CompartmentContainer"""
+    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    PM = stubs.model_assembly.Compartment(**compartment_kwargs_PM)
+    cc = stubs.model_assembly.CompartmentContainer()
+    assert cc.size == 0
+    cc.add([Cyto])
+    assert cc.size == 1
+    cc["Cyto"] == Cyto
+    cc.add([Cyto])
+    # Adding same species should not do anything
+    assert cc.size == 1
+    cc.add([PM])
+    assert cc.size == 2
+    assert set(cc.keys) == {"Cyto", "PM"}

@@ -78,3 +78,15 @@ def compartment_kwargs_PM():
         compartment_units=stubs.unit.um,
         cell_marker=10,
     )
+
+
+@pytest.fixture
+def parameter_kwargs_k3f():
+    return dict(
+        name="k3f",
+        value=100,
+        unit=1 / (stubs.unit.uM * stubs.unit.sec),
+        group="some group",
+        notes="Some notes",
+        use_preintegration=True,
+    )

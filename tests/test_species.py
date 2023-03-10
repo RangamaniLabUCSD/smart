@@ -6,6 +6,7 @@ import stubs
 
 
 def test_Species_initialization(species_kwargs_A):
+    """Test that we can initialize a SpeciesContainer"""
     A = stubs.model_assembly.Species(**species_kwargs_A)
     assert A.name == species_kwargs_A["name"]
     assert A.latex_name == species_kwargs_A["name"]
@@ -51,6 +52,7 @@ def test_access_dolfin_quatity(species_kwargs_A):
 
 
 def test_SpeciesContainer(species_kwargs_A, species_kwargs_AER):
+    """Test that we can initialize a SpeciesContainer"""
     A = stubs.model_assembly.Species(**species_kwargs_A)
     AER = stubs.model_assembly.Species(**species_kwargs_AER)
     sc = stubs.model_assembly.SpeciesContainer()
@@ -69,6 +71,8 @@ def test_SpeciesContainer(species_kwargs_A, species_kwargs_AER):
 def test_add_non_Species_to_SpeciesContainer_raises_InvalidObjectException(
     compartment_kwargs_Cyto,
 ):
+    """Test that if we try to add something different than a species
+    to a SpeciesContainer then an exception will be raised"""
     sc = stubs.model_assembly.SpeciesContainer()
     Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
     with pytest.raises(stubs.model_assembly.InvalidObjectException):
