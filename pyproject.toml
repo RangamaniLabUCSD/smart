@@ -41,6 +41,7 @@ test = [
 ]
 docs = [
    "jupyter-book",
+   "sphinx-autoapi"
 ]
 all = [
    "stubs[test]",
