@@ -41,9 +41,6 @@ __all__ = [
     "Reaction",
     "Species",
     "sbmodel_from_locals",
-    "nane_to_none",
-    "read_sbmodel",
-    "write_sbmodel",
 ]
 
 comm = d.MPI.comm_world
@@ -100,12 +97,13 @@ class ObjectContainer:
         self._ObjectClass = ObjectClass
         self.properties_to_print = []  # properties to print
 
-    # ==============================================================================
+    # =====================================================================
     # ObjectContainer - General methods
-    # ------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # General properties/methods to emulate some dictionary-like structure
     # + add some misc useful structure
-    # ==============================================================================
+    # =====================================================================
+
     @property
     def size(self):
         "Size of ObjectContainer"
@@ -153,9 +151,10 @@ class ObjectContainer:
                 # check if input is an iterable and if so add it item by item
                 try:
                     iter(data)
-                except:
+                except Exception:
                     raise TypeError(
-                        "Data being added to ObjectContainer must be either the ObjectClass or an iterator."
+                        "Data being added to ObjectContainer must be either the "
+                        "ObjectClass or an iterator."
                     )
                 else:
                     if isinstance(data, dict):
@@ -194,7 +193,8 @@ class ObjectContainer:
         return list(self.values)[idx]
 
     def sort_by(self, attribute: str, order="decreasing"):
-        "Return a list of container's objects sorted by an attribute, and a list of the attribute values"
+        """Return a list of container's objects sorted by an attribute,
+        and a list of the attribute values"""
         attribute_values = [getattr(obj, attribute) for obj in self.values]
         ordering = np.argsort(attribute_values)
         if order == "decreasing":
@@ -387,10 +387,11 @@ class ObjectInstance:
             elif not isinstance(value, field.type):
                 try:
                     setattr(self, field.name, field.type(value))
-                except:
+                except Exception:
                     raise TypeError(
-                        f'Object "{self.name}" type error: the attribute "{field.name}" is expected to be {field.type}, got {type(value)} instead. '
-                        f"Conversion to the expected type was attempted but unsuccessful."
+                        f"Object {self.name!r} type error: the attribute {field.name!r} "
+                        f"is expected to be {field.type}, got {type(value)} instead. "
+                        "Conversion to the expected type was attempted but unsuccessful."
                     )
 
     def _convert_pint_unit_to_quantity(self):
@@ -529,6 +530,8 @@ class Parameter(ObjectInstance):
 
         if use_preintegration:
             # preintegrate sampling data
+            from scipy.integrate import cumtrapz
+
             int_data = cumtrapz(sampling_data[:, 1], x=sampling_data[:, 0], initial=0)
             # concatenate time vector
             preint_sampling_data = _np_smart_hstack(sampling_data[:, 0], int_data)
@@ -620,7 +623,8 @@ class Parameter(ObjectInstance):
 
         if self.use_preintegration:
             fancy_print(
-                f"Warning! Pre-integrating parameter {self.name}. Make sure that expressions {self.name} appears in have no other time-dependent variables.",
+                f"Warning! Pre-integrating parameter {self.name}. Make sure that "
+                f"expressions {self.name} appears in have no other time-dependent variables.",
                 format_type="warning",
             )
 
@@ -669,15 +673,14 @@ class Parameter(ObjectInstance):
                 ]
             ):
                 raise ValueError(
-                    f"Parameter {self.name} is marked as time dependent but is not defined in terms of time."
+                    f"Parameter {self.name} is marked as time dependent "
+                    "but is not defined in terms of time."
                 )
 
 
 class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
-        # self.properties_to_print = ['compartment_name', 'dof_index', 'concentration_units', 'D', 'initial_condition', 'group']
-        # self.properties_to_print = ['compartment_name', 'dof_index', '_Initial_Concentration', '_Diffusion']
         self.properties_to_print = ["compartment_name", "dof_index", "_Diffusion"]
 
     def print(
@@ -689,7 +692,6 @@ class SpeciesContainer(ObjectContainer):
     ):
         for s in self:
             s.D_quantity
-            # s.initial_condition_quantity
             s.latex_name
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
@@ -751,7 +753,8 @@ class Species(ObjectInstance):
         return cls(**input_dict)
 
     def __post_init__(self):
-        # self.sub_species = {} # additional compartments this species may live in in addition to its primary one
+        # self.sub_species = {} # additional compartments this species
+        # may live in in addition to its primary one
         self.is_in_a_reaction = False
         self.is_an_added_species = False
         self.dof_map = None
@@ -759,7 +762,6 @@ class Species(ObjectInstance):
         self._usplit = dict()
         self.ut = None
         self.v = None
-        # self.t       = 0.0
 
         if isinstance(self.initial_condition, float):
             pass
@@ -802,10 +804,9 @@ class Species(ObjectInstance):
         # checking units
         if not self.diffusion_units.check("[length]^2/[time]"):
             raise ValueError(
-                f"Units of diffusion coefficient for species {self.name} must be dimensionally equivalent to [length]^2/[time]."
+                f"Units of diffusion coefficient for species {self.name} must "
+                "be dimensionally equivalent to [length]^2/[time]."
             )
-        # if not any([self.concentration_units.check(f'mole/[length]^{dim}') for dim in [1,2,3]]):
-        #     raise ValueError(f"Units of concentration for species {self.name} must be dimensionally equivalent to mole/[length]^dim where dim is either 1, 2, or 3.")
 
     @cached_property
     def vscalar(self):
@@ -834,7 +835,6 @@ class Species(ObjectInstance):
     def latex_name(self):
         # Change _ to - in name
         name = self.name.replace("_", "-")
-        # self._latex_name = "$"+sym.latex(Symbol(name))+"$"
         self._latex_name = sym.latex(Symbol(name))
         return self._latex_name
 
@@ -912,18 +912,22 @@ class Compartment(ObjectInstance):
     def check_validity(self):
         if self.dimensionality not in [1, 2, 3]:
             raise ValueError(
-                f"Compartment {self.name} has dimensionality {self.dimensionality}. Dimensionality must be in [1,2,3]."
+                f"Compartment {self.name} has dimensionality {self.dimensionality}. "
+                "Dimensionality must be in [1,2,3]."
             )
         # checking units
         if not self.compartment_units.check("[length]"):
             raise ValueError(
-                f"Compartment {self.name} has units of {self.compartment_units} - units must be dimensionally equivalent to [length]."
+                f"Compartment {self.name} has units of {self.compartment_units} "
+                "- units must be dimensionally equivalent to [length]."
             )
 
     def specify_nonadjacency(self, nonadjacent_compartment_list=None):
         """
-        Specify if this compartment is NOT adjacent to another compartment. Not necessary, but will speed-up initialization of very large problems.
-        Only needs to be specified for surface meshes as those are the ones that MeshViews are built on.
+        Specify if this compartment is NOT adjacent to another compartment.
+        Not necessary, but will speed-up initialization of very large problems.
+        Only needs to be specified for surface meshes as those are the
+        ones that MeshViews are built on.
         """
         if nonadjacent_compartment_list is None:
             self.nonadjacent_compartment_list = []
@@ -986,20 +990,12 @@ class Compartment(ObjectInstance):
             self._num_dofs_local = self._ownership_range[1] - self._ownership_range[0]
         return self._num_dofs_local
 
-    # def petsc_get_dof_map(self, V):
-
-    #     self.mpi_comm_world = d.MPI.comm_world
-
 
 class ReactionContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Reaction)
 
-        # self.properties_to_print = ['name', 'lhs', 'rhs', 'eqn_f', 'eqn_r', 'param_map', 'reaction_type', 'explicit_restriction_to_domain', 'group']
         self.properties_to_print = ["lhs", "rhs", "eqn_f_str", "eqn_r_str"]
-
-    # def print_to_latex(self, properties_to_print=None, escape=False, include_idx=False):
-    #     return super().print_to_latex(properties_to_print, escape, include_idx)
 
     def print(
         self,
@@ -1008,7 +1004,6 @@ class ReactionContainer(ObjectContainer):
         filename=None,
         max_col_width=50,
     ):
-        # for r in self:
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 
@@ -1071,20 +1066,6 @@ class Reaction(ObjectInstance):
             if species_name not in self.flux_scaling:
                 self.flux_scaling[species_name] = None
 
-        # # species_scaling_map combines species_scaling and species_map
-        # print(self.species_scaling.items())
-        # print(self.species_map.items())
-        # self._species_scaling_map = dict()
-        # for key, name in self.species_map.items():
-        #     if name in self.species_scaling:
-        #         if self.species_scaling[name] != 1:
-        #             self._species_scaling_map[key] = f"({str(self.species_scaling[name])}*{name})"
-        # else:
-        #     self._species_scaling_map[key] = name
-
-        # self.species_scaling_map = {key: f"{str(self.species_scaling[name])}*{name}"
-        #                             for key, name in self.species_map.items() if self.species_scaling[name]!=1}
-
     def check_validity(self):
         # Type checking
         if not all([isinstance(x, str) for x in self.lhs]):
@@ -1119,7 +1100,8 @@ class Reaction(ObjectInstance):
                 ]
             ):
                 raise TypeError(
-                    f"Reaction {self.name} requires a dict of str:number as input for flux_scaling."
+                    f"Reaction {self.name} requires a dict of "
+                    "str:number as input for flux_scaling."
                 )
 
     def _parse_custom_reaction(self, reaction_eqn_str):
@@ -1171,8 +1153,10 @@ class Reaction(ObjectInstance):
             raise ValueError(
                 f"Reaction {self.name} has no fluxes (maybe run model.initialize()?)"
             )
-        # choose the first flux of reaction, and use its destination species to find its paired flux (forward-reverse)
-        # it doesnt matter which destination species is chosen since the flux is always the same
+        # choose the first flux of reaction, and use its destination species to
+        # find its paired flux (forward-reverse)
+        # it doesnt matter which destination species is chosen since the
+        # flux is always the same
         r_dest_species = list(self.fluxes.items())[0][1].destination_species
         r_fluxes = [
             flux
@@ -1201,12 +1185,6 @@ class FluxContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Flux)
 
-        # self.properties_to_print = ['species_name', 'equation', 'sign', 'involved_species',
-        #                      'involved_parameters', 'source_compartment',
-        #                      'destination_compartment', 'ukeys', 'group']
-
-        # self.properties_to_print = ['_species_name', 'equation', 'topology', '_equation_quantity', '_assembled_flux']#'_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
-        # '_molecules_per_second']#, 'ukeys']#'source_compartment', 'destination_compartment', 'ukeys']
         self.properties_to_print = [
             "_species_name",
             "equation",
@@ -1222,7 +1200,6 @@ class FluxContainer(ObjectContainer):
         max_col_width=50,
     ):
         for f in self:
-            # f.molecules_per_second
             f.assembled_flux
             f.equation_lambda_eval("quantity")
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
@@ -1234,23 +1211,11 @@ class Flux(ObjectInstance):
     destination_species: Species
     equation: sym.Expr
     reaction: Reaction
-    # signed_stoich: int
-    # species_map: dict
-    # param_map: dict
-    # #group: str
-    # parent_reaction: Reaction
-    # explicit_restriction_to_domain: str=''
-    # track_value: bool=False
-    # @classmethod
-    # def from_reaction(cls, name, destination_species, equation, reaction):
-    #     flux = cls(name, destination_species, equation)
-    #     flux.reaction = reaction
 
     def check_validity(self):
         pass
 
     def __post_init__(self):
-        # self.tracked_values = []
         # for nice printing
         self._species_name = self.destination_species.name
 
@@ -1268,19 +1233,14 @@ class Flux(ObjectInstance):
         # Getting additional flux properties
         self._post_init_get_involved_species_parameters_compartments()
         self._post_init_get_flux_topology()
-        # # Get equation variables
-        # self.equation_variables = {variable.name: variable.dolfin_quantity for variable in {**self.parameters, **self.species}.values()}
-        # self.equation_variables.update({'unit_scale_factor': self.unit_scale_factor})
+
         # Get equation lambda expression
-        # self.equation_lambda = sym.lambdify(list(self.equation_variables.keys()), self.equation, modules=['sympy','numpy'])
         self.equation_lambda = sym.lambdify(
             list(self.equation_variables.keys()),
             self.equation,
             modules=common.stubs_expressions(gset["dolfin_expressions"]),
         )
 
-        # Evaluate equation lambda expression with uninitialized unit scale factor
-        # self.equation_lambda_eval()
         # Update equation with correct unit scale factor
         self._post_init_get_flux_units()
         self._post_init_get_integration_measure()
@@ -1403,11 +1363,13 @@ class Flux(ObjectInstance):
         ):
             print(self.unit_scale_factor)
             raise ValueError(
-                f"Flux {self.name} has wrong units (cannot be converted) - expected {self._expected_flux_units}, got {initial_equation_units}."
+                f"Flux {self.name} has wrong units (cannot be converted) "
+                f"- expected {self._expected_flux_units}, got {initial_equation_units}."
             )
         # Fix scaling
         else:
-            # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
+            # Define new unit_scale_factor, and update equation_units
+            # by re-evaluating the lambda expression
             self.unit_scale_factor = (
                 initial_equation_units.to(self._expected_flux_units)
                 / initial_equation_units
@@ -1450,13 +1412,14 @@ class Flux(ObjectInstance):
         [3d] volume-surface_to_volume:  BC of u ()
         [3d] volume-volume_to_surface:  PDE of v ()
 
-        1d means no other compartment are involved, so the integration measure is the volume of the compartment
-        2d/3d means two/three compartments are involved, so the integration measure is the intersection between all compartments
+        1d means no other compartment are involved, so the integration
+        measure is the volume of the compartment
+        2d/3d means two/three compartments are involved, so the
+        integration measure is the intersection between all compartments
         """
-        # if not self.is_boundary_condition:
+
         if self.topology in ["volume", "surface"]:
             self.measure = self.destination_compartment.mesh.dx
-            # self.destination_compartment.compartment_units**self.destination_compartment.dimensionality
             self.measure_units = self.destination_compartment.measure_units
             self.measure_compartment = self.destination_compartment
         elif self.topology in [
@@ -1466,8 +1429,6 @@ class Flux(ObjectInstance):
             "volume-surface_to_volume",
         ]:
             # intersection of this surface with boundary of source volume(s)
-            # assert self.surface.mesh.has_intersection[self.volume_ids] # make sure there is at least one entity with all compartments involved
-            # self.measure = self.surface.mesh.intersection_dx[self.volume_ids]
             print(
                 "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
             )
@@ -1497,8 +1458,10 @@ class Flux(ObjectInstance):
 
     def equation_lambda_eval(self, input_type="quantity"):
         """
-        Evaluates the equation lambda function using either the quantity (value * units), the value, or the units.
-        The values and units are evaluted separately and then combined because some expressions don't work well
+        Evaluates the equation lambda function using either the quantity
+        (value * units), the value, or the units.
+        The values and units are evaluated separately and then combined
+        because some expressions don't work well
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
@@ -1510,26 +1473,12 @@ class Flux(ObjectInstance):
         elif input_type == "units":
             return common.pint_unit_to_quantity(self._equation_quantity.units)
 
-        # This will satisfy total unit conversions but not inner unit conversions
-        # if input_type=='value':
-        #     equation_variables_values = {varname: var.magnitude for varname, var in self.equation_variables.items()}
-        #     self._equation_values = self.equation_lambda(**equation_variables_values)
-        #     return self._equation_values
-        # elif input_type=='units':
-        #     equation_variables_units = {varname: common.pint_unit_to_quantity(var.units) for varname, var in self.equation_variables.items()}
-        #     # fixes minus sign in units and changes to quantity type so we can use to() method
-        #     self._equation_units = 1*self.equation_lambda(**equation_variables_units).units
-        #     return self._equation_units
-        # elif input_type=='quantity':
-        #     #self.equation_quantity  = self.equation_lambda(**self.equation_variables)
-        #     self._equation_quantity = self.equation_lambda_eval(input_type='value') * self.equation_lambda_eval(input_type='units')
-        #     return self._equation_quantity
-
     # Seems like setting this as a @property doesn't cause fenics to recompile
 
     @property
     def form(self):
-        "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
+        """-1 factor because terms are defined as if they were on the
+        lhs of the equation F(u;v)=0"""
         return (
             d.Constant(-1)
             * self.equation_lambda_eval(input_type="value")
@@ -1539,7 +1488,8 @@ class Flux(ObjectInstance):
 
     @property
     def scalar_form(self):
-        "if the destination species is a vector function, the assembled form will be a vector of size NDOF."
+        """if the destination species is a vector function,
+        the assembled form will be a vector of size NDOF."""
         return (
             d.Constant(-1)
             * self.equation_lambda_eval(input_type="value")
@@ -1549,7 +1499,8 @@ class Flux(ObjectInstance):
 
     @property
     def form_dt(self):
-        "-1 factor because terms are defined as if they were on the lhs of the equation F(u;v)=0"
+        """-1 factor because terms are defined as if they were on the
+        lhs of the equation F(u;v)=0"""
         return (
             d.Constant(-1)
             * self.equation_lambda_eval(input_type="value")
@@ -1560,7 +1511,7 @@ class Flux(ObjectInstance):
 
     @property
     def molecules_per_second(self):
-        "Return the sum of the assembled form * -1 in units of molecule/second"
+        """Return the sum of the assembled form * -1 in units of molecule/second"""
         self._molecules_per_second = -1 * (
             d.assemble(self.scalar_form).sum()
             * self.equation_units
@@ -1570,35 +1521,21 @@ class Flux(ObjectInstance):
 
     @property
     def assembled_flux(self):
-        "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
+        """Same thing as molecules_per_second but doesn't try to convert
+        units (e.g. volumetric concentration is being used on a 2d domain)"""
         try:
             self._assembled_flux = -1 * (
                 d.assemble(self.scalar_form).sum()
                 * self.equation_units
                 * self.measure_units
             ).to(unit.molecule / unit.s)
-        except:
+        except Exception:
             self._assembled_flux = -1 * (
                 d.assemble(self.scalar_form).sum()
                 * self.equation_units
                 * self.measure_units
             )
         return self._assembled_flux
-
-    # def get_is_linear(self):
-    #     """
-    #     For a given flux we want to know which terms are linear
-    #     """
-    #     is_linear_wrt = {}
-    #     for sym_var in self.sym_list:
-    #         var_name = str(sym_var)
-    #         if var_name in self.involved_species:
-    #             if sym.diff(self.equation, var_name , 2).is_zero:
-    #                 is_linear_wrt[var_name] = True
-    #             else:
-    #                 is_linear_wrt[var_name] = False
-
-    #     self.is_linear_wrt = is_linear_wrt
 
     def _post_init_get_is_linear_comp(self):
         """
@@ -1617,8 +1554,6 @@ class Flux(ObjectInstance):
             d_new_eqn = sym.diff(new_eqn, "u" + comp_name, 1)
             d_new_eqn_species = {str(x) for x in d_new_eqn.free_symbols}
             self.is_linear_wrt_comp[comp_name] = uset.isdisjoint(d_new_eqn_species)
-
-        # bool(sym.diff(new_eqn, 'u'+comp_name, 2).is_zero)
 
 
 class FormContainer(ObjectContainer):
@@ -1642,7 +1577,8 @@ class Form(ObjectInstance):
     'domain_reaction'
     'boundary_reaction'
 
-    Differentiating using ufl doesn't seem to get it right when using vector functions. Luckily we have all fluxes as sympy objects
+    Differentiating using ufl doesn't seem to get it right when
+    using vector functions. Luckily we have all fluxes as sympy objects
     and mass/diffusive forms are always linear w.r.t components.
     """
 
@@ -1706,17 +1642,14 @@ class Form(ObjectInstance):
 class FieldVariable(ObjectInstance):
     """
     A (scalar) field variable defined over a compartment.
-    equation_str will be parsed into a Sympy symbolic expression using provided parameters/species in var_map
+    equation_str will be parsed into a Sympy symbolic expression
+    using provided parameters/species in var_map
     """
 
     name: str
-    # compartment_name: str
     compartment: Compartment
     variables: list
     equation_str: str
-    # desired_units: pint.Unit
-    # parameters: list = dataclasses.field(default_factory=list)
-    # species: list = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         # Add in an uninitialized unit_scale_factor
@@ -1728,7 +1661,6 @@ class FieldVariable(ObjectInstance):
         ) * Symbol("unit_scale_factor")
 
         # Get equation lambda expression
-        # self.equation_lambda = sym.lambdify(list(self.variables_dict.keys()), self.equation, modules=['sympy','numpy'])
         self.equation_lambda = sym.lambdify(
             list(self.variables_dict.keys()),
             self.equation,
@@ -1739,7 +1671,6 @@ class FieldVariable(ObjectInstance):
         self.desired_units = self.equation_lambda_eval("units")  # default
 
         self.measure = self.compartment.mesh.dx
-        # self.compartment.compartment_units**self.compartment.dimensionality
         self.measure_units = self.compartment.measure_units
         self.measure_compartment = self.compartment
 
@@ -1762,7 +1693,8 @@ class FieldVariable(ObjectInstance):
             )
         # Fix scaling
         else:
-            # Define new unit_scale_factor, and update equation_units by re-evaluating the lambda expression
+            # Define new unit_scale_factor, and update equation_units by
+            # re-evaluating the lambda expression
             self.unit_scale_factor = (
                 initial_equation_units.to(self.desired_units) / initial_equation_units
             )
@@ -1793,8 +1725,10 @@ class FieldVariable(ObjectInstance):
 
     def equation_lambda_eval(self, input_type="quantity"):
         """
-        Evaluates the equation lambda function using either the quantity (value * units), the value, or the units.
-        The values and units are evaluted separately and then combined because some expressions don't work well
+        Evaluates the equation lambda function using either the
+        quantity (value * units), the value, or the units.
+        The values and units are evaluted separately and then
+        combined because some expressions don't work well
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
@@ -1821,7 +1755,8 @@ class FieldVariable(ObjectInstance):
 
     @property
     def assembled_quantity(self):
-        "Same thing as molecules_per_second but doesn't try to convert units (e.g. volumetric concentration is being used on a 2d domain)"
+        """Same thing as molecules_per_second but doesn't try to convert
+        units (e.g. volumetric concentration is being used on a 2d domain)"""
         assembled_quantity = self.equation_lambda_eval("quantity")
         self._assembled_quantity = (
             d.assemble(assembled_quantity.magnitude * self.measure)
@@ -1829,11 +1764,6 @@ class FieldVariable(ObjectInstance):
             * self.measure_units
         )
         return self._assembled_quantity
-
-    # def to_dict(self):
-    #     "Convert to a dict that can be used to recreate the object."
-    #     keys_to_keep = ['name', 'compartment_name', 'var_map', 'equation_str']
-    #     return {key: self.__dict__[key] for key in keys_to_keep}
 
 
 def empty_sbmodel():
