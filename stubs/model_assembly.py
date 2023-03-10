@@ -25,16 +25,25 @@ from tabulate import tabulate
 
 from . import common
 from .common import _fancy_print as fancy_print
-from .common import (np_smart_hstack, pint_quantity_to_unit,
-                     pint_unit_to_quantity, sub)
+from .common import np_smart_hstack, pint_quantity_to_unit, pint_unit_to_quantity, sub
 from .config import global_settings as gset
 from .deprecation import deprecated
 from .units import unit
 
 Print = PETSc.Sys.Print
 
-__all__ = ["empty_sbmodel", "sbmodel_from_locals", "Compartment",
-           "Parameter", "Reaction", "Species", "sbmodel_from_locals", "nane_to_none", "read_sbmodel", "write_sbmodel"]
+__all__ = [
+    "empty_sbmodel",
+    "sbmodel_from_locals",
+    "Compartment",
+    "Parameter",
+    "Reaction",
+    "Species",
+    "sbmodel_from_locals",
+    "nane_to_none",
+    "read_sbmodel",
+    "write_sbmodel",
+]
 
 comm = d.MPI.comm_world
 rank = comm.rank
@@ -548,9 +557,7 @@ class Parameter(ObjectInstance):
             if preint_sym_expr:
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
-                preint_sym_expr = preint_sym_expr.subs(
-                    {"x": x, "y": y, "z": z}
-                )
+                preint_sym_expr = preint_sym_expr.subs({"x": x, "y": y, "z": z})
             else:
                 # try to integrate
                 t = Symbol("t")
@@ -728,9 +735,7 @@ class Species(ObjectInstance):
         elif isinstance(self.initial_condition, str):
             x, y, z = (Symbol(f"x[{i}]") for i in range(3))
             # Parse the given string to create a sympy expression
-            sym_expr = parse_expr(self.initial_condition).subs(
-                {"x": x, "y": y, "z": z}
-            )
+            sym_expr = parse_expr(self.initial_condition).subs({"x": x, "y": y, "z": z})
 
             # Check if expression is space dependent
             free_symbols = [str(x) for x in sym_expr.free_symbols]
@@ -1810,16 +1815,10 @@ def sbmodel_from_locals(local_values):
     # FIXME: Add typing
     # Initialize containers
     pc, sc, cc, rc = empty_sbmodel()
-    parameters = [
-        x for x in local_values if isinstance(x, Parameter)
-    ]
+    parameters = [x for x in local_values if isinstance(x, Parameter)]
     species = [x for x in local_values if isinstance(x, Species)]
-    compartments = [
-        x for x in local_values if isinstance(x, Compartment)
-    ]
-    reactions = [
-        x for x in local_values if isinstance(x, Reaction)
-    ]
+    compartments = [x for x in local_values if isinstance(x, Compartment)]
+    reactions = [x for x in local_values if isinstance(x, Reaction)]
     # we just reverse the list so that the order is the same as how they were defined
     parameters.reverse()
     species.reverse()
@@ -1831,6 +1830,7 @@ def sbmodel_from_locals(local_values):
     rc.add(reactions)
     return pc, sc, cc, rc
 
+
 def nan_to_none(df):
     return df.replace({np.nan: None})
 
@@ -1838,6 +1838,7 @@ def nan_to_none(df):
 # ====================================================
 # I/O
 # ====================================================
+
 
 @deprecated
 def write_sbmodel(filepath, pc, sc, cc, rc):
@@ -1871,6 +1872,7 @@ def write_sbmodel(filepath, pc, sc, cc, rc):
     f.write("</sbmodel>\n")
     f.close()
     print(f"sbmodel file saved successfully as {filepath}!")
+
 
 @deprecated
 def read_sbmodel(filepath, output_type=dict):
@@ -1931,7 +1933,9 @@ def read_sbmodel(filepath, output_type=dict):
     sdf = pandas.read_json("".join(s_string)).sort_index()
     cdf = pandas.read_json("".join(c_string)).sort_index()
     rdf = pandas.read_json("".join(r_string)).sort_index()
-    import pdb; pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
     pc = stubs.model_assembly.ParameterContainer(nan_to_none(pdf))
     sc = stubs.model_assembly.SpeciesContainer(nan_to_none(sdf))
     cc = stubs.model_assembly.CompartmentContainer(nan_to_none(cdf))

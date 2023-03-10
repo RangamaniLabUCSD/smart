@@ -23,10 +23,20 @@ from .common import _fancy_print as fancy_print
 from .common import sub
 from .config import Config
 from .mesh import ChildMesh, ParentMesh
-from .model_assembly import (Compartment, CompartmentContainer, FluxContainer,
-                             Form, FormContainer, Parameter,
-                             ParameterContainer, Reaction, ReactionContainer,
-                             Species, SpeciesContainer, empty_sbmodel)
+from .model_assembly import (
+    Compartment,
+    CompartmentContainer,
+    FluxContainer,
+    Form,
+    FormContainer,
+    Parameter,
+    ParameterContainer,
+    Reaction,
+    ReactionContainer,
+    Species,
+    SpeciesContainer,
+    empty_sbmodel,
+)
 from .solvers import stubsSNESProblem
 from .units import unit
 
@@ -68,29 +78,16 @@ class Model:
     def from_dict(cls, input_dict):
         pc, sc, cc, rc = empty_sbmodel()
         pc.add(
-            [
-                Parameter.from_dict(parameter)
-                for parameter in input_dict["parameters"]
-            ]
+            [Parameter.from_dict(parameter) for parameter in input_dict["parameters"]]
         )
-        sc.add(
-            [
-                Species.from_dict(species)
-                for species in input_dict["species"]
-            ]
-        )
+        sc.add([Species.from_dict(species) for species in input_dict["species"]])
         cc.add(
             [
                 Compartment.from_dict(compartment)
                 for compartment in input_dict["compartments"]
             ]
         )
-        rc.add(
-            [
-                Reaction.from_dict(reaction)
-                for reaction in input_dict["reactions"]
-            ]
-        )
+        rc.add([Reaction.from_dict(reaction) for reaction in input_dict["reactions"]])
         config = Config()
         config.__dict__ = input_dict["config"]
         parent_mesh = ParentMesh(
@@ -159,9 +156,7 @@ class Model:
         # nicer printing for timers
         print_buffer = max([len(stopwatch_name) for stopwatch_name in stopwatch_names])
         self.stopwatches = {
-            stopwatch_name: Stopwatch(
-                stopwatch_name, print_buffer=print_buffer
-            )
+            stopwatch_name: Stopwatch(stopwatch_name, print_buffer=print_buffer)
             for stopwatch_name in stopwatch_names
         }
 
@@ -1200,13 +1195,17 @@ class Model:
             # Define the function/jacobian blocks
             self.solver.setFunction(self.problem.F, self.problem.Fpetsc_nest)
             self.solver.setJacobian(self.problem.J, self.problem.Jpetsc_nest)
-            self.solver.setType('newtonls')
+            self.solver.setType("newtonls")
             self.solver.setTolerances(rtol=1e-5)
+
             def monitor(snes, it, fgnorm):
-                print("  " + str(it) + " SNES Function norm " + "{:e}".format(fgnorm)) # prints out residual at each Newton iteration
+                print(
+                    "  " + str(it) + " SNES Function norm " + "{:e}".format(fgnorm)
+                )  # prints out residual at each Newton iteration
+
             self.solver.setMonitor(monitor)
             opts = PETSc.Options()
-            opts['snes_linesearch_type'] = 'l2'
+            opts["snes_linesearch_type"] = "l2"
             self.solver.setFromOptions()
 
             # These are some reasonable preconditioner/linear solver settings for block systems
@@ -1220,7 +1219,7 @@ class Model:
 
             # Field split preconditioning
             # Note from Emmet - can we solve this directly using LU? (suggestion from Marie)
-            #self.solver.ksp.pc.setType("lu")
+            # self.solver.ksp.pc.setType("lu")
             self.solver.ksp.pc.setType("fieldsplit")
             # Set the indices
             nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
@@ -1710,7 +1709,9 @@ class Model:
                 for idx in range(self.num_active_compartments):
                     curSub = self.u["u"].sub(idx)
                     curVec = curSub.vector()
-                    if any(curVec < -1e-6): # if value is "too negative", we reduce time step and recompute
+                    if any(
+                        curVec < -1e-6
+                    ):  # if value is "too negative", we reduce time step and recompute
                         negVals = True
                         break
                 if negVals:
@@ -1721,7 +1722,10 @@ class Model:
                         self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                     else:
                         self._ubackend = PETSc.Vec().createNest(
-                            [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                            [
+                                usub.vector().vec().copy()
+                                for usub in self.u["u"]._functions
+                            ]
                         )
                     self._failed_to_converge = True
                     self.monolithic_solve()
@@ -1807,13 +1811,18 @@ class Model:
                 self.idx_l[-1],
                 self.tvec[-1],
                 self.dtvec[-1],
-                #self.residuals[-1],
+                # self.residuals[-1],
                 self.solver.getConvergedReason(),
             )
         )
         # Remove previous values
         self.idx = int(self.idx) - 1
-        for data in [self.idx_nl, self.idx_l, self.tvec, self.dtvec]:#, self.residuals]:
+        for data in [
+            self.idx_nl,
+            self.idx_l,
+            self.tvec,
+            self.dtvec,
+        ]:  # , self.residuals]:
             data.pop()
         # Undo the solution to the previous time-step
         self.update_solution(ukeys=["u"], unew="n")

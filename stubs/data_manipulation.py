@@ -8,7 +8,8 @@ from collections import defaultdict as ddict
 import dolfin as d
 import matplotlib.pyplot as plt
 import numpy as np
-#import petsc4py.PETSc as PETSc
+
+# import petsc4py.PETSc as PETSc
 import termplotlib as tpl
 
 from .common import round_to_n
@@ -16,7 +17,7 @@ from .model_assembly import FieldVariable, Flux, Parameter, Species
 from .units import unit
 from .common import _fancy_print as fancy_print
 
-#Print = PETSc.Sys.Print
+# Print = PETSc.Sys.Print
 
 
 comm = d.MPI.comm_world

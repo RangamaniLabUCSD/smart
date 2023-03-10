@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import dolfin as d
 import gmsh
 import meshio
+
 # import trimesh
 import numpy as np
 import pandas
@@ -52,8 +53,6 @@ comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
-
-
 
 
 def stubs_expressions(
@@ -205,7 +204,9 @@ def submesh_dof_to_mesh_dof(
 
 
 @deprecated
-def submesh_dof_to_vertex(Vsubmesh: d.FunctionSpace, species_index: int, index: Optional[List[int]] = None):
+def submesh_dof_to_vertex(
+    Vsubmesh: d.FunctionSpace, species_index: int, index: Optional[List[int]] = None
+):
     """
     Map a Lagrange-1 function on a sub-mesh to the vertices of the mesh
     DOFLIN DOF indices are not guaranteed to be equivalent to the vertex indices of the corresponding mesh
@@ -220,7 +221,10 @@ def submesh_dof_to_vertex(Vsubmesh: d.FunctionSpace, species_index: int, index: 
         index = range(num_dofs_local)
 
     dof_to_vertex = d.dof_to_vertex_map(Vsubmesh)
-    mapping = dof_to_vertex[range(species_index, len(dof_to_vertex), num_species)] / num_species
+    mapping = (
+        dof_to_vertex[range(species_index, len(dof_to_vertex), num_species)]
+        / num_species
+    )
     mapping = [int(x) for x in mapping]
     return [mapping[x] for x in index]
 
@@ -351,8 +355,6 @@ def append_meshfunction_to_meshdomains(mesh, mesh_function):
         md.set_marker((idx, val), mf_dim)
 
 
-
-
 def pint_unit_to_quantity(pint_unit):
     if not isinstance(pint_unit, pint.Unit):
         raise TypeError("Input must be a pint unit")
@@ -424,6 +426,7 @@ def data_path():
 # Keep track of timings in a list of lists called self.timings, each time the timer is paused,
 # the time elapsed since the last pause is added to the sublist. Using stop resets the timer to zero
 # and beings a new list of timings.
+
 
 class Stopwatch:
     "Basic stopwatch class with inner/outer timings (pause and stop)"
@@ -778,14 +781,16 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
     return (mesh, mf2, mf3)
 
 
-def DemoSpheresMesh(outerRad: float = 0.5,
-                    innerRad: float = 0.25,
-                    hEdge: float = 0,
-                    hInnerEdge: float = 0,
-                    interface_marker: int = 12,
-                    outer_marker: int = 10,
-                    inner_vol_tag: int = 2,
-                    outer_vol_tag: int = 1) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+def DemoSpheresMesh(
+    outerRad: float = 0.5,
+    innerRad: float = 0.25,
+    hEdge: float = 0,
+    hInnerEdge: float = 0,
+    interface_marker: int = 12,
+    outer_marker: int = 10,
+    inner_vol_tag: int = 2,
+    outer_vol_tag: int = 1,
+) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a mesh for use in examples that contains two distinct sphere subvolumes
     with a shared interface surface. If the radius of the inner sphere is 0, mesh a
@@ -805,9 +810,9 @@ def DemoSpheresMesh(outerRad: float = 0.5,
     """
     assert not np.isclose(outerRad, 0)
     if np.isclose(hEdge, 0):
-        hEdge = 0.1*outerRad
+        hEdge = 0.1 * outerRad
     if np.isclose(hInnerEdge, 0):
-        hInnerEdge = 0.2*outerRad if np.isclose(innerRad, 0) else 0.2*innerRad
+        hInnerEdge = 0.2 * outerRad if np.isclose(innerRad, 0) else 0.2 * innerRad
     # Create the two sphere mesh using gmsh
     gmsh.initialize()
     gmsh.model.add("twoSpheres")
@@ -818,25 +823,30 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         gmsh.model.occ.synchronize()
         gmsh.model.add_physical_group(3, [outer_sphere], tag=outer_vol_tag)
         facets = gmsh.model.getBoundary([(3, outer_sphere)])
-        assert (len(facets) == 1)
+        assert len(facets) == 1
         gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
     else:
         # Add inner_sphere (radius innerRad, center (0,0,0))
         inner_sphere = gmsh.model.occ.addSphere(0, 0, 0, innerRad)
         # Create interface between spheres
         two_spheres, (outer_sphere_map, inner_sphere_map) = gmsh.model.occ.fragment(
-            [(3, outer_sphere)], [(3, inner_sphere)])
+            [(3, outer_sphere)], [(3, inner_sphere)]
+        )
         gmsh.model.occ.synchronize()
 
         # Get the outer boundary
         outer_shell = gmsh.model.getBoundary(two_spheres, oriented=False)
-        assert (len(outer_shell) == 1)
+        assert len(outer_shell) == 1
         # Get the inner boundary
         inner_shell = gmsh.model.getBoundary(inner_sphere_map, oriented=False)
-        assert (len(inner_shell) == 1)
+        assert len(inner_shell) == 1
         # Add physical markers for facets
-        gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
-        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
+        gmsh.model.add_physical_group(
+            outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker
+        )
+        gmsh.model.add_physical_group(
+            inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker
+        )
 
         # Physical markers for
         all_volumes = [tag[1] for tag in outer_sphere_map]
@@ -858,11 +868,11 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         R = np.sqrt(x**2 + y**2 + z**2)
         lc1 = hEdge
         lc2 = hInnerEdge
-        lc3 = 0.2*outerRad if np.isclose(innerRad, 0) else 0.2*innerRad
+        lc3 = 0.2 * outerRad if np.isclose(innerRad, 0) else 0.2 * innerRad
         if R > innerRad:
-            lcTest = lc1 + (lc2-lc1)*(outerRad-R)/(outerRad-innerRad)
+            lcTest = lc1 + (lc2 - lc1) * (outerRad - R) / (outerRad - innerRad)
         else:
-            lcTest = lc2 + (lc3-lc2)*(innerRad-R)/innerRad
+            lcTest = lc2 + (lc3 - lc2) * (innerRad - R) / innerRad
         return min(lc3, lcTest)
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
@@ -870,7 +880,9 @@ def DemoSpheresMesh(outerRad: float = 0.5,
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-    gmsh.option.setNumber("Mesh.Algorithm", 5) # this changes the algorithm from Frontal-Delaunay to Delaunay, which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber(
+        "Mesh.Algorithm", 5
+    )  # this changes the algorithm from Frontal-Delaunay to Delaunay, which may provide better results when there are larger gradients in mesh size
 
     gmsh.model.mesh.generate(3)
     gmsh.write("twoSpheres.msh")  # save locally
@@ -881,12 +893,18 @@ def DemoSpheresMesh(outerRad: float = 0.5,
 
     def create_mesh(mesh, cell_type):
         cells = mesh.get_cells_type(cell_type)
-        cell_data = mesh.get_cell_data("gmsh:physical", cell_type)  # extract values of tags
-        out_mesh = meshio.Mesh(points=mesh.points, cells={cell_type: cells}, cell_data={
-                               "mf_data": [cell_data]})
+        cell_data = mesh.get_cell_data(
+            "gmsh:physical", cell_type
+        )  # extract values of tags
+        out_mesh = meshio.Mesh(
+            points=mesh.points,
+            cells={cell_type: cells},
+            cell_data={"mf_data": [cell_data]},
+        )
         return out_mesh
-    tet_mesh = create_mesh(mesh3d_in, 'tetra')
-    tri_mesh = create_mesh(mesh3d_in, 'triangle')
+
+    tet_mesh = create_mesh(mesh3d_in, "tetra")
+    tri_mesh = create_mesh(mesh3d_in, "triangle")
     meshio.write("tempmesh_3dout.xdmf", tet_mesh)
     meshio.write("tempmesh_2dout.xdmf", tri_mesh)
 
@@ -897,12 +915,12 @@ def DemoSpheresMesh(outerRad: float = 0.5,
         infile.read(dmesh)
         infile.read(mvc3, "mf_data")
     mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
-    mf3.array()[np.where(mf3.array()>1e9)[0]]=0 #   set unassigned volumes to tag=0
+    mf3.array()[np.where(mf3.array() > 1e9)[0]] = 0  #   set unassigned volumes to tag=0
     mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
     with d.XDMFFile("tempmesh_2dout.xdmf") as infile:
         infile.read(mvc2, "mf_data")
     mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
-    mf2.array()[np.where(mf2.array()>1e9)[0]]=0 #   set inner faces to tag=0
+    mf2.array()[np.where(mf2.array() > 1e9)[0]] = 0  #   set inner faces to tag=0
 
     # use os to remove temp meshes
     os.remove("tempmesh_2dout.xdmf")

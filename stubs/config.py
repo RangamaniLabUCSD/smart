@@ -10,10 +10,17 @@ import numpy as np
 import numpy.typing as npt
 import ufl
 
-__all__ = ["global_settings", "dolfin_expressions", "Config",
-           "SolverConfig", "BaseConfig", "FlagsConfig", "OutputConfig",
-           "LogLevelConfig", "PlottingConfig"
-           ]
+__all__ = [
+    "global_settings",
+    "dolfin_expressions",
+    "Config",
+    "SolverConfig",
+    "BaseConfig",
+    "FlagsConfig",
+    "OutputConfig",
+    "LogLevelConfig",
+    "PlottingConfig",
+]
 
 _valid_filetypes = ["xdmf", "vtk", None]
 _loglevel_to_int: Dict[str, int] = {
@@ -51,7 +58,7 @@ global_settings = {
 }
 
 
-class BaseConfig():
+class BaseConfig:
     """
     Base-class for setting configuration
     """
@@ -95,14 +102,16 @@ class SolverConfig(BaseConfig):
 
     final_t: Optional[float] = None
     use_snes: bool = True
-    snes_preassemble_linear_system: bool = False  #: .. warning:: FIXME Currently untested
+    snes_preassemble_linear_system: bool = (
+        False  #: .. warning:: FIXME Currently untested
+    )
     initial_dt: Optional[float] = None
     adjust_dt: Optional[Tuple[float, float]] = None
     time_precision: int = 6
     print_assembly: bool = True
     dt_decrease_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
     dt_increase_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    attempt_timestep_restart_on_divergence: bool = False  #testing in progress
+    attempt_timestep_restart_on_divergence: bool = False  # testing in progress
     reset_timestep_for_negative_solution: bool = False
 
 
@@ -116,6 +125,7 @@ class FlagsConfig(BaseConfig):
         defined in any model.
     :param print_verbose_info: Print detailed information about a model
     """
+
     store_solutions: bool = True
     allow_unused_components: bool = False
     print_verbose_info: bool = True
@@ -130,6 +140,7 @@ class OutputConfig(BaseConfig):
     :param plots: Name of directory to store plots to
     :param output_type: Format of output
     """
+
     solutions: str = "solutions"
     plots: str = "plots"
     output_type: str = "xdmf"
@@ -146,6 +157,7 @@ class LogLevelConfig(BaseConfig):
     :param dolfin: LogLevel for dolfin
 
     """
+
     FFC: str = "DEBUG"
     UFL: str = "DEBUG"
     djitso: str = "DEBUG"
@@ -164,7 +176,8 @@ class LogLevelConfig(BaseConfig):
         other_loggers.remove("dolfin")
         for logger_name in other_loggers:
             logging.getLogger(logger_name).setLevel(
-                _loglevel_to_int[self.__getattribute__(logger_name)])
+                _loglevel_to_int[self.__getattribute__(logger_name)]
+            )
 
 
 @dataclass
@@ -182,7 +195,7 @@ class PlottingConfig(BaseConfig):
 
 
 @dataclass
-class Config():
+class Config:
     """
     Configuration settings.
 
@@ -194,6 +207,7 @@ class Config():
     :param probe_plot: Dictionary mapping a Function (by its name) to a
         set of coordinates where the function should be mapped
     """
+
     solver: SolverConfig = field(default_factory=SolverConfig)
     flags: FlagsConfig = field(default_factory=FlagsConfig)
     loglevel: LogLevelConfig = field(default_factory=LogLevelConfig)
@@ -206,8 +220,7 @@ class Config():
         """
         Return database of known reactions
         """
-        return {"prescribed": "k",
-                "prescribed_linear": "k*u"}
+        return {"prescribed": "k", "prescribed_linear": "k*u"}
 
     def output_type(self):
         return self.directory["output_type"]
@@ -218,7 +231,9 @@ class Config():
         if self.solver.final_t is None:
             raise ValueError("Please provide a final time in config.solver")
         if self.solver.initial_dt is None:
-            raise ValueError("Please provide an initial time-step size in config.solver")
+            raise ValueError(
+                "Please provide an initial time-step size in config.solver"
+            )
 
     def set_logger_levels(self):
         self.loglevel.set_logger_levels()
