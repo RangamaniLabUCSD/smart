@@ -17,12 +17,6 @@ from .model_assembly import (
 __all__ = ["json_to_ObjectContainer"]
 
 
-# # demonstrate built in options
-# def _fancy_print_options():
-#     for format_type in ['title', 'subtitle', 'log', 'log_important', 'log_urgent', 'timestep', 'solverstep']:
-#         _fancy_print(format_type, format_type=format_type)
-
-
 # ====================================================
 # I/O
 # ====================================================
@@ -35,7 +29,8 @@ def json_to_ObjectContainer(json_str, data_type=None):
     """
     if not data_type:
         raise Exception(
-            "Please include the type of data this is (parameters, species, compartments, reactions)."
+            "Please include the type of data this is "
+            "(parameters, species, compartments, reactions)."
         )
 
     if json_str[-5:] == ".json":

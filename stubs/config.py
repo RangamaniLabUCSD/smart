@@ -12,7 +12,6 @@ import ufl
 
 __all__ = [
     "global_settings",
-    "dolfin_expressions",
     "Config",
     "SolverConfig",
     "BaseConfig",
