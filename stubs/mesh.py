@@ -11,6 +11,7 @@ rank = comm.rank
 size = comm.size
 root = 0
 
+
 class _Mesh:
     """
     General mesh class
@@ -129,10 +130,6 @@ class _Mesh:
     def get_integration_measures(self):
         # Aliases
         mesh = self.dolfin_mesh
-        # if self.is_volume:
-        # self.ds = d.Measure('ds', domain=mesh, subdomain_data=self.mf['facets'])
-        # if 'facets_uncombined' in self.mf:
-        #     self.ds_uncombined = d.Measure('ds', domain=mesh, subdomain_data=self.mf['facets_uncombined'])
 
         # Regular measures
         if "cells" in self.mf:
@@ -146,11 +143,6 @@ class _Mesh:
                 "dx", domain=mesh, subdomain_data=self.mf["cells_uncombined"]
             )
 
-        # # intersection  maps
-        # if isinstance(self, ChildMesh):
-        #     for id_set, intersection_map in self.intersection_map.items():
-        #         self.intersection_dx[id_set] = d.Measure('dx', domain=mesh, subdomain_data=intersection_map)
-
 
 class ParentMesh(_Mesh):
     """
@@ -161,8 +153,8 @@ class ParentMesh(_Mesh):
         mesh_filename (str): Name of mesh file
         mesh_filetype (str): Extension of mesh, either 'xml' or 'hdf5'
         name (str): Name of mesh
-        use_partition (bool): If `hdf5` mesh file is loaded, choose if mesh should be read in
-            with its current partition
+        use_partition (bool): If `hdf5` mesh file is loaded,
+            choose if mesh should be read in with its current partition
     """
 
     def __init__(self, mesh_filename: str, mesh_filetype, name, use_partition=False):
@@ -177,8 +169,6 @@ class ParentMesh(_Mesh):
 
         self.child_meshes = dict()
         self.parent_mesh = self
-        # get mesh functions
-        # self.mesh_functions = self.get_mesh_functions()
 
     def get_mesh_from_id(self, id):
         # find the mesh in that has the matching id
@@ -355,30 +345,6 @@ class ChildMesh(_Mesh):
         """
         return np.array(self.mesh_view[self.parent_mesh.id].cell_map())
 
-    # too slow...
-    # @cached_property
-    # def map_facet_to_parent_entity(self):
-    #     """
-    #     We use parent indices as our "grounding point" for conversion
-    #     Conversion is:
-    #     self.map_facet_to_parent_vertex:         child facet -> child vertex -> parent vertex
-    #     loop self.parent_mesh to invert its map: parent vertex -> parent_entity
-    #     """
-
-    #     mapping = []
-    #     # Aliases
-    #     pm_entities = self.parent_mesh.get_entities(self.dimensionality-1)
-    #     list_of_sets = [set(pm_entities[entity_idx, :])
-    #                     for entity_idx in range(pm_entities.shape[0])]
-
-    #     # parent_vertex to parent entity
-    #     for child_facet_idx in range(self.facets.shape[0]):
-    #         subset = set(self.map_facet_to_parent_vertex[child_facet_idx, :])
-    #         entity_idx = list_of_sets.index(subset)
-    #         mapping.append(entity_idx)
-
-    #     return np.array(mapping)
-
     # combination maps
     @cached_property
     def map_cell_to_parent_vertex(self):
@@ -498,24 +464,3 @@ class ChildMesh(_Mesh):
         self.mf["cells"] = d.MeshFunction(
             "size_t", self.dolfin_mesh, self.dimensionality, value=0
         )
-
-        # Easiest case, just directly transfer from parent_mesh mesh function
-        # local cell index = local cell index -> parent cell index -> parent mesh function value
-        # if self.is_volume:
-        #     self.mf['cells'].array()[:] = pmf['cells'].array()[self.map_cell_to_parent_entity]
-        #     # Use the mapping from local facet to parent entity
-        #     # self.mf['facets'] = d.MeshFunction(
-        #     #     'size_t', self.dolfin_mesh, self.dimensionality-1, value=0)
-        #     # self.mf['facets'].array()[:] = pmf['facets'].array()[
-        #     #     self.map_facet_to_parent_entity]
-        #     if 'cells_uncombined' in pmf:
-        #         self.mf['cells_uncombined'].array()[:] = pmf['cells_uncombined'].array()[
-        #             self.map_cell_to_parent_entity]
-        #     # if 'facets_uncombined' in pmf:
-        #     #     self.mf['facets_uncombined'].array()[:] = pmf['facets_uncombined'].array()[
-        #     #         self.map_facet_to_parent_entity]
-        # else:
-        #     self.mf['cells'].array()[:] = pmf['facets'].array()[self.map_cell_to_parent_entity]
-        #     # if 'facets_uncombined' in pmf:
-        #     #     self.mf['cells_uncombined'].array()[:] = pmf['facets_uncombined'].array()[
-        #     #         self.map_facet_to_parent_entity]

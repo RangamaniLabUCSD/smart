@@ -1,6 +1,5 @@
 from . import config
-from . import (common, mesh, model, model_assembly,
-               solvers, post_process)
+from . import common, mesh, model, model_assembly, solvers, post_process
 from .units import unit
 
 __all__ = [

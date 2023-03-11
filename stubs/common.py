@@ -4,7 +4,6 @@ General functions: array manipulation, data i/o, etc
 import os
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import dolfin as d
@@ -44,10 +43,12 @@ def stubs_expressions(
     dolfin_expressions: Dict[str, Callable[[Any], Any]]
 ) -> Dict[str, Callable[[Any], Union[ufl.core.expr.Expr, float]]]:
     """
-    Map strings to DOLFIN/UFL functions, that takes in `stubs`-Expressions, i.e. functions with a unit.
+    Map strings to DOLFIN/UFL functions, that takes in
+    `stubs`-Expressions, i.e. functions with a unit.
 
     Args:
-        dolfin_expressions: Dictonary of strings mapping to stubs expressions
+        dolfin_expressions: Dictonary of strings mapping
+          to stubs expressions
 
     Example:
 
@@ -57,8 +58,10 @@ def stubs_expressions(
             input = {"sin": ufl.sin}
             output = stubs_expressions(input)
 
-        Output is then a dictionary that maps "sin" to a function :code:`sin(x)` that takes in a 
-        function with a unit and returns :code:`ufl.sin(x.to(unit.dimensionless).magnitude)`
+        Output is then a dictionary that maps "sin" to
+        a function :code:`sin(x)` that takes in a
+        function with a unit and returns
+        :code:`ufl.sin(x.to(unit.dimensionless).magnitude)`
     """
     return {
         k: lambda x: v(x.to(unit.dimensionless).magnitude)
@@ -88,7 +91,8 @@ def sub(
     Args:
         func: The input
         idx: The component to extract
-        collapse_function_space: If the input `func` is a `dolfin.FunctionSpace`, collapse it if `True`.
+        collapse_function_space: If the input `func`
+        is a `dolfin.FunctionSpace`, collapse it if `True`.
 
     Returns:
         The relevant component of the input
@@ -107,7 +111,8 @@ def sub(
             if func.num_sub_spaces() <= 1 and idx == 0:
                 return func
             else:
-                # Use d.split() to get subfunctions from a VectorFunctionSpace that can be used in forms
+                # Use d.split() to get subfunctions from a
+                # VectorFunctionSpace that can be used in forms
                 return func.sub(idx)
 
     elif isinstance(func, d.MixedFunctionSpace):
@@ -135,7 +140,8 @@ def sub(
 def pint_unit_to_quantity(pint_unit):
     if not isinstance(pint_unit, pint.Unit):
         raise TypeError("Input must be a pint unit")
-    # returning pint.Quantity(1, pint_unit) changes the unit registry which we do NOT want
+    # returning pint.Quantity(1, pint_unit) changes the unit
+    # registry which we do NOT want
     return 1.0 * pint_unit
 
 
@@ -149,9 +155,12 @@ def pint_quantity_to_unit(pint_quantity):
     return pint_quantity.units
 
 
-# Write a stopwatch class to measure time elapsed with a start, stop, and pause methods
-# Keep track of timings in a list of lists called self.timings, each time the timer is paused,
-# the time elapsed since the last pause is added to the sublist. Using stop resets the timer to zero
+# Write a stopwatch class to measure time elapsed
+# with a start, stop, and pause methods
+# Keep track of timings in a list of lists called
+# self.timings, each time the timer is paused,
+# the time elapsed since the last pause is added to
+# the sublist. Using stop resets the timer to zero
 # and beings a new list of timings.
 
 
@@ -187,7 +196,8 @@ class Stopwatch:
             self._pause_timings.append(self._times[-1] - self._times[-2])
             self.is_paused = True
             _fancy_print(
-                f"{self.name} (iter {len(self._pause_timings)}) finished in {self.time_str(self._pause_timings[-1])} {self.time_unit}",
+                f"{self.name} (iter {len(self._pause_timings)}) finished "
+                "in {self.time_str(self._pause_timings[-1])} {self.time_unit}",
                 format_type="logred",
                 filename=self.filename,
             )
@@ -208,11 +218,6 @@ class Stopwatch:
                 filename=self.filename,
             )
 
-        # for idx, t in enumerate(self._pause_timings):
-        #     _fancy_print(f"{self.name} pause timings:", format_type='logred')
-        #     _fancy_print(f"{self.name} {self.time_str(t)} {self.time_unit}", format_type='logred')
-
-        # reset
         self.pause_timings.append(self._pause_timings)
         self._pause_timings = []
         self._times = []
@@ -227,7 +232,8 @@ class Stopwatch:
 
     def print_last_stop(self):
         _fancy_print(
-            f"{self._print_name} finished in {self.time_str(self.stop_timings[-1])} {self.time_unit}",
+            f"{self._print_name} finished in "
+            f"{self.time_str(self.stop_timings[-1])} {self.time_unit}",
             format_type="logred",
             filename=self.filename,
         )
@@ -369,7 +375,10 @@ def _fancy_print(
             f"{colored(title_text, text_color)} {buffer(buffer_size*2+1+parity)}"
         )
     else:
-        title_str = f"{buffer(buffer_size)} {colored(title_text, text_color)} {buffer(buffer_size+parity)}"
+        title_str = (
+            f"{buffer(buffer_size)} {colored(title_text, text_color)} "
+            f"{buffer(buffer_size+parity)}"
+        )
     banner = colored(filler_char * (title_str_len + parity), buffer_color)
 
     def print_out(text, filename=None):
@@ -402,8 +411,10 @@ def _fancy_print(
 
 
 def facet_topology(f: d.Facet, mf3: d.MeshFunction):
-    """Given a facet and cell mesh function, return the topology of the face"""
-    localCells = [mf3.array()[c.index()] for c in d.cells(f)]  # cells adjacent face
+    """Given a facet and cell mesh function,
+    return the topology of the face"""
+    # cells adjacent face
+    localCells = [mf3.array()[c.index()] for c in d.cells(f)]
     if len(localCells) == 1:
         topology = "boundary"  # boundary facet
     elif len(localCells) == 2 and localCells[0] == localCells[1]:
@@ -425,7 +436,8 @@ def cube_condition(cell, xmin=0.3, xmax=0.7):
 
 def DemoCuboidsMesh(N=16, condition=cube_condition):
     """
-    Creates a mesh for use in examples that contains two distinct cuboid subvolumes with a shared interface surface.
+    Creates a mesh for use in examples that contains
+    two distinct cuboid subvolumes with a shared interface surface.
     Cell markers:
     1 - Default subvolume
     2 - Subvolume specified by condition function
@@ -469,16 +481,18 @@ def DemoSpheresMesh(
     outer_vol_tag: int = 1,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
-    Creates a mesh for use in examples that contains two distinct sphere subvolumes
-    with a shared interface surface. If the radius of the inner sphere is 0, mesh a
+    Creates a mesh for use in examples that contains
+    two distinct sphere subvolumes with a shared interface
+    surface. If the radius of the inner sphere is 0, mesh a
     single sphere.
 
     Args:
         outerRad: The radius of the outer sphere
         innerRad: The radius of the inner sphere
         hEdge: maximum mesh size at the outer edge
-        hInnerEdge: maximum mesh size at the edge of the inner sphere
-        interface_marker: The value to mark facets on the interface with
+        hInnerEdge: maximum mesh size at the edge
+        of the inner sphere interface_marker: The
+        value to mark facets on the interface with
         outer_marker: The value to mark facets on the outer sphere with
         inner_vol_tag: The value to mark the inner spherical volume with
         outer_vol_tag: The value to mark the outer spherical volume with
@@ -536,12 +550,17 @@ def DemoSpheresMesh(
         gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
 
     def meshSizeCallback(dim, tag, x, y, z, lc):
-        # mesh length is hEdge at the PM (defaults to 0.1*outerRad, or set when calling function)
-        # and hInnerEdge at the ERM (defaults to 0.2*innerRad, or set when calling function)
-        # between these, the value is interpolated based on R, and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
-        # if innerRad=0, then the mesh length is interpolated between hEdge at the PM and 0.2*outerRad in the center
-        # for one sphere (innerRad = 0), if hEdge > 0.2*outerRad, then lc = 0.2*outerRad in the whole volume
-        # for two spheres, if hEdge or hInnerEdge > 0.2*innerRad, they are set to lc = 0.2*innerRad
+        # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
+        # or set when calling function) and hInnerEdge at the ERM
+        # (defaults to 0.2*innerRad, or set when calling function)
+        # between these, the value is interpolated based on R,
+        # and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*outerRad in the center
+        # for one sphere (innerRad = 0), if hEdge > 0.2*outerRad,
+        # then lc = 0.2*outerRad in the whole volume
+        # for two spheres, if hEdge or hInnerEdge > 0.2*innerRad,
+        # they are set to lc = 0.2*innerRad
         R = np.sqrt(x**2 + y**2 + z**2)
         lc1 = hEdge
         lc2 = hInnerEdge
@@ -557,7 +576,8 @@ def DemoSpheresMesh(
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-    # this changes the algorithm from Frontal-Delaunay to Delaunay, which may provide better results when there are larger gradients in mesh size
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
     gmsh.option.setNumber("Mesh.Algorithm", 5)
 
     gmsh.model.mesh.generate(3)
@@ -581,29 +601,31 @@ def DemoSpheresMesh(
 
     tet_mesh = create_mesh(mesh3d_in, "tetra")
     tri_mesh = create_mesh(mesh3d_in, "triangle")
-    meshio.write(f"tempmesh_3dout.xdmf", tet_mesh)
-    meshio.write(f"tempmesh_2dout.xdmf", tri_mesh)
+    meshio.write("tempmesh_3dout.xdmf", tet_mesh)
+    meshio.write("tempmesh_2dout.xdmf", tri_mesh)
 
     # convert xdmf mesh to dolfin-style mesh
     dmesh = d.Mesh()
     mvc3 = d.MeshValueCollection("size_t", dmesh, 3)
-    with d.XDMFFile(f"tempmesh_3dout.xdmf") as infile:
+    with d.XDMFFile("tempmesh_3dout.xdmf") as infile:
         infile.read(dmesh)
         infile.read(mvc3, "mf_data")
     mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
-    mf3.array()[np.where(mf3.array() > 1e9)[0]] = 0  # set unassigned volumes to tag=0
+    # set unassigned volumes to tag=0
+    mf3.array()[np.where(mf3.array() > 1e9)[0]] = 0
     mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
-    with d.XDMFFile(f"tempmesh_2dout.xdmf") as infile:
+    with d.XDMFFile("tempmesh_2dout.xdmf") as infile:
         infile.read(mvc2, "mf_data")
     mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
-    mf2.array()[np.where(mf2.array() > 1e9)[0]] = 0  # set inner faces to tag=0
+    # set inner faces to tag=0
+    mf2.array()[np.where(mf2.array() > 1e9)[0]] = 0
 
     # use os to remove temp meshes
-    os.remove(f"tempmesh_2dout.xdmf")
-    os.remove(f"tempmesh_3dout.xdmf")
-    os.remove(f"tempmesh_2dout.h5")
-    os.remove(f"tempmesh_3dout.h5")
-    os.remove(f"twoSpheres.msh")
+    os.remove("tempmesh_2dout.xdmf")
+    os.remove("tempmesh_3dout.xdmf")
+    os.remove("tempmesh_2dout.h5")
+    os.remove("tempmesh_3dout.h5")
+    os.remove("twoSpheres.msh")
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 

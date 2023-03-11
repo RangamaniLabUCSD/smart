@@ -4,10 +4,10 @@ Setup Tool for Unified Biophysical Simulations
 [![PyPI](https://img.shields.io/pypi/v/fenics-stubs)](https://pypi.org/project/fenics-stubs/)
 
 
-STUBS is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models. 
-STUBS is highly suited for building systems biology models and simulating them as deterministic partial differential equations `[PDEs]` in realistic geometries using the Finite Element Method `[FEM]` - the integration of additional physics such as electro-diffusion or stochasticity may come in future updates. 
-Systems biology models are converted by STUBS into the appropriate systems of reaction-diffusion PDEs with proper boundary conditions. 
-[FEniCS](https://fenicsproject.org/) is a core dependency of STUBS which handles the assembly of finite element matrices as well as solving the resultant linear algebra systems. 
+STUBS is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models.
+STUBS is highly suited for building systems biology models and simulating them as deterministic partial differential equations `[PDEs]` in realistic geometries using the Finite Element Method `[FEM]` - the integration of additional physics such as electro-diffusion or stochasticity may come in future updates.
+Systems biology models are converted by STUBS into the appropriate systems of reaction-diffusion PDEs with proper boundary conditions.
+[FEniCS](https://fenicsproject.org/) is a core dependency of STUBS which handles the assembly of finite element matrices as well as solving the resultant linear algebra systems.
 
 - Documentation: https://rangamanilabucsd.github.io/stubs
 - Source code: https://github.com/RangamaniLabUCSD/stubs
@@ -49,7 +49,7 @@ STUBS does not handle (it is possible to implement these features but would requ
 * Sub-volumes embedded within sub-volumes (i.e. from any point inside the interior sub-volume, one must traverse two surfaces to get to the exterior of the full mesh)
 
 ## Nomenclature
-Because STUBS methods are viable in both 3 dimensional and 2 dimensional geometries we use the following nomenclature to define various functions in the code. 
+Because STUBS methods are viable in both 3 dimensional and 2 dimensional geometries we use the following nomenclature to define various functions in the code.
 
 Cell            : The element of the highest geometric dimension (e.g. "cell" refers to a tetrahedra in 3d, but a triangle in 2d).
 Facet           : The element of dimenion n-1 if n is the highest geometric dimension.
