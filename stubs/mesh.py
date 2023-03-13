@@ -5,38 +5,99 @@ import dolfin as d
 import numpy as np
 from cached_property import cached_property
 from .common import _fancy_print as fancy_print
+from typing import Dict, Union
+import logging
+from mpi4py import MPI as _MPI
+logger = logging.getLogger("smart")
 
-comm = d.MPI.comm_world
-rank = comm.rank
-size = comm.size
-root = 0
+__all__ = ["ParentMesh", "ChildMesh"]
+
+
+def load_mesh_from_xml(mesh_filename: str) -> d.Mesh:
+    """
+    Read Dolfin mesh from xml file.
+
+    .. note::
+        Initializes facets and facet to cell connectivity
+
+    Args:
+        mesh_filename: Name of mesh file
+
+    """
+    mesh = d.Mesh(mesh_filename)
+    tdim = mesh.topology().dim()
+    mesh.init(tdim - 1)
+    mesh.init(tdim-1, tdim)
+    logger.info(f'XML mesh, successfully loaded from file: {mesh_filename}!')
+    return mesh
+
+
+def load_mesh_from_hdf5(mesh_filename: str,
+                        use_partition: bool = False,
+                        comm: _MPI.Intracomm = d.MPI.comm_world) -> d.Mesh:
+    """
+    Read mesh from :func:`dolfin.HDF5File`.
+
+    .. note::
+        Initializes facets and facet to cell connectivity
+
+    Args:
+        mesh_fileanme: Path to mesh
+        use_partition: If True use mesh partitioning from file
+        comm: MPI-communicator to use for mesh
+
+    """
+    mesh = d.Mesh(comm)
+    with d.HDF5File(mesh.mpi_comm(), mesh_filename, "r") as hdf5:
+        hdf5.read(mesh, "/mesh", use_partition)
+    comm.Barrier()
+
+    d.MPI.comm_world.Barrier()
+
+    tdim = mesh.topology().dim()
+    mesh.init(tdim - 1)
+    mesh.init(tdim-1, tdim)
+
+    logger.info(f'HDF5 mesh successfully loaded from file: {mesh_filename}!')
+    return mesh
 
 
 class _Mesh:
     """
     General mesh class
+
+    Args:
+        name: Name of mesh
+
     """
+    name: str
+    _mesh: d.Mesh
+    mf: Dict[str, d.MeshFunction]
 
-    def __init__(self, name="mesh_name", dimensionality=None):
+    dx: d.Measure
+    ds: d.Measure
+    ds_uncombined: d.Measure
+    dx_uncombined: d.Measure
+    parent_mesh: "_Mesh"
+
+    __slots__ = tuple(__annotations__)
+
+    def __init__(self, name: str, mesh: d.Mesh):
         self.name = name
-        self.dimensionality = dimensionality
-        self.dolfin_mesh = None
+        self._mesh = mesh
+        self.mf = {}
 
-        self.mf = dict()
-        self.parent_mesh = None
-
-        self.ds = None
-        self.dx = None
-        self.ds_uncombined = None
-        self.dx_uncombined = None
+    @property
+    def dimensionality(self) -> int:
+        return self._mesh.topology().dim()
 
     @property
     def mesh_view(self):
-        return self.dolfin_mesh.topology().mapping()
+        return self._mesh.topology().mapping()
 
     @property
     def id(self):
-        return int(self.dolfin_mesh.id())
+        return int(self._mesh.id())
 
     @property
     def is_volume(self):
@@ -49,7 +110,7 @@ class _Mesh:
     # Number of entities
     def get_num_entities(self, dimension):
         "Get the number of entities in this mesh with a certain topological dimension"
-        return self.dolfin_mesh.topology().size(dimension)
+        return self._mesh.topology().size(dimension)
 
     @cached_property
     def num_cells(self):
@@ -67,18 +128,18 @@ class _Mesh:
     def _get_entities(self, dimension):
         num_vertices_per_entity = dimension + 1  # for a simplex
         return np.reshape(
-            self.dolfin_mesh.topology()(dimension, 0)(),
+            self._mesh.topology()(dimension, 0)(),
             (self.get_num_entities(dimension), num_vertices_per_entity),
         )
 
     @cached_property
     def cells(self):
-        return self.dolfin_mesh.cells()
+        return self._mesh.cells()
 
     @cached_property
     def facets(self):
         # By default dolfin only stores cells.
-        # We must call dolfin_mesh.init() in order to access index maps for other dimensions
+        # We must call dolfin.Mesh.init() in order to access index maps for other dimensions
         return self._get_entities(self.dimensionality - 1)
 
     @cached_property
@@ -129,7 +190,7 @@ class _Mesh:
     # Integration measures
     def get_integration_measures(self):
         # Aliases
-        mesh = self.dolfin_mesh
+        mesh = self._mesh
 
         # Regular measures
         if "cells" in self.mf:
@@ -156,21 +217,29 @@ class ParentMesh(_Mesh):
         use_partition (bool): If `hdf5` mesh file is loaded,
             choose if mesh should be read in with its current partition
     """
+    mesh_filename: str
+    mesh_filetype: str
+    child_meshes: Dict[str, "ChildMesh"]
+    parent_mesh: "ParentMesh"
+    __slots__ = tuple(__annotations__)
 
-    def __init__(self, mesh_filename: str, mesh_filetype, name, use_partition=False):
-        super().__init__(name)
-        self.use_partition = use_partition
+    def __init__(self, mesh_filename: str, mesh_filetype, name: str, use_partition: bool = False):
         if mesh_filetype == "xml":
-            self.load_mesh_from_xml(mesh_filename)
+            mesh = load_mesh_from_xml(mesh_filename)
         elif mesh_filetype == "hdf5":
-            self.load_mesh_from_hdf5(mesh_filename, use_partition)
+            mesh = load_mesh_from_hdf5(mesh_filename, use_partition)
+        else:
+            raise RuntimeError(f"Unknown {mesh_filetype=}")
+
+        super().__init__(name, mesh)
+
         self.mesh_filename = mesh_filename
         self.mesh_filetype = mesh_filetype
 
-        self.child_meshes = dict()
+        self.child_meshes = {}
         self.parent_mesh = self
 
-    def get_mesh_from_id(self, id):
+    def get_mesh_from_id(self, id: int) -> Union["ChildMesh", "ParentMesh"]:
         # find the mesh in that has the matching id
         for mesh in self.all_meshes.values():
             if mesh.id == id:
@@ -180,49 +249,20 @@ class ParentMesh(_Mesh):
     def all_meshes(self):
         return dict(list(self.child_meshes.items()) + list({self.name: self}.items()))
 
-    def load_mesh_from_xml(self, mesh_filename):
-        self.dolfin_mesh = d.Mesh(mesh_filename)
-
-        self.dimensionality = self.dolfin_mesh.topology().dim()
-        self.dolfin_mesh.init(self.dimensionality - 1)
-        self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
-        self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
-
-        print(
-            f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
-        )
-
-    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
-        # mesh, mfs = common.read_hdf5(hdf5_filename)
-        self.dolfin_mesh = d.Mesh(comm)
-        hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
-        hdf5.read(self.dolfin_mesh, "/mesh", use_partition)
-
-        d.MPI.comm_world.Barrier()
-        hdf5.close()
-
-        self.dimensionality = self.dolfin_mesh.topology().dim()
-        self.dolfin_mesh.init(self.dimensionality - 1)
-        self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
-        self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
-
-        print(
-            f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
-        )
-
-    def _read_parent_mesh_function_from_file(self, dim):
+    def _read_parent_mesh_function_from_file(self, dim: int) -> d.MeshFunction:
+        """
+        Helper function to read :func:`dolfin.MeshFunction` from file for corresponding dimension
+        """
         if self.mesh_filetype == "xml":
             mf = d.MeshFunction(
-                "size_t", self.dolfin_mesh, dim, value=self.dolfin_mesh.domains()
+                "size_t", self._mesh, dim, value=self.dolfin_mesh.domains()
             )
         elif self.mesh_filetype == "hdf5":
-            mf = d.MeshFunction("size_t", self.dolfin_mesh, dim, value=0)
-            # with d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, 'r') as hdf5:
-            # hdf5.read(mf, f'/mesh/{dim}')
-            hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, "r")
-            hdf5.read(mf, f"/mf{dim}")
-            d.MPI.comm_world.Barrier()
-            hdf5.close()
+            mf = d.MeshFunction("size_t", self._mesh, dim, value=0)
+            with d.HDF5File(self._mesh.mpi_comm(), self.mesh_filename, "r") as hdf5:
+                hdf5.read(mf, f"/mf{dim}")
+                hdf5.close()
+            self._mesh.mpi_comm().Barrier()
         return mf
 
     def read_parent_mesh_functions_from_file(self):
@@ -231,7 +271,7 @@ class ParentMesh(_Mesh):
         surface_dim = self.min_dim
 
         # Check validity
-        if self.dolfin_mesh is None:
+        if self._mesh is None:
             print(f"Mesh {self.name} has no dolfin mesh to get a mesh function from.")
             return None
         # there should be at least one child mesh
@@ -387,7 +427,7 @@ class ChildMesh(_Mesh):
         )
 
         self.intersection_map[mesh_id_set] = d.MeshFunction(
-            "size_t", self.dolfin_mesh, self.dimensionality, value=0
+            "size_t", self._mesh, self.dimensionality, value=0
         )
         cell_maps = [
             np.array(self.mesh_view[sibling_volume_mesh.id].cell_map())
@@ -414,7 +454,7 @@ class ChildMesh(_Mesh):
 
         # Indicate which entities of the parent mesh correspond to this intersection
         self.intersection_map_parent[mesh_id_set] = d.MeshFunction(
-            "size_t", self.parent_mesh.dolfin_mesh, self.dimensionality, value=0
+            "size_t", self.parent_mesh._mesh, self.dimensionality, value=0
         )
         # map from our cells to parent facets
         mesh_to_parent = np.array(self.mesh_view[self.parent_mesh.id].cell_map())
@@ -449,10 +489,10 @@ class ChildMesh(_Mesh):
 
     def extract_submesh(self):
         mf_type = "cells" if self.is_volume else "facets"
-        self.dolfin_mesh = d.MeshView.create(
+        self._mesh = d.MeshView.create(
             self.parent_mesh.mf[mf_type], self.primary_marker
         )
-        # self.dolfin_mesh.init()
+        # self._mesh.init()
 
     def init_marker_list_mesh_function(self):
         "Child mesh functions require transfering data from parent mesh functions"
@@ -462,5 +502,5 @@ class ChildMesh(_Mesh):
         # initialize
         raise NotImplementedError("Need to check this")
         self.mf["cells"] = d.MeshFunction(
-            "size_t", self.dolfin_mesh, self.dimensionality, value=0
+            "size_t", self._mesh, self.dimensionality, value=0
         )
