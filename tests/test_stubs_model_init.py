@@ -2,7 +2,13 @@ import pytest
 import math
 
 import stubs
-from stubs.model_assembly import Parameter, Species, Compartment, Reaction, empty_sbmodel
+from stubs.model_assembly import (
+    Parameter,
+    Species,
+    Compartment,
+    Reaction,
+    empty_sbmodel,
+)
 
 # Fixtures
 

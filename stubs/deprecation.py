@@ -3,6 +3,7 @@ import functools
 
 __all__ = ["deprecated"]
 
+
 def deprecated(func):
     """This is a decorator which can be used to mark functions
     as deprecated. It will result in a warning being emitted
@@ -17,6 +18,7 @@ def deprecated(func):
             stacklevel=2,
         )
         warnings.simplefilter("default", DeprecationWarning)  # reset filter
+        raise RuntimeError(f"Call to deprecated function {func.__name__}")
         return func(*args, **kwargs)
 
     return new_func

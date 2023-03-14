@@ -1,0 +1,114 @@
+[build-system] # Require setuptool version due to https://github.com/pypa/setuptools/issues/2938
+requires = ["setuptools>=61.0.0", "wheel"]
+
+[project]
+name = "stubs"
+version = "0.1.10"
+description = "STUBS is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models"
+authors = [{name = "Justin Laughlin", email = "justinglaughlin@gmail.com"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+dependencies = [
+    "matplotlib",
+    "numpy>=1.16.0",
+    "pandas",
+    "Pint",
+    "scipy>=1.1.0",
+    "sympy",
+    "dataclasses",
+    "cached-property",
+    "tabulate",
+    "termcolor",
+    "termplotlib",
+    "meshio",
+    "gmsh",
+    "h5py",
+]
+
+
+[project.urls]
+homepage = "https://rangamanilabucsd.github.io/stubs"
+repository = "https://github.com/RangamaniLabUCSD/stubs"
+
+[tool.setuptools]
+packages = ["stubs"]
+
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+]
+docs = [
+   "jupyter-book",
+   "sphinx-autoapi"
+]
+all = [
+   "stubs[test]",
+   "stubs[docs]",
+   "stubs[dev]"
+]
+
+
+[tool.pytest.ini_options]
+addopts = [
+   "--cov=stubs",
+   "--cov-report=html",
+   "--cov-report=term-missing",
+   "-v"
+]
+
+testpaths = [
+    "tests"
+]
+
+
+[tool.black]
+#line-length = 79
+
+
+[tool.ruff]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
+select = ["E", "F"]
+ignore = []
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["A", "B", "C", "D", "E", "F"]
+unfixable = []
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+# Same as Black.
+line-length = 100
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Assume Python 3.10.
+target-version = "py310"
+
+[tool.ruff.mccabe]
+# Unlike Flake8, default to a complexity level of 10.
+max-complexity = 10

@@ -21,7 +21,14 @@ import dolfin as d
 import sympy as sym
 
 from stubs import unit, config, common, mesh, model
-from stubs.model_assembly import Compartment, Parameter, Reaction, Species, sbmodel_from_locals
+from stubs.model_assembly import (
+    Compartment,
+    Parameter,
+    Reaction,
+    Species,
+    sbmodel_from_locals,
+)
+
 # -
 
 # First, we define the various units for the inputs
@@ -39,6 +46,7 @@ surf_unit = molecule / um**2
 
 
 # Next we generate the model.
+
 
 def make_model():
     # =============================================================================================
@@ -63,8 +71,8 @@ def make_model():
     PM = Compartment("PM", 2, um, 10)
     ER = Compartment("ER", 3, um, 2)
     ERm = Compartment("ERm", 2, um, 12)
-    PM.specify_nonadjacency(['ERm', 'ER'])
-    ERm.specify_nonadjacency(['PM'])
+    PM.specify_nonadjacency(["ERm", "ER"])
+    ERm.specify_nonadjacency(["PM"])
 
     # =============================================================================================
     # Parameters and Reactions
