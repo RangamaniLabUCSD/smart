@@ -957,7 +957,9 @@ class Model:
         fancy_print("Set function values to initial conditions", format_type="log")
         for species in self.sc:
             for ukey in species.u.keys():
-                if isinstance(species.initial_condition, float):
+                if isinstance(species.initial_condition, float) or not isinstance(
+                    species.initial_condition, str
+                ):
                     self.dolfin_set_function_values(
                         species, ukey, species.initial_condition
                     )
@@ -1744,8 +1746,22 @@ class Model:
                                 for usub in self.u["u"]._functions
                             ]
                         )
+                    # need to re-link global function with species-specific functions
+                    # after re-setting previous solution
+                    self._init_4_4_get_species_u_v_V_dofmaps()
+                    self._init_4_5_name_functions()
                     self._failed_to_converge = True
                     self.monolithic_solve()
+                    return
+                else:  # if value is >= -tol, then set any slightly negative solutions to zero
+                    for idx in range(self.num_active_compartments):
+                        curSub = self.u["u"].sub(idx)
+                        curVec = curSub.vector()
+                        for zeroIdx in np.asarray(curVec < 0).nonzero():
+                            curSub.vector()[zeroIdx] = 0
+                            d.assign(self.u["u"].sub(idx), curSub)
+                    for idx in np.asarray(self._ubackend.array < 0).nonzero():
+                        self._ubackend.array[idx] = 0
 
             if not self.solver.converged:
                 if not self.config.solver["attempt_timestep_restart_on_divergence"]:
@@ -1764,15 +1780,19 @@ class Model:
                 )
                 self.reset_timestep()
                 # Re-initialize SNES solver
-                # self.initialize_discrete_variational_problem_and_solver()
                 if len(self.problem.global_sizes) == 1:
                     self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                 else:
                     self._ubackend = PETSc.Vec().createNest(
                         [usub.vector().vec().copy() for usub in self.u["u"]._functions]
                     )
+                # need to re-link global function with species-specific functions
+                # after re-setting previous solution
+                self._init_4_4_get_species_u_v_V_dofmaps()
+                self._init_4_5_name_functions()
                 self._failed_to_converge = True
                 self.monolithic_solve()
+                return
             else:
                 self._failed_to_converge = False
         else:
@@ -2044,8 +2064,35 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
+        elif len(unew) > 1:
+            if len(sp.dof_map) == len(unew):
+                # unew is an N x 4 array: [X, Y, Z, function_values]
+                u = self.cc[sp.compartment_name].u[ukey]
+                dof_coord = (
+                    sp.V.tabulate_dof_coordinates()
+                )  # coordinates for the current dof
+                mesh_coord = unew[:, 0:3]  # x,y,z coordinates for initial condition
+                function_values = unew[:, 3]
+                # nearest neighbor interpolation
+                # (in this case, matching up exactly with mesh points)
+                dof_vals_cur = np.zeros((len(mesh_coord),))
+                for i in range(len(dof_coord)):
+                    dist_vec = np.sum((dof_coord[i, :] - mesh_coord) ** 2, axis=1)
+                    dof_vals_cur[i] = function_values[np.argmin(dist_vec)]
+                    if i % 1000 == 0:
+                        fancy_print(
+                            f"Set {i} of {len(dof_coord)} function values for {sp.name}"
+                        )
+                # indices = self.dolfin_get_dof_indices(sp)
+                indices = sp.dof_map
+                uvec = u.vector()
+                values = uvec.get_local()
+                values[indices] = dof_vals_cur
+                uvec.set_local(values)
+                uvec.apply("insert")
+        elif isinstance(unew, d.Function):
+            fancy_print(f"Function already set for {sp.name}")
         else:
-            # unew is a vector with the same length as u
             raise NotImplementedError
 
     @property
