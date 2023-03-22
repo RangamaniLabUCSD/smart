@@ -488,8 +488,9 @@ class Parameter(ObjectInstance):
     ):
         """
         ..note::
-            Note this function is never used in any example, even if it is scattered across the code.
-            It would be good to have some in formation about what one would expect from this function
+            This function is never used in any example, even if it is scattered across the code.
+            It would be good to have some in formation about what one would expect this function
+            to do
         """
         "Load in a purely time-dependent scalar function from data"
         # load in sampling data file

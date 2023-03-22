@@ -1,15 +1,14 @@
 """
 Configuration settings for simulation: plotting, reaction types, solution output, etc.
 """
-from .deprecation import deprecated
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 import dolfin as d
-import numpy as np
-import numpy.typing as npt
 import ufl
+
+from .deprecation import deprecated
 
 __all__ = [
     "global_settings",
@@ -17,11 +16,9 @@ __all__ = [
     "SolverConfig",
     "BaseConfig",
     "FlagsConfig",
-    "OutputConfig",
     "LogLevelConfig",
 ]
 
-_valid_filetypes = ["xdmf", "vtk", None]
 _loglevel_to_int: Dict[str, int] = {
     "CRITICAL": int(d.LogLevel.CRITICAL),
     "ERROR": int(d.LogLevel.ERROR),

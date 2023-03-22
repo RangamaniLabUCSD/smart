@@ -1,10 +1,7 @@
-# import
-import dolfin as d  # dolfin/fenics api
 
-# import mpi4py.MPI as pyMPI
-import stubs
-from stubs import unit as unit
 import numpy as np
+
+import stubs
 
 # ====================================================
 # ====================================================

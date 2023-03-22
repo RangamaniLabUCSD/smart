@@ -206,7 +206,7 @@ class ParentMesh(_Mesh):
             f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
         )
 
-    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
+    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False, comm=d.MPI.comm_world):
         # mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh(comm)
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
