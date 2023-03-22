@@ -39,7 +39,6 @@ RUN apt-get update && apt-get install -y \
     vim \
     htop \
     eog \
-    python3-h5py \
     libglu1 \
     libxcursor1 \
     libxinerama1 \
@@ -83,7 +82,6 @@ RUN python3 -m pip install PyQt5==5.12.2
 ENV MPLBACKEND=QT5Agg
 # For tikz plotting
 RUN python3 -m pip install tikzplotlib
-#RUN python3 -m pip install h5py
 # this is to install just the dependencies so that we can use the local version of stubs
 RUN python3 -m pip install fenics-stubs
 RUN python3 -m pip uninstall --yes fenics-stubs

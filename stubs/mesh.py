@@ -1,21 +1,28 @@
 """
 Wrapper around dolfin mesh class (originally for submesh implementation - possibly unneeded now)
 """
+from typing import Dict, FrozenSet
+
 import dolfin as d
 import numpy as np
 from cached_property import cached_property
-from .common import _fancy_print as fancy_print
 
-comm = d.MPI.comm_world
-rank = comm.rank
-size = comm.size
-root = 0
+from .common import _fancy_print as fancy_print
+from .deprecation import deprecated
 
 
 class _Mesh:
     """
     General mesh class
     """
+    name: str
+    dimensionality: int
+    dolfin_mesh: d.Mesh
+    mf: Dict[str, d.MeshFunction]
+    parent_mesh: d.Mesh
+    ds: d.Measure
+    dx: d.Measure
+    dx_uncombined: d.Measure
 
     def __init__(self, name="mesh_name", dimensionality=None):
         self.name = name
@@ -27,7 +34,6 @@ class _Mesh:
 
         self.ds = None
         self.dx = None
-        self.ds_uncombined = None
         self.dx_uncombined = None
 
     @property
@@ -89,6 +95,7 @@ class _Mesh:
     def vertices(self):
         return self.dolfin_mesh.coordinates()
 
+    @deprecated
     def get_entities(self, dimension):
         "We use this function so that values are cached and we don't need to recompute each time"
         if dimension == self.dimensionality:
@@ -123,6 +130,7 @@ class _Mesh:
             measure = self.ds
         return d.assemble(1 * measure(marker))
 
+    @deprecated
     def get_mesh_coordinate_bounds(self):
         return {"min": self.vertices.min(axis=0), "max": self.vertices.max(axis=0)}
 
@@ -156,6 +164,12 @@ class ParentMesh(_Mesh):
         use_partition (bool): If `hdf5` mesh file is loaded,
             choose if mesh should be read in with its current partition
     """
+
+    mesh_filename: str
+    mesh_filetype: str
+    child_meshes: Dict[str, "ChildMesh"]
+    parent_mesh: "ParentMesh"
+    use_partition: bool
 
     def __init__(self, mesh_filename: str, mesh_filetype, name, use_partition=False):
         super().__init__(name)
@@ -226,6 +240,9 @@ class ParentMesh(_Mesh):
         return mf
 
     def read_parent_mesh_functions_from_file(self):
+        """
+        Read mesh function for parent mesh into :attr:`ParentMesh.mf`.
+        """
         # Aliases
         volume_dim = self.max_dim
         surface_dim = self.min_dim
@@ -234,6 +251,7 @@ class ParentMesh(_Mesh):
         if self.dolfin_mesh is None:
             print(f"Mesh {self.name} has no dolfin mesh to get a mesh function from.")
             return None
+
         # there should be at least one child mesh
         assert len(self.child_meshes) > 0
 
@@ -292,17 +310,23 @@ class ParentMesh(_Mesh):
 
 class ChildMesh(_Mesh):
     """
-    Sub mesh of a parent mesh
-    """
+    Sub mesh of a parent mesh.
 
+    Params:
+        parent_mesh: The mesh owning the entities in the compartment
+        compartment: The compartment
+    """
+    intersection_map: Dict[FrozenSet[int], d.MeshFunction]
+    intersection_map_parent: Dict[FrozenSet[int], d.MeshFunction]
+    intersection_submesh: Dict[FrozenSet[int], d.Mesh]
+    intersection_dx: Dict[FrozenSet[int], d.Measure]
+    has_intersection: Dict[FrozenSet[int], bool]
     # dimensionality, marker, name='child_mesh'):
+
     def __init__(self, parent_mesh, compartment):
         super().__init__(
             name=compartment.name, dimensionality=compartment.dimensionality
         )
-        # Alias
-        marker = compartment.cell_marker
-
         self.compartment = compartment
 
         # child mesh must be associated with a parent mesh
@@ -311,18 +335,18 @@ class ChildMesh(_Mesh):
         self.set_parent_mesh(parent_mesh)
 
         # markers can be either an int or a list of ints
-        if isinstance(marker, list):
-            assert all([isinstance(m, int) for m in marker])
-            self.marker_list = marker
-            self.primary_marker = marker[0]
+        if isinstance(compartment.cell_marker, list):
+            assert all([isinstance(m, int) for m in compartment.cell_marker])
+            self.marker_list = compartment.cell_marker
+            self.primary_marker = compartment.cell_marker[0]
             fancy_print(
                 f"List of markers given for compartment {self.name},"
-                + f"combining into single marker, {marker[0]}"
+                + f"combining into single marker, {compartment.cell_marker[0]}"
             )
         else:
-            assert isinstance(marker, int)
+            assert isinstance(compartment.cell_marker, int)
             self.marker_list = None
-            self.primary_marker = marker
+            self.primary_marker = compartment.cell_marker
 
         # mapping (0 or 1) of intersection with sibling mesh
         self.intersection_map = dict()
@@ -332,8 +356,8 @@ class ChildMesh(_Mesh):
         self.intersection_dx = dict()
         self.has_intersection = dict()
 
+    @deprecated
     def nvolume_sibling_union(self, sibling_mesh):
-        # return d.assemble(1*self.intersection_dx[frozenset({sibling_mesh.id}](1))
         return d.assemble(1 * self.intersection_dx[frozenset({sibling_mesh.id})])
 
     @cached_property
@@ -425,9 +449,7 @@ class ChildMesh(_Mesh):
         parent_indices = mesh_to_parent[indices]
         self.intersection_map_parent[mesh_id_set].array()[parent_indices] = 1
 
-    def get_intersection_submesh(self, mesh_id_set):
-        # mesh_id_set = frozenset(
-        #     [sibling_volume_mesh.id for sibling_volume_mesh in sibling_volume_mesh_list])
+    def get_intersection_submesh(self, mesh_id_set: FrozenSet[int]):
 
         self.intersection_submesh[mesh_id_set] = d.MeshView.create(
             self.intersection_map_parent[mesh_id_set], 1
@@ -452,7 +474,6 @@ class ChildMesh(_Mesh):
         self.dolfin_mesh = d.MeshView.create(
             self.parent_mesh.mf[mf_type], self.primary_marker
         )
-        # self.dolfin_mesh.init()
 
     def init_marker_list_mesh_function(self):
         "Child mesh functions require transfering data from parent mesh functions"
@@ -461,6 +482,3 @@ class ChildMesh(_Mesh):
 
         # initialize
         raise NotImplementedError("Need to check this")
-        self.mf["cells"] = d.MeshFunction(
-            "size_t", self.dolfin_mesh, self.dimensionality, value=0
-        )

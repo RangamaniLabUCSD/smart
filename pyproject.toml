@@ -21,8 +21,7 @@ dependencies = [
     "termcolor",
     "termplotlib",
     "meshio",
-    "gmsh",
-    "h5py",
+    "gmsh"
 ]
 
 

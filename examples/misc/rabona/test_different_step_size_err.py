@@ -8,10 +8,6 @@ import numpy as np
 
 # ====================================================
 # ====================================================
-comm = d.MPI.comm_world
-rank = comm.rank
-root = 0
-nprocs = comm.size
 
 # Load in model and settings
 config = stubs.config.Config()

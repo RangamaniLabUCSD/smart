@@ -1,6 +1,7 @@
 """
 Configuration settings for simulation: plotting, reaction types, solution output, etc.
 """
+from .deprecation import deprecated
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
@@ -18,7 +19,6 @@ __all__ = [
     "FlagsConfig",
     "OutputConfig",
     "LogLevelConfig",
-    "PlottingConfig",
 ]
 
 _valid_filetypes = ["xdmf", "vtk", None]
@@ -131,21 +131,6 @@ class FlagsConfig(BaseConfig):
 
 
 @dataclass
-class OutputConfig(BaseConfig):
-    """
-    Settings for output
-
-    :param solutions: Name of directory to store solutions to
-    :param plots: Name of directory to store plots to
-    :param output_type: Format of output
-    """
-
-    solutions: str = "solutions"
-    plots: str = "plots"
-    output_type: str = "xdmf"
-
-
-@dataclass
 class LogLevelConfig(BaseConfig):
     """
     Settings for logging
@@ -180,20 +165,6 @@ class LogLevelConfig(BaseConfig):
 
 
 @dataclass
-class PlottingConfig(BaseConfig):
-    """
-    Options for matplotlib plotting
-    """
-
-    lineopacity: float = 0.6  # .  Opacity of lines
-    linewidth_small: float = 0.6  # . Thickness of small lines
-    linewidth_med: float = 2.2  # . Thickness of medium lines
-    fontsize_small: float = 3.5  # . Fontsize of small text
-    fontsize_med: float = 4.5  # . Fontsize of large text
-    figname: str = "figure"  # . Name of figure
-
-
-@dataclass
 class Config:
     """
     Configuration settings.
@@ -202,17 +173,11 @@ class Config:
     :param flags: Various options
     :param directory: Outputting options
     :param loglevel: Logging options for FEniCS modules
-    :param plot_settings: Options for matplotlib plotting
-    :param probe_plot: Dictionary mapping a Function (by its name) to a
-        set of coordinates where the function should be mapped
     """
 
     solver: SolverConfig = field(default_factory=SolverConfig)
     flags: FlagsConfig = field(default_factory=FlagsConfig)
     loglevel: LogLevelConfig = field(default_factory=LogLevelConfig)
-    plot_settings: PlottingConfig = field(default_factory=PlottingConfig)
-    directory: OutputConfig = field(default_factory=OutputConfig)
-    probe_plot: Dict[str, npt.NDArray[np.float64]] = field(default_factory=dict)
 
     @property
     def reaction_database(self) -> Dict[str, str]:
@@ -221,12 +186,8 @@ class Config:
         """
         return {"prescribed": "k", "prescribed_linear": "k*u"}
 
-    def output_type(self):
-        return self.directory["output_type"]
-
+    @deprecated
     def check_config_validity(self):
-        if self.output_type not in _valid_filetypes:
-            raise ValueError(f"Only filetypes: '{_valid_filetypes}' are supported.")
         if self.solver.final_t is None:
             raise ValueError("Please provide a final time in config.solver")
         if self.solver.initial_dt is None:

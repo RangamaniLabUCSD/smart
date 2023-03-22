@@ -19,6 +19,6 @@ def deprecated(func):
         )
         warnings.simplefilter("default", DeprecationWarning)  # reset filter
         raise RuntimeError(f"Call to deprecated function {func.__name__}")
-        return func(*args, **kwargs)
+        # return func(*args, **kwargs)
 
     return new_func
