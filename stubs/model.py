@@ -181,12 +181,14 @@ class Model:
     @cached_property
     def min_dim(self):
         dim = min([comp.dimensionality for comp in self.cc])
+        self.parent_mesh.min_dim = dim
         return dim
 
     @cached_property
     def max_dim(self):
         dim = max([comp.dimensionality for comp in self.cc])
         self.max_dim = dim
+        self.parent_mesh.max_dim = dim
         return dim
 
     # ===========================================
