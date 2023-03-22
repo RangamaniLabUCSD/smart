@@ -420,6 +420,7 @@ class ObjectInstance:
 # ==============================================================================
 # ==============================================================================
 
+
 class ParameterContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Parameter)
@@ -873,7 +874,6 @@ class Compartment(ObjectInstance):
         return cls(**input_dict)
 
     def __post_init__(self):
-
         if (
             isinstance(self.cell_marker, list)
             and not all([isinstance(m, int) for m in self.cell_marker])

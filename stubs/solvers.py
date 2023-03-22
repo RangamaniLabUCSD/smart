@@ -333,7 +333,6 @@ class stubsSNESProblem:
         # dolfin wrapper as tensor
         for i in range(dim):
             for j in range(dim):
-
                 if (i, j) in self.empty_forms:
                     continue
                 ij = i * dim + j

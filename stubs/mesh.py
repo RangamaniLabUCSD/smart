@@ -15,6 +15,7 @@ class _Mesh:
     """
     General mesh class
     """
+
     name: str
     dimensionality: int
     dolfin_mesh: d.Mesh
@@ -206,7 +207,9 @@ class ParentMesh(_Mesh):
             f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
         )
 
-    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False, comm=d.MPI.comm_world):
+    def load_mesh_from_hdf5(
+        self, mesh_filename, use_partition=False, comm=d.MPI.comm_world
+    ):
         # mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh(comm)
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
@@ -316,6 +319,7 @@ class ChildMesh(_Mesh):
         parent_mesh: The mesh owning the entities in the compartment
         compartment: The compartment
     """
+
     intersection_map: Dict[FrozenSet[int], d.MeshFunction]
     intersection_map_parent: Dict[FrozenSet[int], d.MeshFunction]
     intersection_submesh: Dict[FrozenSet[int], d.Mesh]
@@ -450,7 +454,6 @@ class ChildMesh(_Mesh):
         self.intersection_map_parent[mesh_id_set].array()[parent_indices] = 1
 
     def get_intersection_submesh(self, mesh_id_set: FrozenSet[int]):
-
         self.intersection_submesh[mesh_id_set] = d.MeshView.create(
             self.intersection_map_parent[mesh_id_set], 1
         )
