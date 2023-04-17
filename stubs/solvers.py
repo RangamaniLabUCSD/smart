@@ -180,7 +180,7 @@ class stubsSNESProblem:
                     format_type="data",
                 )
 
-    def init_petsc_matnest(self, use_custom_assembler=False):
+    def init_petsc_matnest(self):
         Jforms = self.Jforms_all
         dim = self.dim
         Jpetsc = []
@@ -204,7 +204,6 @@ class stubsSNESProblem:
 
                     # initialize the tensor
                     if self.tensors[ij][k] is None:
-                        # self.tensors[ij][k] = self.init_petsc_matrix_dolfin(Jforms[ij][k])
                         self.tensors[ij][k] = d.PETScMatrix(self.comm)
 
                     fancy_print(
@@ -334,7 +333,6 @@ class stubsSNESProblem:
         # dolfin wrapper as tensor
         for i in range(dim):
             for j in range(dim):
-
                 if (i, j) in self.empty_forms:
                     continue
                 ij = i * dim + j
@@ -481,14 +479,6 @@ class stubsSNESProblem:
             M.assemble()
         self.stopwatches["snes initialize zero matrices"].pause()
 
-        return M
-
-    def init_petsc_matrix_dolfin(self, form):
-        # Init using dolfin
-        M = d.PETScMatrix(self.comm)
-        self.module.MixedAssemblerTemp().init_global_tensor(M, form)
-        Mback = d.as_backend_type(M).mat()
-        Mback.setOption(p.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
         return M
 
     def init_petsc_vector(self, j, assemble=False):

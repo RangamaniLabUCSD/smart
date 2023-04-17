@@ -128,7 +128,6 @@ def make_model():
 # We load the model generated above, and load in the mesh we will use in this example.
 
 # +
-
 pc, sc, cc, rc = make_model()
 
 # =============================================================================================

@@ -1,6 +1,7 @@
 """
 Model class. Consists of parameters, species, etc. and is used for simulation
 """
+from .deprecation import deprecated
 import pickle
 from collections import OrderedDict as odict
 from dataclasses import dataclass
@@ -96,10 +97,12 @@ class Model:
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
+    @deprecated
     def to_pickle(self, filename):
         with open(filename, "wb") as f:
             pickle.dump(self.to_dict(), f)
 
+    @deprecated
     @classmethod
     def from_pickle(cls, filename):
         with open(filename, "rb") as f:
@@ -119,13 +122,6 @@ class Model:
         self.idx = 0
         self.idx_nl = list()
         self.idx_l = list()
-
-        self.stopping_conditions = {
-            "F_abs": {},
-            "F_rel": {},
-            "udiff_abs": {},
-            "udiff_rel": {},
-        }
         self.reset_dt = False
 
         self._failed_to_converge = False
@@ -306,10 +302,12 @@ class Model:
         fancy_print(
             "Check that mesh/compartment dimensionalities match", format_type="log"
         )
+
         if (self.max_dim - self.min_dim) not in [0, 1]:
             raise ValueError(
                 "(Highest mesh dimension - smallest mesh dimension) must be either 0 or 1."
             )
+
         if self.max_dim > self.parent_mesh.dimensionality:
             raise ValueError(
                 "Maximum dimension of a compartment is "
@@ -475,9 +473,7 @@ class Model:
                 for compartment_name in compartment_names
             }
             # number of parameters, species, and compartments
-            reaction.num_parmeters = len(reaction.parameters)
             reaction.num_species = len(reaction.species)
-            reaction.num_compartments = len(reaction.compartments)
 
             is_volume = [c.is_volume for c in reaction.compartments.values()]
             if len(is_volume) == 1:
@@ -660,6 +656,7 @@ class Model:
                         continue
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
 
+    @deprecated
     def _init_3_5_get_child_mesh_intersections(self):
         """
         Parent mesh functions are used to create submeshes,
@@ -699,6 +696,7 @@ class Model:
                     list(sibling_volume_mesh_pair)
                 )
 
+    @deprecated
     def _init_3_6_get_intersection_submeshes(self):
         """Use dolfin.MeshView.create() to extract submeshes
         of child mesh intersections"""
@@ -1080,6 +1078,8 @@ class Model:
                     linear_wrt_comp,
                 )
             )
+        # FIXME: `has_diffusive_forms` is only in commeted out code of
+        # `initialize_discrete_variational_problem_and_solver`
         for compartment in self.cc:
             diffusive_forms = [
                 f
@@ -1094,9 +1094,6 @@ class Model:
                 compartment.has_diffusive_forms = False
             else:
                 compartment.has_diffusive_forms = True
-
-    def _init_5_3_check_form_units(self):
-        pass
 
     def initialize_discrete_variational_problem_and_solver(self):
         fancy_print(
@@ -1115,29 +1112,7 @@ class Model:
         # respect to all compartments
         self.Fsum_all = sum([f.lhs for f in self.forms])  # Sum of all forms
         if self.config.solver["snes_preassemble_linear_system"]:
-
-            self.Fsum_linear = sum(
-                [
-                    f.lhs
-                    for f in self.forms
-                    if all(z is True for z in f.linear_wrt_comp.values())
-                ]
-            )
-            self.Fsum_nonlinear = sum(
-                [
-                    f.lhs
-                    for f in self.forms
-                    if not all(z is True for z in f.linear_wrt_comp.values())
-                ]
-            )
-
             # debug attempt
-            fancy_print("Getting linear block Jacobian components", format_type="log")
-            _, self.Jblocks_linear, _ = self.get_block_system(self.Fsum_linear, u)
-            fancy_print(
-                "Getting non-linear block Jacobian components", format_type="log"
-            )
-            _, self.Jblocks_nonlinear, _ = self.get_block_system(self.Fsum_nonlinear, u)
             fancy_print(
                 "Getting linear+non-linear block Jacobian components", format_type="log"
             )
@@ -1463,6 +1438,7 @@ class Model:
 
         return Jlist
 
+    @deprecated
     def set_form_scaling(self, compartment_name, scaling=1.0, print_scaling=True):
         for form in self.forms:
             if form.compartment.name == compartment_name:
@@ -1978,6 +1954,7 @@ class Model:
     # Model - Post-processing
     # ===============================================================================
 
+    @deprecated
     def init_solutions_and_plots(self):
         self.data.init_solution_files(self.sc, self.config)
         self.data.store_solution_files(self.u, self.t, self.config)
@@ -1994,6 +1971,7 @@ class Model:
         self.data.output_pickle()
         self.data.output_csv()
 
+    @deprecated
     def plot_solution(self):
         self.data.store_solution_files(self.u, self.t, self.config)
         self.data.plot_parameters(self.config)
@@ -2022,12 +2000,13 @@ class Model:
 
         indices = np.array(V.dofmap().dofs())
         # indices that this CPU owns
-        first_idx, last_idx = V.dofmap().ownership_range()
+        first_idx, _ = V.dofmap().ownership_range()
 
         return (
             indices - first_idx
         )  # subtract index offset to go from global -> local indices
 
+    @deprecated
     def dolfin_get_function_values(self, sp, ukey="u"):
         """
         Returns the values from a sub-function of a VectorFunction. When run
@@ -2043,6 +2022,7 @@ class Model:
 
         return uvec
 
+    @deprecated
     def dolfin_get_function_values_at_point(self, sp, coord):
         """
         Returns the values of a dolfin function at the specified coordinate
@@ -2099,6 +2079,7 @@ class Model:
     def num_active_compartments(self):
         return len(self._active_compartments)
 
+    @deprecated
     def get_mass(
         self, species, units=None, units_final=None, ukey="u", sub_domain=None
     ):
@@ -2235,6 +2216,7 @@ class Model:
     def rounded_decimal(self, x):
         return Decimal(x).quantize(self._base_t)
 
+    @deprecated
     def to_file(self, filename):
         """
         Dump the model to a file
