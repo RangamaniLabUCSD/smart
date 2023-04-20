@@ -8,7 +8,6 @@ import numpy as np
 from cached_property import cached_property
 
 from .common import _fancy_print as fancy_print
-from .deprecation import deprecated
 
 
 class _Mesh:
@@ -96,20 +95,6 @@ class _Mesh:
     def vertices(self):
         return self.dolfin_mesh.coordinates()
 
-    @deprecated
-    def get_entities(self, dimension):
-        "We use this function so that values are cached and we don't need to recompute each time"
-        if dimension == self.dimensionality:
-            return self.cells
-        elif dimension == self.dimensionality - 1:
-            return self.facets
-        elif dimension == self.dimensionality - 2:
-            return self.subfacets
-        elif dimension == 0:
-            return self.vertices
-        else:
-            raise ValueError(f"Unknown entities for given dimension {dimension}")
-
     # Coordinates of entities
     @cached_property
     def cell_coordinates(self):
@@ -130,10 +115,6 @@ class _Mesh:
         elif measure_type == "ds":
             measure = self.ds
         return d.assemble(1 * measure(marker))
-
-    @deprecated
-    def get_mesh_coordinate_bounds(self):
-        return {"min": self.vertices.min(axis=0), "max": self.vertices.max(axis=0)}
 
     # Integration measures
     def get_integration_measures(self):
@@ -359,10 +340,6 @@ class ChildMesh(_Mesh):
         self.intersection_submesh = dict()
         self.intersection_dx = dict()
         self.has_intersection = dict()
-
-    @deprecated
-    def nvolume_sibling_union(self, sibling_mesh):
-        return d.assemble(1 * self.intersection_dx[frozenset({sibling_mesh.id})])
 
     @cached_property
     def map_cell_to_parent_entity(self):

@@ -28,7 +28,6 @@ from . import common
 from .common import _fancy_print as fancy_print
 from .common import pint_quantity_to_unit, pint_unit_to_quantity, sub
 from .config import global_settings as gset
-from .deprecation import deprecated
 from .units import unit
 
 Print = PETSc.Sys.Print
@@ -179,32 +178,11 @@ class ObjectContainer:
     #     for obj in self.values:
     #         setattr(obj, property_name, item)
 
-    @deprecated
-    def get_property(self, property_name):
-        # returns a dict of properties
-        property_dict = {}
-        for key, obj in self.items:
-            property_dict[key] = getattr(obj, property_name)
-        return property_dict
-
     def get_index(self, idx):
         """
         Get an element of the object container ordered dict by referencing its index
         """
         return list(self.values)[idx]
-
-    @deprecated
-    def sort_by(self, attribute: str, order="decreasing"):
-        """Return a list of container's objects sorted by an attribute,
-        and a list of the attribute values"""
-        attribute_values = [getattr(obj, attribute) for obj in self.values]
-        ordering = np.argsort(attribute_values)
-        if order == "decreasing":
-            ordering = np.flip(ordering)
-
-        return [self.get_index(idx) for idx in ordering], [
-            attribute_values[idx] for idx in ordering
-        ]
 
     # ==============================================================================
     # ObjectContainer - Internal methods
@@ -480,58 +458,6 @@ class Parameter(ObjectInstance):
         for key, val in input_dict.items():
             setattr(parameter, key, val)
         parameter.__post_init__()
-        return parameter
-
-    @deprecated
-    @classmethod
-    def from_file(
-        cls, name, sampling_file, unit, group="", notes="", use_preintegration=False
-    ):
-        """
-        ..note::
-            This function is never used in any example, even if it is scattered across the code.
-            It would be good to have some in formation about what one would expect this function
-            to do
-        """
-        "Load in a purely time-dependent scalar function from data"
-        # load in sampling data file
-        sampling_data = np.genfromtxt(sampling_file, dtype="float", delimiter=",")
-        fancy_print(f"Loading in data for parameter {name}", format_type="log")
-
-        # Only t0=0.0
-        if sampling_data[0, 0] != 0.0 or sampling_data.shape[1] != 2:
-            raise NotImplementedError
-        value = sampling_data[0, 1]  # initial value
-
-        # Print("Creating dolfin object for time-dependent parameter %s" % self.name)
-        parameter = cls(
-            name,
-            value,
-            unit,
-            group=group,
-            notes=notes,
-            use_preintegration=use_preintegration,
-        )
-
-        if use_preintegration:
-            # preintegrate sampling data
-            from scipy.integrate import cumtrapz
-
-            int_data = cumtrapz(sampling_data[:, 1], x=sampling_data[:, 0], initial=0)
-            # concatenate time vector
-            preint_sampling_data = _np_smart_hstack(sampling_data[:, 0], int_data)
-            parameter.preint_sampling_data = preint_sampling_data
-
-        # initialize instance
-        parameter.sampling_data = sampling_data
-        parameter.is_time_dependent = True
-        parameter.is_space_dependent = False  # not supported yet
-        parameter.type = "from_file"
-        parameter.__post_init__()
-        fancy_print(
-            f"Time-dependent parameter {name} loaded from file.", format_type="log"
-        )
-
         return parameter
 
     @classmethod
@@ -1132,39 +1058,6 @@ class Reaction(ObjectInstance):
                 eqn = -stoich * parse_expr(self.eqn_r_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
 
-    @deprecated
-    def get_steady_state_equation(self):
-        if len(self.fluxes) == 0:
-            raise ValueError(
-                f"Reaction {self.name} has no fluxes (maybe run model.initialize()?)"
-            )
-        # choose the first flux of reaction, and use its destination species to
-        # find its paired flux (forward-reverse)
-        # it doesnt matter which destination species is chosen since the
-        # flux is always the same
-        r_dest_species = list(self.fluxes.items())[0][1].destination_species
-        r_fluxes = [
-            flux
-            for flux in self.fluxes.values()
-            if flux.destination_species == r_dest_species
-        ]
-        assert len(r_fluxes) in [1, 2]
-        total_flux_equation = 0
-        for flux in r_fluxes:
-            # substitute the parameter and unit scale factor magnitudes
-            flux_equation = flux.equation.subs(
-                {"unit_scale_factor": flux.unit_scale_factor.magnitude}
-            )
-            parameter_value_dict = {
-                parameter.name: parameter.value
-                for parameter in flux.parameters.values()
-            }
-            flux_equation = flux_equation.subs(parameter_value_dict)
-
-            total_flux_equation += flux_equation
-
-        return total_flux_equation
-
 
 class FluxContainer(ObjectContainer):
     def __init__(self):
@@ -1468,30 +1361,6 @@ class Flux(ObjectInstance):
             * self.destination_species.vscalar
             * self.measure
         )
-
-    @deprecated
-    @property
-    def form_dt(self):
-        """-1 factor because terms are defined as if they were on the
-        lhs of the equation F(u;v)=0"""
-        return (
-            d.Constant(-1)
-            * self.equation_lambda_eval(input_type="value")
-            * self.destination_species.v
-            * self.dT
-            * self.measure
-        )
-
-    @deprecated
-    @property
-    def molecules_per_second(self):
-        """Return the sum of the assembled form * -1 in units of molecule/second"""
-        self._molecules_per_second = -1 * (
-            d.assemble(self.scalar_form).sum()
-            * self.equation_units
-            * self.measure_units
-        ).to(unit.molecule / unit.s)
-        return self._molecules_per_second
 
     @property
     def assembled_flux(self):

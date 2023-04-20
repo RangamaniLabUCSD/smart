@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional, Tuple
 import dolfin as d
 import ufl
 
-from .deprecation import deprecated
 
 __all__ = [
     "global_settings",
@@ -182,15 +181,6 @@ class Config:
         Return database of known reactions
         """
         return {"prescribed": "k", "prescribed_linear": "k*u"}
-
-    @deprecated
-    def check_config_validity(self):
-        if self.solver.final_t is None:
-            raise ValueError("Please provide a final time in config.solver")
-        if self.solver.initial_dt is None:
-            raise ValueError(
-                "Please provide an initial time-step size in config.solver"
-            )
 
     def set_logger_levels(self):
         self.loglevel.set_logger_levels()
