@@ -1,12 +1,10 @@
 """
 Model class. Consists of parameters, species, etc. and is used for simulation
 """
-from .deprecation import deprecated
-import pickle
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from decimal import Decimal
-from itertools import chain, combinations
+from itertools import chain
 
 import dolfin as d
 import numpy as np
@@ -96,18 +94,6 @@ class Model:
             input_dict["parent_mesh_filename"], input_dict["parent_mesh_filetype"]
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
-
-    @deprecated
-    def to_pickle(self, filename):
-        with open(filename, "wb") as f:
-            pickle.dump(self.to_dict(), f)
-
-    @deprecated
-    @classmethod
-    def from_pickle(cls, filename):
-        with open(filename, "rb") as f:
-            input_dict = pickle.load(f)
-        return cls.from_dict(input_dict)
 
     def __post_init__(self):
         # # Check that solver_system is valid
@@ -655,66 +641,6 @@ class Model:
                         )
                         continue
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
-
-    @deprecated
-    def _init_3_5_get_child_mesh_intersections(self):
-        """
-        Parent mesh functions are used to create submeshes,
-        which then define measures. There are two reasons we would
-        need a child mesh function:
-        1) Holding values from a list of marker values (for post-processing)
-        2) "intersection_map", a MeshFunction defining a mapping between
-            child mesh cells of n-1 <-> topological dimension.
-
-        This is required for volume-surface-volume flux types,
-        where it may be required to restrict a surface's
-        integration measure for proper construction of the flux
-
-        Gets mappings between sibling meshes of different
-        dimensions (n cell <-> n-1 cell)
-        """
-        fancy_print("Defining child mesh functions", format_type="log")
-
-        for child_mesh in self.parent_mesh.child_meshes.values():
-            # 1) If child mesh has a list of markers, create a
-            # mesh function so it can be used for post-processing
-            if child_mesh.marker_list is not None:
-                child_mesh.init_marker_list_mesh_function()
-        # 2) get intersections with siblings of higher dimension
-        for child_mesh in self.parent_mesh.child_surface_meshes:
-            # intersection with a single volume mesh
-            for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
-                child_mesh.find_surface_to_volumes_mesh_intersection(
-                    [sibling_volume_mesh]
-                )
-            # intersection with a pair of volume meshes
-            sibling_volume_mesh_pairs = combinations(
-                self.parent_mesh.child_volume_meshes, 2
-            )
-            for sibling_volume_mesh_pair in sibling_volume_mesh_pairs:
-                child_mesh.find_surface_to_volumes_mesh_intersection(
-                    list(sibling_volume_mesh_pair)
-                )
-
-    @deprecated
-    def _init_3_6_get_intersection_submeshes(self):
-        """Use dolfin.MeshView.create() to extract submeshes
-        of child mesh intersections"""
-        fancy_print(
-            "Creating submeshes for child mesh intersections using MeshView",
-            format_type="log",
-        )
-        for child_mesh in self.parent_mesh.child_surface_meshes:
-            for mesh_id_set in child_mesh.intersection_map.keys():
-                child_mesh.get_intersection_submesh(mesh_id_set)
-
-        # build mappings
-        for child_mesh in self.parent_mesh.child_surface_meshes:
-            for mesh_id_set in child_mesh.intersection_map.keys():
-                for sibling_volume_mesh in self.parent_mesh.child_volume_meshes:
-                    child_mesh.intersection_submesh[mesh_id_set].build_mapping(
-                        sibling_volume_mesh.dolfin_mesh
-                    )
 
     def _init_3_7_get_integration_measures(self):
         fancy_print(
@@ -1438,12 +1364,6 @@ class Model:
 
         return Jlist
 
-    @deprecated
-    def set_form_scaling(self, compartment_name, scaling=1.0, print_scaling=True):
-        for form in self.forms:
-            if form.compartment.name == compartment_name:
-                form.set_scaling(scaling, print_scaling)
-
     # ===============================================================================
     # Model - Solving
     # Hierarchy:
@@ -1954,15 +1874,6 @@ class Model:
     # Model - Post-processing
     # ===============================================================================
 
-    @deprecated
-    def init_solutions_and_plots(self):
-        self.data.init_solution_files(self.sc, self.config)
-        self.data.store_solution_files(self.u, self.t, self.config)
-        self.data.compute_statistics(
-            self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx
-        )
-        self.data.init_plot(self.config, self.sc, self.fc)
-
     def post_process(self):
         self.data.compute_statistics(
             self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx
@@ -1970,14 +1881,6 @@ class Model:
         self.data.compute_probe_values(self.u, self.sc)
         self.data.output_pickle()
         self.data.output_csv()
-
-    @deprecated
-    def plot_solution(self):
-        self.data.store_solution_files(self.u, self.t, self.config)
-        self.data.plot_parameters(self.config)
-        self.data.plot_solutions(self.config, self.sc)
-        self.data.plot_fluxes(self.config)
-        self.data.plot_solver_status(self.config)
 
     # =========================================================
     # Model - Data manipulation
@@ -2005,33 +1908,6 @@ class Model:
         return (
             indices - first_idx
         )  # subtract index offset to go from global -> local indices
-
-    @deprecated
-    def dolfin_get_function_values(self, sp, ukey="u"):
-        """
-        Returns the values from a sub-function of a VectorFunction. When run
-        in parallel this will *not* double-count overlapping vertices which
-        are shared by multiple CPUs (a simple call to
-        u.sub(species_idx).compute_vertex_values() will double-count...)
-        """
-        # Get the VectorFunction
-        # V           = sp.compartment.V
-        # species_idx = sp.dof_index
-        indices = self.dolfin_get_dof_indices(sp)
-        uvec = sp.u[ukey].vector().get_local()[indices]
-
-        return uvec
-
-    @deprecated
-    def dolfin_get_function_values_at_point(self, sp, coord):
-        """
-        Returns the values of a dolfin function at the specified coordinate
-        :param dolfin.function.function.Function u: Function to extract values from
-        :param tuple coord: tuple of floats indicating where in space to evaluate u e.g. (x,y,z)
-        :param int species_idx: index of species
-        :return: list of values at point. If species_idx is not specified it will return all values
-        """
-        return sp.u["u"](coord)
 
     def dolfin_set_function_values(self, sp, ukey, unew):
         """
@@ -2078,34 +1954,6 @@ class Model:
     @property
     def num_active_compartments(self):
         return len(self._active_compartments)
-
-    @deprecated
-    def get_mass(
-        self, species, units=None, units_final=None, ukey="u", sub_domain=None
-    ):
-        u_units = species.concentration_units
-        dx_units = species.compartment.measure_units
-
-        if units_final is not None:
-            units_scale = (
-                (1 * u_units * dx_units / units_final).to(unit.dimensionless)
-            ).magnitude
-        elif units is not None:
-            units_scale = ((1 * u_units / units).to(unit.dimensionless)).magnitude
-        else:
-            units_scale = 1
-
-        if sub_domain is not None:
-            assert isinstance(sub_domain, int)
-            return d.assemble(
-                species.u["u"]
-                * units_scale
-                * species.compartment.mesh.dx_uncombined[sub_domain]
-            )
-        else:
-            return d.assemble(
-                species.u["u"] * units_scale * species.compartment.mesh.dx
-            )
 
     def get_compartment_residual(self, compartment, norm=None):
         res_vec = sum(
@@ -2215,22 +2063,3 @@ class Model:
 
     def rounded_decimal(self, x):
         return Decimal(x).quantize(self._base_t)
-
-    @deprecated
-    def to_file(self, filename):
-        """
-        Dump the model to a file
-        """
-        if self.mpi_am_i_root:
-            parameters = self.pc.to_dicts()
-            species = self.sc.to_dicts()
-            compartments = self.cc.to_dicts()
-            reactions = self.rc.to_dicts()
-            model_dict = {
-                "parameters": parameters,
-                "species": species,
-                "compartments": compartments,
-                "reactions": reactions,
-            }
-            with open(filename, "wb") as f:
-                pickle.dump(model_dict, f)
