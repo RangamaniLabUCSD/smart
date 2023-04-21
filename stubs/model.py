@@ -2166,14 +2166,14 @@ class Model:
                 tempdict[key] = getattr(self.parent_mesh, key)
 
             tempseries = pandas.Series(tempdict, name=self.parent_mesh.name)
-            df = df.append(tempseries, ignore_index=True)
+            df = pandas.concat([df, tempseries.to_frame().T], ignore_index=True)
             # child meshes
             for child_mesh in self.child_meshes.values():
                 tempdict = odict()
                 for key in properties_to_print:
                     tempdict[key] = getattr(child_mesh, key)
                 tempseries = pandas.Series(tempdict, name=child_mesh.name)
-                df = df.append(tempseries, ignore_index=True)
+                df = pandas.concat([df, tempseries.to_frame().T], ignore_index=True)
             # intersection meshes
             for child_mesh in self.parent_mesh.child_surface_meshes:
                 for mesh_id_pair in child_mesh.intersection_map.keys():
@@ -2209,7 +2209,7 @@ class Model:
                         mesh_id_pair
                     ].num_vertices()
                     tempseries = pandas.Series(tempdict, name=intersection_mesh_name)
-                    df = df.append(tempseries, ignore_index=True)
+                    df = pandas.concat([df, tempseries.to_frame().T], ignore_index=True)
 
             print(tabulate(df, headers="keys", tablefmt=tablefmt))
 
