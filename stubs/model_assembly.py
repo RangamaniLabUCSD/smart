@@ -200,15 +200,27 @@ class ObjectContainer:
             if properties_to_print and "idx" not in properties_to_print:
                 properties_to_print.insert(0, "idx")
             for idx, (name, instance) in enumerate(self.items):
-                df = df.append(
-                    instance.get_pandas_series(
-                        properties_to_print=properties_to_print, idx=idx
-                    )
+                df = pandas.concat(
+                    [
+                        df,
+                        instance.get_pandas_series(
+                            properties_to_print=properties_to_print, idx=idx
+                        )
+                        .to_frame()
+                        .T,
+                    ]
                 )
         else:
             for idx, (name, instance) in enumerate(self.items):
-                df = df.append(
-                    instance.get_pandas_series(properties_to_print=properties_to_print)
+                df = pandas.concat(
+                    [
+                        df,
+                        instance.get_pandas_series(
+                            properties_to_print=properties_to_print
+                        )
+                        .to_frame()
+                        .T,
+                    ]
                 )
         # # sometimes types are recast. change entries into their original types
         # for dtypeName, dtype in self.dtypes.items():
