@@ -35,17 +35,12 @@ for dt in [0.012, 0.01, 0.008, 0.006, 0.004, 0.002]:
         name="cyto",
     )
 
-    model = stubs.model_refactor.ModelRefactor(
-        pc, sc, cc, rc, config, solver_system, cyto_mesh
-    )
+    model = stubs.model_refactor.ModelRefactor(pc, sc, cc, rc, config, solver_system, cyto_mesh)
     model.initialize()
 
     # solve system
     model.solve()
     errors.append(
-        np.max(
-            model.u["cyto"]["u"].vector().get_local()
-            - (lambda t: 10 * np.exp(-5 * t))(model.t)
-        )
+        np.max(model.u["cyto"]["u"].vector().get_local() - (lambda t: 10 * np.exp(-5 * t))(model.t))
         / (lambda t: 10 * np.exp(-5 * t))(model.t)
     )

@@ -138,17 +138,13 @@ def test_stubs_model_init(model):
         pidx = pm_mesh.map_cell_to_parent_entity[idx]
         b = parent_mesh.facets[pidx]
         assert (a == b).all()
-        assert (
-            pm_mesh.cell_coordinates[idx] == parent_mesh.facet_coordinates[pidx]
-        ).all()
+        assert (pm_mesh.cell_coordinates[idx] == parent_mesh.facet_coordinates[pidx]).all()
 
     cyto_mesh = model.child_meshes["cytosol"]
     for idx in test_indices:
         # test child facet -> parent entity mapping
         pidx = cyto_mesh.map_facet_to_parent_entity[idx]
-        assert all(
-            cyto_mesh.map_facet_to_parent_vertex[idx, :] == parent_mesh.facets[pidx, :]
-        )
+        assert all(cyto_mesh.map_facet_to_parent_vertex[idx, :] == parent_mesh.facets[pidx, :])
 
     # check volumes and surfaces
     assert math.isclose(parent_mesh.get_nvolume("dx"), 16.0)

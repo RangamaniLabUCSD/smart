@@ -48,6 +48,4 @@ def json_to_ObjectContainer(json_str, data_type=None):
     elif data_type in ["reactions", "reaction", "r", "rxn"]:
         return ReactionContainer(df)
     else:
-        raise Exception(
-            "I don't know what kind of ObjectContainer this .json file should be"
-        )
+        raise Exception("I don't know what kind of ObjectContainer this .json file should be")
