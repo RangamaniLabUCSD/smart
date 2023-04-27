@@ -134,9 +134,6 @@ class Model:
         # Functional forms
         self.forms = FormContainer()
 
-        # Set loggers to logging levels defined in config
-        # self.config.set_logger_levels()
-
         # MPI
         self.mpi_comm_world = d.MPI.comm_world
         self.mpi_rank = self.mpi_comm_world.rank
@@ -192,7 +189,6 @@ class Model:
         self.dT = d.Constant(self.dt)
         self.tvec = [self.t]
         self.dtvec = [self.dt]
-        # self.config.set_logger_levels()
 
         self._init_1()
         self._init_2()
@@ -1221,7 +1217,6 @@ class Model:
                     else:
                         Fs.append(d.Form(Fsub))
                 Flist.append(Fs)
-        # logger.warning("[problem] create list of residual forms OK", format_type='log')
 
         # Decompose J blocks into subforms based on domain of integration
         Jlist = list()
@@ -1294,7 +1289,7 @@ class Model:
                     else:
                         Fs.append(d.Form(Fsub))
                 Flist.append(Fs)
-        # fancy_print("[problem] create list of residual forms OK", format_type='log')
+
         return Flist
 
     def get_block_J(self, Fsum, u):
