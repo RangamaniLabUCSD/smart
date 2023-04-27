@@ -5,9 +5,10 @@ Model class contains functions to efficiently solve a system
 import dataclasses
 import numbers
 import sys
+import logging
 from collections import OrderedDict as odict
 from dataclasses import dataclass
-from pprint import pprint
+from pprint import pformat
 from textwrap import wrap
 from typing import Any, Union
 
@@ -15,7 +16,6 @@ import dolfin as d
 import numpy as np
 import numpy.typing as npt
 import pandas
-import petsc4py.PETSc as PETSc
 import pint
 import sympy as sym
 import ufl
@@ -25,12 +25,10 @@ from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
 
 from . import common
-from .common import _fancy_print as fancy_print
 from .common import pint_quantity_to_unit, pint_unit_to_quantity, sub
 from .config import global_settings as gset
 from .units import unit
 
-Print = PETSc.Sys.Print
 
 __all__ = [
     "empty_sbmodel",
@@ -46,6 +44,8 @@ comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
+
+logger = logging.getLogger(__name__)
 
 
 def _np_smart_hstack(
@@ -203,9 +203,7 @@ class ObjectContainer:
                 df = pandas.concat(
                     [
                         df,
-                        instance.get_pandas_series(
-                            properties_to_print=properties_to_print, idx=idx
-                        )
+                        instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx)
                         .to_frame()
                         .T,
                     ]
@@ -215,9 +213,7 @@ class ObjectContainer:
                 df = pandas.concat(
                     [
                         df,
-                        instance.get_pandas_series(
-                            properties_to_print=properties_to_print
-                        )
+                        instance.get_pandas_series(properties_to_print=properties_to_print)
                         .to_frame()
                         .T,
                     ]
@@ -259,7 +255,7 @@ class ObjectContainer:
             return df
         else:
             with pandas.option_context("max_colwidth", 1000):
-                print(df.to_latex(escape=False, longtable=True, index=False))
+                logger.info(df.to_latex(escape=False, longtable=True, index=False))
 
     def get_pandas_dataframe_formatted(
         self, properties_to_print=None, max_col_width=50, sig_figs=2
@@ -270,9 +266,7 @@ class ObjectContainer:
                 properties_to_print = [properties_to_print]
         elif hasattr(self, "properties_to_print"):
             properties_to_print = self.properties_to_print
-        df = self.get_pandas_dataframe(
-            properties_to_print=properties_to_print, include_idx=False
-        )
+        df = self.get_pandas_dataframe(properties_to_print=properties_to_print, include_idx=False)
         if properties_to_print:
             df = df[properties_to_print]
 
@@ -313,19 +307,15 @@ class ObjectContainer:
 
         # print to file
         if filename is None:
-            print(tabulate(df, headers="keys", tablefmt=tablefmt))
+            logger.info(tabulate(df, headers="keys", tablefmt=tablefmt))
         else:
-            original_stdout = (
-                sys.stdout
-            )  # Save a reference to the original standard output
-            with open(filename, "w") as f:
+            original_stdout = sys.stdout  # Save a reference to the original standard output
+            with open(filename, "w") as f:  # TODO: Add this to logging
                 # Change the standard output to the file we created.
                 sys.stdout = f
                 print("This message will be written to a file.")
                 print(tabulate(df, headers="keys", tablefmt=tablefmt))  # ,
-                sys.stdout = (
-                    original_stdout  # Reset the standard output to its original value
-                )
+                sys.stdout = original_stdout  # Reset the standard output to its original value
 
     def __str__(self):
         df = self.get_pandas_dataframe(properties_to_print=self.properties_to_print)
@@ -387,7 +377,7 @@ class ObjectInstance:
 
     def print(self, properties_to_print=None):
         if rank == root:
-            print("Name: " + self.name)
+            logger.info("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
             if properties_to_print:
                 dict_to_print = dict(
@@ -399,9 +389,7 @@ class ObjectInstance:
                 )
             else:
                 dict_to_print = self.__dict__
-            pprint(dict_to_print, width=240)
-        else:
-            pass
+                logger.info(pformat(dict_to_print, width=240))
 
 
 # ==============================================================================
@@ -531,9 +519,9 @@ class Parameter(ObjectInstance):
         # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
         parameter.type = "expression"
         parameter.__post_init__()
-        fancy_print(
+        logger.debug(
             f"Time-dependent parameter {name} evaluated from expression.",
-            format_type="log",
+            extra=dict(format_type="log"),
         )
 
         return parameter
@@ -545,10 +533,10 @@ class Parameter(ObjectInstance):
             self.is_space_dependent = False
 
         if self.use_preintegration:
-            fancy_print(
+            logger.warning(
                 f"Warning! Pre-integrating parameter {self.name}. Make sure that "
                 f"expressions {self.name} appears in have no other time-dependent variables.",
-                format_type="warning",
+                extra=dict(format_type="warning"),
             )
 
         attributes = [
@@ -590,10 +578,7 @@ class Parameter(ObjectInstance):
     def check_validity(self):
         if self.is_time_dependent:
             if all(
-                [
-                    x in ("", None)
-                    for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]
-                ]
+                [x in ("", None) for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]
             ):
                 raise ValueError(
                     f"Parameter {self.name} is marked as time dependent "
@@ -644,7 +629,7 @@ class SpeciesContainer(ObjectContainer):
             return df
         else:
             with pandas.option_context("max_colwidth", 1000):
-                print(df.to_latex(escape=False, longtable=True, index=False))
+                logger.info(df.to_latex(escape=False, longtable=True, index=False))
 
 
 @dataclass
@@ -699,13 +684,11 @@ class Species(ObjectInstance):
             free_symbols = [str(x) for x in sym_expr.free_symbols]
             if not {"x[0]", "x[1]", "x[2]"}.issuperset(free_symbols):
                 raise NotImplementedError
-            fancy_print(
+            logger.debug(
                 f"Creating dolfin object for space-dependent initial condition {self.name}",
-                format_type="log",
+                extra=dict(format_type="log"),
             )
-            self.initial_condition_expression = d.Expression(
-                sym.printing.ccode(sym_expr), degree=1
-            )
+            self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), degree=1)
         else:
             raise TypeError("initial_condition must be a float or string.")
 
@@ -871,9 +854,7 @@ class Compartment(ObjectInstance):
     @property
     def nvolume(self):
         "nvolume with proper units"
-        self._nvolume = (
-            self.mesh.nvolume * self.compartment_units**self.dimensionality
-        )
+        self._nvolume = self.mesh.nvolume * self.compartment_units**self.dimensionality
         return self._nvolume
 
     @property
@@ -971,11 +952,7 @@ class Reaction(ObjectInstance):
         self.check_validity()
         self.fluxes = dict()
 
-        if (
-            self.eqn_f_str != ""
-            or self.eqn_r_str != ""
-            and self.reaction_type == "mass_action"
-        ):
+        if self.eqn_f_str != "" or self.eqn_r_str != "" and self.reaction_type == "mass_action":
             self.reaction_type = "custom"
 
         # Finish initializing the species map
@@ -991,25 +968,16 @@ class Reaction(ObjectInstance):
     def check_validity(self):
         # Type checking
         if not all([isinstance(x, str) for x in self.lhs]):
-            raise TypeError(
-                f"Reaction {self.name} requires a list of strings as input for lhs."
-            )
+            raise TypeError(f"Reaction {self.name} requires a list of strings as input for lhs.")
         if not all([isinstance(x, str) for x in self.rhs]):
-            raise TypeError(
-                f"Reaction {self.name} requires a list of strings as input for rhs."
-            )
-        if not all(
-            [type(k) == str and type(v) == str for (k, v) in self.param_map.items()]
-        ):
+            raise TypeError(f"Reaction {self.name} requires a list of strings as input for rhs.")
+        if not all([type(k) == str and type(v) == str for (k, v) in self.param_map.items()]):
             raise TypeError(
                 f"Reaction {self.name} requires a dict of str:str as input for param_map."
             )
         if self.species_map:
             if not all(
-                [
-                    isinstance(k, str) and isinstance(v, str)
-                    for (k, v) in self.species_map.items()
-                ]
+                [isinstance(k, str) and isinstance(v, str) for (k, v) in self.species_map.items()]
             ):
                 raise TypeError(
                     f"Reaction {self.name} requires a dict of str:str as input for species_map."
@@ -1035,27 +1003,23 @@ class Reaction(ObjectInstance):
         return str(reaction_expr)
 
     def reaction_to_fluxes(self):
-        fancy_print(f"Getting fluxes for reaction {self.name}", format_type="log")
+        logger.debug(f"Getting fluxes for reaction {self.name}", extra=dict(format_type="log"))
         # set of 2-tuples. (species_name, signed stoichiometry)
         self.species_stoich = {
-            (species_name, -1 * self.lhs.count(species_name))
-            for species_name in self.lhs
+            (species_name, -1 * self.lhs.count(species_name)) for species_name in self.lhs
         }
         self.species_stoich.update(
-            {
-                (species_name, 1 * self.rhs.count(species_name))
-                for species_name in self.rhs
-            }
+            {(species_name, 1 * self.rhs.count(species_name)) for species_name in self.rhs}
         )
         # convert to dict
         self.species_stoich = dict(self.species_stoich)
         # combine with user-defined flux scaling
         for species_name in self.species_stoich.keys():
             if self.flux_scaling[species_name] is not None:
-                fancy_print(
+                logger.debug(
                     f"Flux {self.name}: stoichiometry/flux for species {species_name} "
                     f"scaled by {self.flux_scaling[species_name]}",
-                    format_type="log",
+                    extra=dict(format_type="log"),
                 )
                 self.species_stoich[species_name] *= self.flux_scaling[species_name]
 
@@ -1142,12 +1106,8 @@ class Flux(ObjectInstance):
         variables = {str(x) for x in self.equation.free_symbols}
         all_params = self.reaction.parameters
         all_species = self.reaction.species
-        self.parameters = {
-            x: all_params[x] for x in variables.intersection(all_params.keys())
-        }
-        self.species = {
-            x: all_species[x] for x in variables.intersection(all_species.keys())
-        }
+        self.parameters = {x: all_params[x] for x in variables.intersection(all_params.keys())}
+        self.species = {x: all_species[x] for x in variables.intersection(all_species.keys())}
         self.compartments = self.reaction.compartments
 
     def _post_init_get_flux_topology(self):
@@ -1226,9 +1186,7 @@ class Flux(ObjectInstance):
                 1.0 * concentration_units / compartment_units * diffusion_units
             )  # ~D*du/dn
         else:
-            self._expected_flux_units = (
-                1.0 * concentration_units / unit.s
-            )  # rhs term. ~du/dt
+            self._expected_flux_units = 1.0 * concentration_units / unit.s  # rhs term. ~du/dt
 
         # Use the uninitialized unit_scale_factor to get the actual units
         # this is redundant if called by __post_init__
@@ -1236,11 +1194,8 @@ class Flux(ObjectInstance):
         initial_equation_units = self.equation_lambda_eval("units")
 
         # If unit dimensionality is not correct a parameter likely needs to be adjusted
-        if (
-            self._expected_flux_units.dimensionality
-            != initial_equation_units.dimensionality
-        ):
-            print(self.unit_scale_factor)
+        if self._expected_flux_units.dimensionality != initial_equation_units.dimensionality:
+            logger.info(self.unit_scale_factor)
             raise ValueError(
                 f"Flux {self.name} has wrong units (cannot be converted) "
                 f"- expected {self._expected_flux_units}, got {initial_equation_units}."
@@ -1250,8 +1205,7 @@ class Flux(ObjectInstance):
             # Define new unit_scale_factor, and update equation_units
             # by re-evaluating the lambda expression
             self.unit_scale_factor = (
-                initial_equation_units.to(self._expected_flux_units)
-                / initial_equation_units
+                initial_equation_units.to(self._expected_flux_units) / initial_equation_units
             )
             self.equation_units = self.equation_lambda_eval(
                 "units"
@@ -1268,16 +1222,14 @@ class Flux(ObjectInstance):
             if self.unit_scale_factor.magnitude == 1.0:
                 return
 
-            fancy_print(
+            logger.debug(
                 f"Flux {self.name} scaled by {self.unit_scale_factor}",
-                new_lines=[1, 0],
-                format_type="log",
+                extra=dict(new_lines=[1, 0], format_type="log"),
             )
-            fancy_print(f"Old flux units: {self.equation_units}", format_type="log")
-            fancy_print(
+            logger.debug(f"Old flux units: {self.equation_units}", extra=dict(format_type="log"))
+            logger.debug(
                 f"New flux units: {self._expected_flux_units}",
-                new_lines=[0, 1],
-                format_type="log",
+                extra=dict(new_lines=[0, 1], format_type="log"),
             )
             print("")
 
@@ -1307,13 +1259,11 @@ class Flux(ObjectInstance):
             "volume-surface_to_volume",
         ]:
             # intersection of this surface with boundary of source volume(s)
-            print(
+            logger.debug(
                 "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
             )
             self.measure = self.surface.mesh.dx
-            self.measure_units = (
-                self.surface.compartment_units**self.surface.dimensionality
-            )
+            self.measure_units = self.surface.compartment_units**self.surface.dimensionality
 
     # We define this as a property so that it is automatically updated
 
@@ -1380,15 +1330,11 @@ class Flux(ObjectInstance):
         units (e.g. volumetric concentration is being used on a 2d domain)"""
         try:
             self._assembled_flux = -1 * (
-                d.assemble(self.scalar_form).sum()
-                * self.equation_units
-                * self.measure_units
+                d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units
             ).to(unit.molecule / unit.s)
         except Exception:
             self._assembled_flux = -1 * (
-                d.assemble(self.scalar_form).sum()
-                * self.equation_units
-                * self.measure_units
+                d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units
             )
         return self._assembled_flux
 
@@ -1450,9 +1396,9 @@ class Form(ObjectInstance):
         self.form_scaling = form_scaling
         self.form_scaling_dolfin_constant.assign(self.form_scaling)
         if print_scaling:
-            fancy_print(
+            logger.info(
                 f"Form scaling for form {self.name} set to {self.form_scaling}",
-                format_type="log",
+                extra=dict(format_type="log"),
             )
 
     @property

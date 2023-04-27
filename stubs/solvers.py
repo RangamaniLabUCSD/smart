@@ -1,8 +1,11 @@
 # # Using PETSc to solve monolithic problem
+import logging
 import dolfin as d
 import os
 import petsc4py.PETSc as p
-from .common import _fancy_print as fancy_print
+
+
+logger = logging.getLogger(__name__)
 
 
 class stubsSNESProblem:
@@ -115,9 +118,7 @@ class stubsSNESProblem:
         # Get local_to_global maps (len=number of owned dofs + ghost dofs) and
         # dofs (len=number of owned dofs)
         self.dofs = [V.dofmap().dofs for V in self.W]
-        self.lgmaps = [
-            V.dofmap().tabulate_local_to_global_dofs().astype("int32") for V in self.W
-        ]
+        self.lgmaps = [V.dofmap().tabulate_local_to_global_dofs().astype("int32") for V in self.W]
         self.block_sizes = [max(V.num_sub_spaces(), 1) for V in self.W]
 
         self.block_indices = [
@@ -175,9 +176,9 @@ class stubsSNESProblem:
                     self.empty_forms.append((i, j))
         if len(self.empty_forms) > 0:
             if self.print_assembly:
-                fancy_print(
+                logger.debug(
                     f"Forms {self.empty_forms} are empty. Skipping assembly.",
-                    format_type="data",
+                    extra=dict(format_type="data"),
                 )
 
     def init_petsc_matnest(self):
@@ -194,9 +195,9 @@ class stubsSNESProblem:
                         # The only reason this is empty is because the whole form is empty
                         assert len(Jforms[ij]) == 1
                         if self.print_assembly:
-                            fancy_print(
+                            logger.debug(
                                 f"{self.Jijk_name(i,j,k=None)} is empty",
-                                format_type="log",
+                                extra=dict(format_type="log"),
                             )
                         continue
                     else:
@@ -206,11 +207,11 @@ class stubsSNESProblem:
                     if self.tensors[ij][k] is None:
                         self.tensors[ij][k] = d.PETScMatrix(self.comm)
 
-                    fancy_print(
+                    logger.debug(
                         f"cpu {self.rank}: (ijk)={(i,j,k)} "
                         f"({self.local_sizes[i]}, {self.local_sizes[j]}, "
                         f"{self.global_sizes[i]}, {self.global_sizes[j]})",
-                        format_type="log",
+                        extra=dict(format_type="log"),
                     )
 
                     d.assemble_mixed(Jforms[ij][k], tensor=self.tensors[ij][k])
@@ -218,16 +219,14 @@ class stubsSNESProblem:
                 if non_empty_forms == 0:
                     # If all forms are empty, we don't need to assemble. Initialize to zero matrix
                     if self.print_assembly:
-                        fancy_print(
+                        logger.debug(
                             f"{self.Jijk_name(i,j)} is empty - initializing as "
                             f"empty PETSc Matrix with local size {self.local_sizes[i]}, "
                             f"{self.local_sizes[j]} "
                             f"and global size {self.global_sizes[i]}, {self.global_sizes[j]}",
-                            format_type="log",
+                            extra=dict(format_type="log"),
                         )
-                    self.tensors[ij][0] = d.PETScMatrix(
-                        self.init_petsc_matrix(i, j, assemble=True)
-                    )
+                    self.tensors[ij][0] = d.PETScMatrix(self.init_petsc_matrix(i, j, assemble=True))
                     Jpetsc.append(self.tensors[ij][0])
                 elif non_empty_forms == 1:
                     Jpetsc.append(self.tensors[ij][0])
@@ -253,7 +252,7 @@ class stubsSNESProblem:
                     Jpetsc.append(d.PETScMatrix(Jsum))
 
         for j in Jpetsc:
-            print(type(j))
+            logger.debug(type(j))
 
         if self.is_single_domain:
             # We can't use a nest matrix
@@ -262,7 +261,7 @@ class stubsSNESProblem:
             self.Jpetsc_nest = d.PETScNestMatrix(Jpetsc).mat()
             # self.Jpetsc_nest = self.d_to_p(d.PETScNestMatrix(Jpetsc))
         self.Jpetsc_nest.assemble()
-        print(f"Jpetsc_nest assembled, size = {self.Jpetsc_nest.size}")
+        logger.info(f"Jpetsc_nest assembled, size = {self.Jpetsc_nest.size}")
 
     def d_to_p(self, dolfin_matrix):
         return d.as_backend_type(dolfin_matrix).mat()
@@ -270,7 +269,7 @@ class stubsSNESProblem:
     def init_petsc_vecnest(self):
         dim = self.dim
         if self.print_assembly:
-            fancy_print("Initializing block residual vector", format_type="assembly")
+            logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
 
         Fpetsc = []
         for j in range(dim):
@@ -278,9 +277,9 @@ class stubsSNESProblem:
             for k in range(len(self.Fforms[j])):
                 if self.Fforms[j][k].function_space(0) is None:
                     if self.print_assembly:
-                        fancy_print(
+                        logger.info(
                             f"{self.Fjk_name(j,k)}] has no function space",
-                            format_type="log",
+                            extra=dict(format_type="log"),
                         )
                     continue
 
@@ -295,11 +294,11 @@ class stubsSNESProblem:
 
             if Fsum is None:
                 if self.print_assembly:
-                    fancy_print(
+                    logger.info(
                         f"{self.Fjk_name(j)} is empty - initializing as empty PETSc "
                         f"Vector with local size {self.local_sizes[j]} "
                         f"and global size {self.global_sizes[j]}",
-                        format_type="log",
+                        extra=dict(format_type="log"),
                     )
                 Fsum = d.PETScVector(self.init_petsc_vector(j, assemble=True))
 
@@ -323,7 +322,7 @@ class stubsSNESProblem:
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
         if self.print_assembly:
-            fancy_print("Assembling block Jacobian", format_type="assembly")
+            logger.info("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
@@ -346,8 +345,9 @@ class stubsSNESProblem:
                 Jij_petsc.zeroEntries()  # this maintains sparse (non-zeros) structure
 
                 if self.print_assembly:
-                    fancy_print(
-                        f"Assembling {self.Jijk_name(i,j)}:", format_type="assembly_sub"
+                    logger.debug(
+                        f"Assembling {self.Jijk_name(i,j)}:",
+                        extra=dict(format_type="assembly_sub"),
                     )
 
                 Jmats = []
@@ -356,9 +356,9 @@ class stubsSNESProblem:
                     # Check for empty form
                     if Jform[ij][k].function_space(0) is None:
                         if self.print_assembly:
-                            fancy_print(
+                            logger.debug(
                                 f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.",
-                                format_type="data",
+                                extra=dict(format_type="data"),
                             )
                         continue
 
@@ -370,14 +370,12 @@ class stubsSNESProblem:
                         self.tensors[ij][k] = d.PETScMatrix(self.comm)
                     else:
                         if self.print_assembly:
-                            fancy_print(
+                            logger.debug(
                                 f"Reusing tensor for {self.Jijk_name(i,j,k)}",
-                                format_type="data",
+                                extra=dict(format_type="data"),
                             )
                     # Assemble and append to the list of subforms
-                    Jmats.append(
-                        d.assemble_mixed(Jform[ij][k], tensor=self.tensors[ij][k])
-                    )
+                    Jmats.append(d.assemble_mixed(Jform[ij][k], tensor=self.tensors[ij][k]))
                     # Print some useful info on assembled Jijk
                     self.print_Jijk_info(i, j, k, tensor=self.tensors[ij][k].mat())
 
@@ -400,7 +398,7 @@ class stubsSNESProblem:
     def assemble_Fnest(self, Fnest):
         dim = self.dim
         if self.print_assembly:
-            fancy_print("Assembling block residual vector", format_type="assembly")
+            logger.info("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
 
         if self.is_single_domain:
@@ -506,9 +504,7 @@ class stubsSNESProblem:
                 f"/du[{self.active_compartment_names[j]}]"
             )
         else:
-            domain_name = self.mesh_id_to_name[
-                self.Jforms_all[ij][k].function_space(0).mesh().id()
-            ]
+            domain_name = self.mesh_id_to_name[self.Jforms_all[ij][k].function_space(0).mesh().id()]
             return (
                 f"J{i}{j}{k} = dF[{self.active_compartment_names[i]}]"
                 f"/du[{self.active_compartment_names[j]}] (domain={domain_name})"
@@ -518,12 +514,8 @@ class stubsSNESProblem:
         if k is None:
             return f"F{j} = F[{self.active_compartment_names[j]}]"
         else:
-            domain_name = self.mesh_id_to_name[
-                self.Fforms[j][k].function_space(0).mesh().id()
-            ]
-            return (
-                f"F{j} = F[{self.active_compartment_names[j]}] (domain={domain_name})"
-            )
+            domain_name = self.mesh_id_to_name[self.Fforms[j][k].function_space(0).mesh().id()]
+            return f"F{j} = F[{self.active_compartment_names[j]}] (domain={domain_name})"
 
     def print_Jijk_info(self, i, j, k=None, tensor=None):
         if not self.print_assembly:
@@ -540,19 +532,19 @@ class stubsSNESProblem:
             f"mallocs={int(info['mallocs']): <4}\n"
         )
         if k is None:
-            fancy_print(
+            logger.info(
                 f"Assembled form {self.Jijk_name(i,j,k)}:\n{info_str}",
-                format_type="data",
+                extra=dict(format_type="data"),
             )
         else:
-            fancy_print(
+            logger.info(
                 f"Assembled subform {self.Jijk_name(i,j,k)}:\n{info_str}",
-                format_type="data",
+                extra=dict(format_type="data"),
             )
         if info["nz_unneeded"] > 0:
-            fancy_print(
+            logger.warning(
                 f"WARNING: {info['nz_unneeded']} nonzero entries are unneeded",
-                format_type="warning",
+                extra=dict(format_type="warning"),
             )
 
     def get_csr_matrix(self, i, j):

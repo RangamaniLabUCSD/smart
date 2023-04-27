@@ -16,6 +16,7 @@
 
 # +
 import os
+import logging
 
 import dolfin as d
 import sympy as sym
@@ -30,6 +31,8 @@ from stubs.model_assembly import (
 )
 
 # -
+
+logging.getLogger("stubs").setLevel(logging.INFO)
 
 # First, we define the various units for the inputs
 
@@ -98,9 +101,7 @@ def make_model():
 
     # Degradation of B in the cytosol
     k2f = Parameter("k2f", 10, 1 / sec)
-    r2 = Reaction(
-        "r2", ["B"], [], param_map={"on": "k2f"}, reaction_type="mass_action_forward"
-    )
+    r2 = Reaction("r2", ["B"], [], param_map={"on": "k2f"}, reaction_type="mass_action_forward")
 
     # Activating receptors on ERm with B
     k3f = Parameter("k3f", 100, 1 / (uM * sec))
@@ -168,9 +169,7 @@ model.initialize_discrete_variational_problem_and_solver()
 results = dict()
 os.makedirs("results", exist_ok=True)
 for species_name, species in model.sc.items:
-    results[species_name] = d.XDMFFile(
-        model.mpi_comm_world, f"results/{species_name}.xdmf"
-    )
+    results[species_name] = d.XDMFFile(model.mpi_comm_world, f"results/{species_name}.xdmf")
     results[species_name].parameters["flush_output"] = True
     results[species_name].write(model.sc[species_name].u["u"], model.t)
 
