@@ -151,6 +151,9 @@ def format_type_to_options(format_type: FormatType):
             new_lines=(0, 0),
             left_justify=True,
         )
+    else:
+        msg = f"Invalid format type {format_type}"
+        raise ValueError(msg)
 
 
 def format_message(title_text, format_type: FormatOption):
