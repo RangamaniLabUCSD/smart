@@ -59,7 +59,24 @@ class FormatOption(NamedTuple):
     left_justify: bool = False
 
 
-def format_type_to_options(format_type: FormatType):
+def format_type_to_options(format_type: FormatType) -> FormatOption:
+    """Take a format type and return the corresponding options
+
+    Parameters
+    ----------
+    format_type : FormatType
+        The format type
+
+    Returns
+    -------
+    FormatOption
+        The options
+
+    Raises
+    ------
+    ValueError
+        If provided format type does not exist.
+    """
     if FormatType[format_type] == FormatType.default:
         return FormatOption()
     elif FormatType[format_type] == FormatType.title:
@@ -156,7 +173,21 @@ def format_type_to_options(format_type: FormatType):
         raise ValueError(msg)
 
 
-def format_message(title_text, format_type: FormatOption):
+def format_message(title_text: str, format_option: FormatOption) -> Tuple[str, str]:
+    """Format message according to the format options
+
+    Parameters
+    ----------
+    title_text : str
+        The message to be formatted
+    format_option : FormatOption
+        The options for formatting
+
+    Returns
+    -------
+    Tuple[str, str]
+        (banners, formatted text)
+    """
     min_buffer_size = 5
     terminal_width = 120
     buffer_size = max(
@@ -167,38 +198,47 @@ def format_message(title_text, format_type: FormatOption):
 
     # color/stylize buffer, text, and banner
     def buffer(buffer_size):
-        return colored(format_type.filler_char * buffer_size, format_type.buffer_color)
+        return colored(format_option.filler_char * buffer_size, format_option.buffer_color)
 
-    if format_type.left_justify:
+    if format_option.left_justify:
         title_str = (
-            f"{colored(title_text, format_type.text_color)} {buffer(buffer_size*2+1+parity)}"
+            f"{colored(title_text, format_option.text_color)} {buffer(buffer_size*2+1+parity)}"
         )
     else:
         title_str = (
-            f"{buffer(buffer_size)} {colored(title_text, format_type.text_color)} "
+            f"{buffer(buffer_size)} {colored(title_text, format_option.text_color)} "
             f"{buffer(buffer_size+parity)}"
         )
-    banner = colored(format_type.filler_char * (title_str_len + parity), format_type.buffer_color)
+    banner = colored(
+        format_option.filler_char * (title_str_len + parity), format_option.buffer_color
+    )
     return banner, title_str
 
 
 class FancyFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        # Set the rank attribute with is a parameter in the `fancy_format``
         record.rank = f"CPU {rank}: " if size > 1 else ""
-        format_type = format_type_to_options(getattr(record, "format_type", FormatType.default))
 
+        # Extract the format options. Here we expect that `format_type` is provided
+        # as part of the `extra` dictionary passed to the logger
+        format_option = format_type_to_options(getattr(record, "format_type", FormatType.default))
+
+        # Create the formatter
         formatter = logging.Formatter(fancy_format)
-
+        # Format the record
         out = formatter.format(record)
-        banner, formatted_out = format_message(out, format_type=format_type)
+        # Now create banners and formatted text
+        banner, formatted_out = format_message(out, format_option=format_option)
 
-        banners = f"\n{banner}" * format_type.num_banners + "\n"
-        prefix = "\n" * format_type.new_lines[0]
+        # Finally construct the output with banners and new lines
+        banners = f"\n{banner}" * format_option.num_banners + "\n"
+        prefix = "\n" * format_option.new_lines[0]
         postfix = ""
-        if format_type.num_banners > 0:
+        if format_option.num_banners > 0:
             prefix += banners
             postfix += banners
-        postfix += "\n" * format_type.new_lines[1]
+        postfix += "\n" * format_option.new_lines[1]
         return prefix + formatted_out + postfix
 
 
