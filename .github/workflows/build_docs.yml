@@ -25,7 +25,7 @@ jobs:
 
   build:
     runs-on: ubuntu-22.04
-    container: ghcr.io/scientificcomputing/fenics:2023-01-16
+    container: ghcr.io/scientificcomputing/fenics-gmsh:2023-02-17a
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: python3 -m pip install --no-binary=h5py ".[docs,dev]"
+        run: python3 -m pip install ".[docs,dev]"
 
       - name: Build docs
         run: jupyter book build .
