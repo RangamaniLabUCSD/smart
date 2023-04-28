@@ -1309,7 +1309,7 @@ class Model:
         for idx, Ji in enumerate(J):
             idx_i, idx_j = divmod(idx, len(u))
             if Ji is None or Ji.empty():
-                logger.warning(
+                logger.info(
                     f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
                     f"/du[{self.cc.get_index(idx_j).name}] is empty",
                     extra=dict(format_type="logred"),
@@ -1527,7 +1527,7 @@ class Model:
         )
         self.update_time_dependent_parameters()
         if self.config.solver["use_snes"]:
-            logger.debug("Solving using PETSc.SNES Solver", dict(format_type="log"))
+            logger.info("Solving using PETSc.SNES Solver", dict(format_type="log"))
             self.stopwatches["snes all"].start()
 
             # Solve
@@ -1627,7 +1627,8 @@ class Model:
             if not self.solver.converged:
                 if not self.config.solver["attempt_timestep_restart_on_divergence"]:
                     raise RuntimeError(
-                        f"Model {self.name}: SNES diverged and "
+                        f"Model {self.name}: SNES diverged (Reason = "
+                        f"{self.solver.getConvergedReason()}) and "
                         "attempt_timestep_restart_on_divergence is False. Exiting."
                     )
                 self.stopwatches["Total time step"].stop()

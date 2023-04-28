@@ -251,9 +251,6 @@ class stubsSNESProblem:
                         )
                     Jpetsc.append(d.PETScMatrix(Jsum))
 
-        for j in Jpetsc:
-            logger.debug(type(j))
-
         if self.is_single_domain:
             # We can't use a nest matrix
             self.Jpetsc_nest = Jpetsc[0].mat()
@@ -277,7 +274,7 @@ class stubsSNESProblem:
             for k in range(len(self.Fforms[j])):
                 if self.Fforms[j][k].function_space(0) is None:
                     if self.print_assembly:
-                        logger.info(
+                        logger.warning(
                             f"{self.Fjk_name(j,k)}] has no function space",
                             extra=dict(format_type="log"),
                         )
@@ -294,7 +291,7 @@ class stubsSNESProblem:
 
             if Fsum is None:
                 if self.print_assembly:
-                    logger.info(
+                    logger.debug(
                         f"{self.Fjk_name(j)} is empty - initializing as empty PETSc "
                         f"Vector with local size {self.local_sizes[j]} "
                         f"and global size {self.global_sizes[j]}",
@@ -322,7 +319,7 @@ class stubsSNESProblem:
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
         if self.print_assembly:
-            logger.info("Assembling block Jacobian", extra=dict(format_type="assembly"))
+            logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
@@ -398,7 +395,7 @@ class stubsSNESProblem:
     def assemble_Fnest(self, Fnest):
         dim = self.dim
         if self.print_assembly:
-            logger.info("Assembling block residual vector", extra=dict(format_type="assembly"))
+            logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
 
         if self.is_single_domain:
@@ -532,12 +529,12 @@ class stubsSNESProblem:
             f"mallocs={int(info['mallocs']): <4}\n"
         )
         if k is None:
-            logger.info(
+            logger.debug(
                 f"Assembled form {self.Jijk_name(i,j,k)}:\n{info_str}",
                 extra=dict(format_type="data"),
             )
         else:
-            logger.info(
+            logger.debug(
                 f"Assembled subform {self.Jijk_name(i,j,k)}:\n{info_str}",
                 extra=dict(format_type="data"),
             )
