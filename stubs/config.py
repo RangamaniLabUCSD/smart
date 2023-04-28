@@ -2,9 +2,13 @@
 Configuration settings for simulation: plotting, reaction types, solution output, etc.
 """
 import logging
+from logging import config as logging_config
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from enum import Enum
+from typing import Any, Dict, Optional, Tuple, NamedTuple
 
+
+from termcolor import colored
 import dolfin as d
 import ufl
 
@@ -15,17 +19,260 @@ __all__ = [
     "SolverConfig",
     "BaseConfig",
     "FlagsConfig",
-    "LogLevelConfig",
 ]
 
-_loglevel_to_int: Dict[str, int] = {
-    "CRITICAL": int(d.LogLevel.CRITICAL),
-    "ERROR": int(d.LogLevel.ERROR),
-    "WARNING": int(d.LogLevel.WARNING),
-    "INFO": int(d.LogLevel.INFO),
-    "DEBUG": int(d.LogLevel.DEBUG),
-    "NOTSET": 0,
+
+comm = d.MPI.comm_world
+rank = comm.rank
+size = comm.size
+root = 0
+fancy_format = (
+    "%(asctime)s %(rank)s%(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+)
+base_format = "%(asctime)s %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+root_format = "ROOT -" + base_format
+
+
+class FormatType(str, Enum):
+    default = "default"
+    title = "title"  # type: ignore
+    subtitle = "subtitle"
+    data = "data"
+    data_important = "data_important"
+    log = "log"
+    logred = "logred"
+    log_important = "log_important"
+    log_urgent = "log_urgent"
+    warning = "warning"
+    timestep = "timestep"
+    solverstep = "solverstep"
+    assembly = "assembly"
+    assembly_sub = "assembly_sub"
+
+
+class FormatOption(NamedTuple):
+    buffer_color: str = "cyan"
+    text_color: str = "white"
+    filler_char: str = ""
+    num_banners: int = 0
+    new_lines: Tuple[int, int] = (0, 0)
+    left_justify: bool = False
+
+
+def format_type_to_options(format_type: FormatType) -> FormatOption:
+    """Take a format type and return the corresponding options
+
+    Parameters
+    ----------
+    format_type : FormatType
+        The format type
+
+    Returns
+    -------
+    FormatOption
+        The options
+
+    Raises
+    ------
+    ValueError
+        If provided format type does not exist.
+    """
+    if FormatType[format_type] == FormatType.default:
+        return FormatOption()
+    elif FormatType[format_type] == FormatType.title:
+        return FormatOption(
+            text_color="magenta",
+            num_banners=1,
+            new_lines=(1, 0),
+        )
+    elif FormatType[format_type] == FormatType.subtitle:
+        return FormatOption(
+            text_color="green",
+            filler_char=".",
+            left_justify=True,
+        )
+    elif FormatType[format_type] == FormatType.data:
+        return FormatOption(
+            buffer_color="white",
+            text_color="white",
+            filler_char="",
+            left_justify=True,
+        )
+    elif FormatType[format_type] == FormatType.data_important:
+        return FormatOption(
+            buffer_color="white",
+            text_color="red",
+            filler_char="",
+            left_justify=True,
+        )
+    elif FormatType[format_type] == FormatType.log:
+        return FormatOption(
+            buffer_color="white",
+            text_color="green",
+            filler_char="",
+            left_justify=True,
+        )
+    elif FormatType[format_type] == FormatType.logred:
+        return FormatOption(
+            buffer_color="white",
+            text_color="red",
+            filler_char="",
+            left_justify=True,
+        )
+    elif FormatType[format_type] == FormatType.log_important:
+        return FormatOption(
+            buffer_color="white",
+            text_color="magenta",
+            filler_char=".",
+        )
+    elif FormatType[format_type] == FormatType.log_urgent:
+        return FormatOption(
+            buffer_color="white",
+            text_color="red",
+            filler_char=".",
+        )
+    elif FormatType[format_type] == FormatType.warning:
+        return FormatOption(
+            buffer_color="magenta",
+            text_color="red",
+            filler_char="!",
+            num_banners=2,
+            new_lines=(1, 1),
+        )
+    elif FormatType[format_type] == FormatType.timestep:
+        return FormatOption(
+            text_color="red",
+            num_banners=2,
+            filler_char=".",
+            new_lines=(1, 1),
+        )
+    elif FormatType[format_type] == FormatType.solverstep:
+        return FormatOption(
+            text_color="red",
+            num_banners=1,
+            filler_char=".",
+            new_lines=(1, 1),
+        )
+    elif FormatType[format_type] == FormatType.assembly:
+        return FormatOption(
+            text_color="magenta",
+            num_banners=0,
+            filler_char=".",
+            new_lines=(1, 0),
+        )
+    elif FormatType[format_type] == FormatType.assembly_sub:
+        return FormatOption(
+            text_color="magenta",
+            num_banners=0,
+            filler_char="",
+            new_lines=(0, 0),
+            left_justify=True,
+        )
+    else:
+        msg = f"Invalid format type {format_type}"
+        raise ValueError(msg)
+
+
+def format_message(title_text: str, format_option: FormatOption) -> Tuple[str, str]:
+    """Format message according to the format options
+
+    Parameters
+    ----------
+    title_text : str
+        The message to be formatted
+    format_option : FormatOption
+        The options for formatting
+
+    Returns
+    -------
+    Tuple[str, str]
+        (banners, formatted text)
+    """
+    min_buffer_size = 5
+    terminal_width = 120
+    buffer_size = max(
+        [min_buffer_size, int((terminal_width - 1 - len(title_text)) / 2 - 1)]
+    )  # terminal width == 80
+    title_str_len = (buffer_size + 1) * 2 + len(title_text)
+    parity = 1 if title_str_len == 78 else 0
+
+    # color/stylize buffer, text, and banner
+    def buffer(buffer_size):
+        return colored(format_option.filler_char * buffer_size, format_option.buffer_color)
+
+    if format_option.left_justify:
+        title_str = (
+            f"{colored(title_text, format_option.text_color)} {buffer(buffer_size*2+1+parity)}"
+        )
+    else:
+        title_str = (
+            f"{buffer(buffer_size)} {colored(title_text, format_option.text_color)} "
+            f"{buffer(buffer_size+parity)}"
+        )
+    banner = colored(
+        format_option.filler_char * (title_str_len + parity), format_option.buffer_color
+    )
+    return banner, title_str
+
+
+class FancyFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        # Set the rank attribute with is a parameter in the `fancy_format``
+        record.rank = f"CPU {rank}: " if size > 1 else ""
+
+        # Extract the format options. Here we expect that `format_type` is provided
+        # as part of the `extra` dictionary passed to the logger
+        format_option = format_type_to_options(getattr(record, "format_type", FormatType.default))
+
+        # Create the formatter
+        formatter = logging.Formatter(fancy_format)
+        # Format the record
+        out = formatter.format(record)
+        # Now create banners and formatted text
+        banner, formatted_out = format_message(out, format_option=format_option)
+
+        # Finally construct the output with banners and new lines
+        banners = f"\n{banner}" * format_option.num_banners + "\n"
+        prefix = "\n" * format_option.new_lines[0]
+        postfix = ""
+        if format_option.num_banners > 0:
+            prefix += banners
+            postfix += banners
+        postfix += "\n" * format_option.new_lines[1]
+        return prefix + formatted_out + postfix
+
+
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "root": {"format": root_format},
+        "base": {"format": base_format},
+        "default": {"()": FancyFormatter},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "default"},
+        "root_console": {"class": "logging.StreamHandler", "formatter": "root"},
+    },
+    "loggers": {
+        "stubs": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            # Don't send it up my namespace for additional handling
+            "propagate": False,
+        },
+        "pint": {"level": "ERROR"},
+        "FFC": {"level": "WARNING"},
+        "UFL": {"level": "WARNING"},
+        "dolfin": {"level": "INFO"},
+        "dijitso": {"level": "INFO"},
+    },
+    "root": {"handlers": ["root_console"], "level": "INFO"},
 }
+
+
+logging_config.dictConfig(LOGGING_CONFIG)
+
 
 global_settings = {
     "main_dir": None,
@@ -97,9 +344,7 @@ class SolverConfig(BaseConfig):
 
     final_t: Optional[float] = None
     use_snes: bool = True
-    snes_preassemble_linear_system: bool = (
-        False  #: .. warning:: FIXME Currently untested
-    )
+    snes_preassemble_linear_system: bool = False  #: .. warning:: FIXME Currently untested
     initial_dt: Optional[float] = None
     adjust_dt: Optional[Tuple[float, float]] = None
     time_precision: int = 6
@@ -127,40 +372,6 @@ class FlagsConfig(BaseConfig):
 
 
 @dataclass
-class LogLevelConfig(BaseConfig):
-    """
-    Settings for logging
-
-    :param FFC: LogLevel for FFC
-    :param UFL: LogLevel for UFL
-    :param dijitso: LogLevel for dijitso
-    :param dolfin: LogLevel for dolfin
-
-    """
-
-    FFC: str = "DEBUG"
-    UFL: str = "DEBUG"
-    djitso: str = "DEBUG"
-    dolfin: str = "INFO"
-
-    def set_logger_levels(self):
-        """
-        For each of the loggers, set the appropriate log-level
-        """
-        # set for dolfin
-        d.set_log_level(_loglevel_to_int[self.dolfin])
-
-        # set for others
-        other_loggers = list(self.__annotations__)
-        print(other_loggers)
-        other_loggers.remove("dolfin")
-        for logger_name in other_loggers:
-            logging.getLogger(logger_name).setLevel(
-                _loglevel_to_int[self.__getattribute__(logger_name)]
-            )
-
-
-@dataclass
 class Config:
     """
     Configuration settings.
@@ -173,7 +384,6 @@ class Config:
 
     solver: SolverConfig = field(default_factory=SolverConfig)
     flags: FlagsConfig = field(default_factory=FlagsConfig)
-    loglevel: LogLevelConfig = field(default_factory=LogLevelConfig)
 
     @property
     def reaction_database(self) -> Dict[str, str]:
@@ -181,17 +391,3 @@ class Config:
         Return database of known reactions
         """
         return {"prescribed": "k", "prescribed_linear": "k*u"}
-
-    def set_logger_levels(self):
-        self.loglevel.set_logger_levels()
-
-    def set_all_logger_levels(self, log_level: int):
-        """
-        Set all loggers to a given loglevel
-        :param log_level: The loglevel: `(0,10,20,30,40,50)`
-        """
-        # Update LogLevel class
-        for logger_name in self.loglevel.__annotations__:
-            self.loglevel.__setattr__(logger_name, log_level)
-        # Set LogLevels to logger
-        self.set_logger_levels()

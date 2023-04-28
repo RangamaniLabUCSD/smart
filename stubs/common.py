@@ -3,6 +3,7 @@ General functions: array manipulation, data i/o, etc
 """
 import os
 import time
+import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Tuple, Union
 
@@ -13,11 +14,13 @@ import meshio
 # import trimesh
 import numpy as np
 import pint
+
 import ufl
 from pytz import timezone
 from termcolor import colored
 
-from .config import global_settings as gset
+from .deprecation import deprecated
+from .config import global_settings as gset, FancyFormatter
 from .units import unit
 
 __all__ = [
@@ -33,10 +36,13 @@ __all__ = [
     "write_mesh",
 ]
 
+
 comm = d.MPI.comm_world
 rank = comm.rank
 size = comm.size
 root = 0
+
+logger = logging.getLogger(__name__)
 
 
 def stubs_expressions(
@@ -64,8 +70,7 @@ def stubs_expressions(
         :code:`ufl.sin(x.to(unit.dimensionless).magnitude)`
     """
     return {
-        k: lambda x: v(x.to(unit.dimensionless).magnitude)
-        for k, v in dolfin_expressions.items()
+        k: lambda x: v(x.to(unit.dimensionless).magnitude) for k, v in dolfin_expressions.items()
     }
 
 
@@ -149,9 +154,7 @@ def pint_quantity_to_unit(pint_quantity):
     if not isinstance(pint_quantity, pint.Quantity):
         raise TypeError("Input must be a pint quantity")
     if pint_quantity.magnitude != 1.0:
-        raise ValueError(
-            "Trying to convert a pint quantity into a unit with magnitude != 1"
-        )
+        raise ValueError("Trying to convert a pint quantity into a unit with magnitude != 1")
     return pint_quantity.units
 
 
@@ -167,9 +170,7 @@ def pint_quantity_to_unit(pint_quantity):
 class Stopwatch:
     "Basic stopwatch class with inner/outer timings (pause and stop)"
 
-    def __init__(
-        self, name=None, time_unit="s", print_buffer=0, filename=None, start=False
-    ):
+    def __init__(self, name=None, time_unit="s", print_buffer=0, filename=None, start=False):
         self.name = name
         self.time_unit = time_unit
         self.stop_timings = []  # length = number of stops
@@ -181,6 +182,15 @@ class Stopwatch:
         self._print_name = f"{str(self.name): <{self.print_buffer}}"
         # self.start()
         self.filename = filename
+        if filename is not None:
+            self.file_logger = logging.getLogger("stubs_stop_watch")
+            handler = logging.FileHandler(filename=filename)
+            handler.setFormatter(FancyFormatter())
+            self.file_logger.addHandler(handler)
+            self.file_logger.setLevel(logging.DEBUG)
+        else:
+            # Just use the regular logger
+            self.file_logger = logger
         if start:
             self.start()
 
@@ -195,11 +205,10 @@ class Stopwatch:
             self._times.append(time.time())
             self._pause_timings.append(self._times[-1] - self._times[-2])
             self.is_paused = True
-            _fancy_print(
+            self.file_logger.debug(
                 f"{self.name} (iter {len(self._pause_timings)}) finished "
-                "in {self.time_str(self._pause_timings[-1])} {self.time_unit}",
-                format_type="logred",
-                filename=self.filename,
+                f"in {self.time_str(self._pause_timings[-1])} {self.time_unit}",
+                extra=dict(format_type="logred"),
             )
 
     def stop(self, print_result=True):
@@ -212,10 +221,9 @@ class Stopwatch:
         total_time = sum(self._pause_timings) + final_time
         self.stop_timings.append(total_time)
         if print_result:
-            _fancy_print(
+            self.file_logger.debug(
                 f"{self._print_name} finished in {self.time_str(total_time)} {self.time_unit}",
-                format_type="logred",
-                filename=self.filename,
+                extra=dict(format_type="logred"),
             )
 
         self.pause_timings.append(self._pause_timings)
@@ -224,26 +232,23 @@ class Stopwatch:
 
     def set_timing(self, timing):
         self.stop_timings.append(timing)
-        _fancy_print(
+        self.file_logger.debug(
             f"{self._print_name} finished in {self.time_str(timing)} {self.time_unit}",
-            format_type="logred",
-            filename=self.filename,
+            extra=dict(format_type="logred"),
         )
 
     def print_last_stop(self):
-        _fancy_print(
+        self.file_logger.debug(
             f"{self._print_name} finished in "
             f"{self.time_str(self.stop_timings[-1])} {self.time_unit}",
-            format_type="logred",
-            filename=self.filename,
+            extra=dict(format_type="logred"),
         )
 
     def time_str(self, t):
-        return str({"us": 1e6, "ms": 1e3, "s": 1, "min": 1 / 60}[self.time_unit] * t)[
-            0:8
-        ]
+        return str({"us": 1e6, "ms": 1e3, "s": 1, "min": 1 / 60}[self.time_unit] * t)[0:8]
 
 
+@deprecated
 def _fancy_print(
     title_text,
     buffer_color=None,
@@ -352,9 +357,7 @@ def _fancy_print(
     if size > 1:
         title_text = f"CPU {rank}: {title_text}"
     if include_timestamp:
-        timestamp = datetime.now(timezone("US/Pacific")).strftime(
-            "[%Y-%m-%d time=%H:%M:%S]"
-        )
+        timestamp = datetime.now(timezone("US/Pacific")).strftime("[%Y-%m-%d time=%H:%M:%S]")
         title_text = f"{timestamp} {title_text}"
 
     # calculate optimal buffer size
@@ -371,9 +374,7 @@ def _fancy_print(
         return colored(filler_char * buffer_size, buffer_color)
 
     if left_justify:
-        title_str = (
-            f"{colored(title_text, text_color)} {buffer(buffer_size*2+1+parity)}"
-        )
+        title_str = f"{colored(title_text, text_color)} {buffer(buffer_size*2+1+parity)}"
     else:
         title_str = (
             f"{buffer(buffer_size)} {colored(title_text, text_color)} "
@@ -532,12 +533,8 @@ def DemoSpheresMesh(
         inner_shell = gmsh.model.getBoundary(inner_sphere_map, oriented=False)
         assert len(inner_shell) == 1
         # Add physical markers for facets
-        gmsh.model.add_physical_group(
-            outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker
-        )
-        gmsh.model.add_physical_group(
-            inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker
-        )
+        gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
+        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
 
         # Physical markers for
         all_volumes = [tag[1] for tag in outer_sphere_map]
@@ -589,9 +586,7 @@ def DemoSpheresMesh(
 
     def create_mesh(mesh, cell_type):
         cells = mesh.get_cells_type(cell_type)
-        cell_data = mesh.get_cell_data(
-            "gmsh:physical", cell_type
-        )  # extract values of tags
+        cell_data = mesh.get_cell_data("gmsh:physical", cell_type)  # extract values of tags
         out_mesh = meshio.Mesh(
             points=mesh.points,
             cells={cell_type: cells},

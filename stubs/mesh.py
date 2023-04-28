@@ -2,12 +2,14 @@
 Wrapper around dolfin mesh class (originally for submesh implementation - possibly unneeded now)
 """
 from typing import Dict, FrozenSet
+import logging
 
 import dolfin as d
 import numpy as np
 from cached_property import cached_property
 
-from .common import _fancy_print as fancy_print
+
+logger = logging.getLogger(__name__)
 
 
 class _Mesh:
@@ -184,13 +186,9 @@ class ParentMesh(_Mesh):
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
-        print(
-            f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
-        )
+        logger.info(f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
 
-    def load_mesh_from_hdf5(
-        self, mesh_filename, use_partition=False, comm=d.MPI.comm_world
-    ):
+    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False, comm=d.MPI.comm_world):
         # mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh(comm)
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
@@ -204,15 +202,11 @@ class ParentMesh(_Mesh):
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
-        print(
-            f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!'
-        )
+        logger.info(f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
 
     def _read_parent_mesh_function_from_file(self, dim):
         if self.mesh_filetype == "xml":
-            mf = d.MeshFunction(
-                "size_t", self.dolfin_mesh, dim, value=self.dolfin_mesh.domains()
-            )
+            mf = d.MeshFunction("size_t", self.dolfin_mesh, dim, value=self.dolfin_mesh.domains())
         elif self.mesh_filetype == "hdf5":
             mf = d.MeshFunction("size_t", self.dolfin_mesh, dim, value=0)
             # with d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, 'r') as hdf5:
@@ -233,7 +227,7 @@ class ParentMesh(_Mesh):
 
         # Check validity
         if self.dolfin_mesh is None:
-            print(f"Mesh {self.name} has no dolfin mesh to get a mesh function from.")
+            logger.info(f"Mesh {self.name} has no dolfin mesh to get a mesh function from.")
             return None
 
         # there should be at least one child mesh
@@ -252,18 +246,14 @@ class ParentMesh(_Mesh):
                 for child_mesh in self.child_meshes.values()
             ]
         ):
-            self.mf["cells_uncombined"] = self._read_parent_mesh_function_from_file(
-                volume_dim
-            )
+            self.mf["cells_uncombined"] = self._read_parent_mesh_function_from_file(volume_dim)
         if any(
             [
                 (child_mesh.marker_list is not None and child_mesh.is_surface)
                 for child_mesh in self.child_meshes.values()
             ]
         ):
-            self.mf["facets_uncombined"] = self._read_parent_mesh_function_from_file(
-                surface_dim
-            )
+            self.mf["facets_uncombined"] = self._read_parent_mesh_function_from_file(surface_dim)
 
         # Combine markers in a list
         for child_mesh in self.child_meshes.values():
@@ -309,9 +299,7 @@ class ChildMesh(_Mesh):
     # dimensionality, marker, name='child_mesh'):
 
     def __init__(self, parent_mesh, compartment):
-        super().__init__(
-            name=compartment.name, dimensionality=compartment.dimensionality
-        )
+        super().__init__(name=compartment.name, dimensionality=compartment.dimensionality)
         self.compartment = compartment
 
         # child mesh must be associated with a parent mesh
@@ -324,7 +312,7 @@ class ChildMesh(_Mesh):
             assert all([isinstance(m, int) for m in compartment.cell_marker])
             self.marker_list = compartment.cell_marker
             self.primary_marker = compartment.cell_marker[0]
-            fancy_print(
+            logger.info(
                 f"List of markers given for compartment {self.name},"
                 + f"combining into single marker, {compartment.cell_marker[0]}"
             )
@@ -408,14 +396,10 @@ class ChildMesh(_Mesh):
                 *[cell_map != not_intersecting_value for cell_map in cell_maps]
             )
         # Set the values of intersection_map
-        self.intersection_map[mesh_id_set].set_values(
-            intersection_map_values.astype(np.int)
-        )
+        self.intersection_map[mesh_id_set].set_values(intersection_map_values.astype(np.int))
 
         # Check if the intersection is empty
-        self.has_intersection[mesh_id_set] = (
-            self.intersection_map[mesh_id_set].array().any()
-        )
+        self.has_intersection[mesh_id_set] = self.intersection_map[mesh_id_set].array().any()
 
         # Indicate which entities of the parent mesh correspond to this intersection
         self.intersection_map_parent[mesh_id_set] = d.MeshFunction(
@@ -435,9 +419,7 @@ class ChildMesh(_Mesh):
             self.intersection_map_parent[mesh_id_set], 1
         )
         self.intersection_submesh[mesh_id_set].init()
-        self.intersection_dx[mesh_id_set] = d.Measure(
-            "dx", self.intersection_submesh[mesh_id_set]
-        )
+        self.intersection_dx[mesh_id_set] = d.Measure("dx", self.intersection_submesh[mesh_id_set])
 
     def set_parent_mesh(self, parent_mesh):
         # remove existing parent mesh if not None
@@ -451,9 +433,7 @@ class ChildMesh(_Mesh):
 
     def extract_submesh(self):
         mf_type = "cells" if self.is_volume else "facets"
-        self.dolfin_mesh = d.MeshView.create(
-            self.parent_mesh.mf[mf_type], self.primary_marker
-        )
+        self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
 
     def init_marker_list_mesh_function(self):
         "Child mesh functions require transfering data from parent mesh functions"
