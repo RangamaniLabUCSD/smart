@@ -36,7 +36,7 @@ from .model_assembly import (
     SpeciesContainer,
     empty_sbmodel,
 )
-from .solvers import stubsSNESProblem
+from .solvers import smartSNESProblem
 from .units import unit
 
 
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Model:
     """
-    Main stubs class. Consists of parameters,
+    Main smart class. Consists of parameters,
     species, compartments, reactions, and can be simulated.
     """
 
@@ -55,7 +55,7 @@ class Model:
     cc: CompartmentContainer
     rc: ReactionContainer
     config: Config
-    # solver_system: stubs.solvers.SolverSystem
+    # solver_system: smart.solvers.SolverSystem
     parent_mesh: ParentMesh
     name: str = ""
 
@@ -668,7 +668,7 @@ class Model:
         Arrange the compartments based on the number of degrees of freedom they have
         (We want to have the highest number of dofs first)
         """
-        # addressing https://github.com/justinlaughlin/stubs/issues/36
+        # addressing https://github.com/justinlaughlin/smart/issues/36
         self._active_compartments = list(self.cc.Dict.values())
         self._all_compartments = list(self.cc.Dict.values())
         for compartment in self._active_compartments:
@@ -1037,7 +1037,7 @@ class Model:
         # if use snes
         if self.config.solver["use_snes"]:
             logger.debug("Using SNES solver", extra=dict(format_type="log"))
-            self.problem = stubsSNESProblem(
+            self.problem = smartSNESProblem(
                 self.u["u"],
                 self.Fblocks_all,
                 self.Jblocks_all,
@@ -1047,7 +1047,7 @@ class Model:
                 self.config.solver["print_assembly"],
                 self.mpi_comm_world,
             )
-            # self.problem = stubsSNESProblem(self)
+            # self.problem = smartSNESProblem(self)
 
             self.problem.init_petsc_matnest()
             self.problem.init_petsc_vecnest()

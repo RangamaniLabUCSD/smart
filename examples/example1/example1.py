@@ -32,7 +32,7 @@ from smart.model_assembly import (
 
 # -
 
-logging.getLogger("stubs").setLevel(logging.INFO)
+logging.getLogger("smartq").setLevel(logging.INFO)
 
 # First, we define the various units for the inputs
 
