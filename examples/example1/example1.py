@@ -21,8 +21,8 @@ import logging
 import dolfin as d
 import sympy as sym
 
-from stubs import unit, config, common, mesh, model
-from stubs.model_assembly import (
+from smart import unit, config, common, mesh, model
+from smart.model_assembly import (
     Compartment,
     Parameter,
     Reaction,
