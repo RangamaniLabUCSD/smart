@@ -7,7 +7,7 @@ Ideas for (new) SMART test cases:
     - Diffusion-linear reactions
     - Use as a guide?!
 
-(1) [Henrik/Jørgen?] 
+(1) [Henrik/Jørgen?]
 
     Meyers, Jason, Jennifer Craig, and David J. Odde. 2006. “Potential
     for Control of Signaling Pathways via Cell Size and Shape.”
@@ -21,7 +21,7 @@ Ideas for (new) SMART test cases:
     - (1a) 2D
     - (1b) 3D
 
-(2) [Marie?] Ellipsoid 
+(2) [Marie?] Ellipsoid
 
     Cugno, Andrea, Thomas M. Bartol, Terrence J. Sejnowski, Ravi
     Iyengar, and Padmini Rangamani. 2019. “Geometric Principles of
@@ -29,8 +29,8 @@ Ideas for (new) SMART test cases:
     Sci. Rep. https://doi.org/10.1038/s41598-019-48028-0.
 
     - Geometry: Sphere within sphere/Ellipsoid with ellipsoid
-    - Concentration: C 
-    - Localized boundary conditions: flux at outer 
+    - Concentration: C
+    - Localized boundary conditions: flux at outer
     - Diffusion + first-order reaction
     - Neumann-type boundary conditions
     - Measure the norm of the spatial gradient, extent of gradient etc., compare with analytical solution
@@ -44,7 +44,7 @@ Ideas for (new) SMART test cases:
     - Concentration: Ca2+
     - Diffusion + complex reactions
     - Nonlinear reaction boundary conditions
-    - Single 
+    - Single
 
 (4) [Emmet] Purkinjie neuron
     - Same model, simplified clean-version
@@ -57,7 +57,7 @@ Ideas for (new) SMART test cases:
     (1): 17866. -- has many cases.
     - 17 species
    - Multicompartment?
-   - Stacks of ER 
+   - Stacks of ER
    - Cytosolic Calcium
 
 (6) Surface diffusion - toy problem
@@ -67,9 +67,8 @@ Ideas for (new) SMART test cases:
     - "Decoding Information in Cell Shape..." ?
 
 (8) Fink et al, Morphological Control of Inositol....-Dependent Signal, JCB, 1999
-    - 
+    -
 
 Feature requests
 
 (a) Is 2D working?
-

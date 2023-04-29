@@ -3,32 +3,32 @@ title: "SMART: Spatial Modelling Algorithms for Reactions and Transport"
 tags:
   - Python
   - FEniCS
-  - reactions 
+  - reactions
   - transport
   - biophysics
   - cellular processes
 authors:
   - name: Justin Laughlin
-    orcid: 
+    orcid:
     equal-contrib: false
     affiliation: 1 # (Multiple affiliations must be quoted)
   - name: Jørgen Dokken
-    orcid: 
-    affiliation: 2 
+    orcid:
+    affiliation: 2
   - name: Henrik Finsberg
-    orcid: 
+    orcid:
     affiliation: 3
   - name: Emmet Francis
-    orcid: 
+    orcid:
     affiliation: 1
   - name: Christopher Lee
-    orcid: 
+    orcid:
     affiliation: 1
   - name: Marie E. Rognes
-    orcid: 
+    orcid:
     affiliation: 2
   - name: Padmini Rangamani
-    orcid: 
+    orcid:
     affiliation: 1
     corresponding: true # (This is how to denote the corresponding author)
 affiliations:
@@ -39,7 +39,7 @@ affiliations:
   - name: Department of Computational Physiology, Simula Research Laboratory, Oslo, Norway
     index: 3
 date: April 2023
-bibliography: 
+bibliography:
   - paper.bib
 ---
 
@@ -80,9 +80,9 @@ events, from calcium elevations in neurons to models of cell
 mechanotransduction. However, such models obviously neglect many
 spatial aspects of cell signaling, which are crucially important on
 short timescales or for slower diffusing species. Recently, there has
-been increased interest in spatiotemporal modeling of cell signaling. 
+been increased interest in spatiotemporal modeling of cell signaling.
 
- 
+
 * Describe in 1-2 sentences which frameworks that exist in addition to SMART
 * State in 1-2 sentences why these are insufficient
 * Describe in 1-2 sentence key SMART features that addresses these insufficiencies.
@@ -90,7 +90,7 @@ been increased interest in spatiotemporal modeling of cell signaling.
 
 # Scientific impact and examples of SMART use
 
-* Detail one existing and some upcoming use cases for SMART. 
+* Detail one existing and some upcoming use cases for SMART.
 * Include 1-2 figures, and 2-3 references.
 
 <!-- Figures can be included like this: -->
@@ -120,6 +120,6 @@ been increased interest in spatiotemporal modeling of cell signaling.
 
 # Acknowledgements
 
-Acknowledgments. 
+Acknowledgments.
 
 # References
