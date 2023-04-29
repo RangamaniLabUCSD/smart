@@ -1,7 +1,7 @@
 # Book settings
 # Learn more at https://jupyterbook.org/customize/config.html
 
-title: fenics-stubs
+title: fenics-smart
 author: Justin Laughlin
 copyright: "2022"
 only_build_toc_files: true
@@ -14,7 +14,7 @@ execute:
 
 # Information about where the book exists on the web
 repository:
-  url: https://github.com/justinlaughlin/stubs # Online location of your book
+  url: https://github.com/justinlaughlin/smart # Online location of your book
   branch: development
 
 
@@ -32,7 +32,7 @@ sphinx:
 
   config:
     html_last_updated_fmt: "%b %d, %Y"
-    autoapi_dirs: ['stubs']
+    autoapi_dirs: ['smart']
     # Ref: https://github.com/executablebooks/sphinx-external-toc/issues/36
     suppress_warnings: ["etoc.toctree"]
 

@@ -43,15 +43,15 @@ docs = [
    "sphinx-autoapi"
 ]
 all = [
-   "stubs[test]",
-   "stubs[docs]",
-   "stubs[dev]"
+   "smart[test]",
+   "smart[docs]",
+   "smart[dev]"
 ]
 
 
 [tool.pytest.ini_options]
 addopts = [
-   "--cov=stubs",
+   "--cov=smart",
    "--cov-report=html",
    "--cov-report=term-missing",
    "-v"
