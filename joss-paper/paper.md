@@ -63,7 +63,8 @@ reaction-transport processes with specific features targeting
 signalling pathways in biological cell geometries. SMART is based on
 the FEniCS finite element library, provides a symbolic representation
 framework for specifying reaction pathways, supports general 2D and 3D
-geometry specifications, and supports parallelism via MPI.
+geometry specifications, and supports parallelism via MPI. Its target
+audience is ...
 
 # Statement of need
 
@@ -81,6 +82,7 @@ spatial aspects of cell signaling, which are crucially important on
 short timescales or for slower diffusing species. Recently, there has
 been increased interest in spatiotemporal modeling of cell signaling. 
 
+ 
 * Describe in 1-2 sentences which frameworks that exist in addition to SMART
 * State in 1-2 sentences why these are insufficient
 * Describe in 1-2 sentence key SMART features that addresses these insufficiencies.
