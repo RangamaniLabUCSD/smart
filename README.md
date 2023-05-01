@@ -20,7 +20,7 @@ Although FEniCS is a core dependency, because it has many different versions (20
 
 ```bash
 # create a container using DOLFIN built on ubuntu 22.04 with Python 3.10
-jgl:~$ docker run -ti --init ghcr.io/scientificcomputing/fenics:2023-01-16
+jgl:~$ docker run -ti --init ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
 # pip install smart from within the container
 root@jgl:~$ python3 -m pip install fenics-smart
 ```
