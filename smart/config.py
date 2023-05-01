@@ -255,7 +255,7 @@ LOGGING_CONFIG = {
         "root_console": {"class": "logging.StreamHandler", "formatter": "root"},
     },
     "loggers": {
-        "stubs": {
+        "smart": {
             "handlers": ["console"],
             "level": "DEBUG",
             # Don't send it up my namespace for additional handling

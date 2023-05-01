@@ -94,7 +94,7 @@ Dockerfile_jgl
 #**.code-workspace
 
 # debugging code
-#debug_stubs.py
+#debug_smart.py
 #debug_*
 jitfailure*
 

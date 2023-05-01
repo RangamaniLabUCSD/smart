@@ -1,28 +1,28 @@
 import numpy as np
 
-import stubs
+import smart
 
 # ====================================================
 # ====================================================
 
 # Load in model and settings
-config = stubs.config.Config()
+config = smart.config.Config()
 
 errors = []
 for dt in [0.012, 0.01, 0.008, 0.006, 0.004, 0.002]:
-    pc, sc, cc, rc = stubs.model_assembly.read_sbmodel("model.sbmodel")
+    pc, sc, cc, rc = smart.model_assembly.read_sbmodel("model.sbmodel")
 
     # Define solvers
-    mps = stubs.solvers.MultiphysicsSolver("iterative")
-    nls = stubs.solvers.NonlinearNewtonSolver(
+    mps = smart.solvers.MultiphysicsSolver("iterative")
+    nls = smart.solvers.NonlinearNewtonSolver(
         relative_tolerance=1e-9,
         absolute_tolerance=1e-9,
         dt_increase_factor=1.0,
         dt_decrease_factor=1.0,
     )
-    ls = stubs.solvers.DolfinKrylovSolver(method="gmres", preconditioner="ilu")
+    ls = smart.solvers.DolfinKrylovSolver(method="gmres", preconditioner="ilu")
 
-    solver_system = stubs.solvers.SolverSystem(
+    solver_system = smart.solvers.SolverSystem(
         final_t=0.4,
         initial_dt=dt,
         adjust_dt=[],
@@ -30,12 +30,12 @@ for dt in [0.012, 0.01, 0.008, 0.006, 0.004, 0.002]:
         nonlinear_solver=nls,
         linear_solver=ls,
     )
-    cyto_mesh = stubs.mesh.Mesh(
-        mesh_filename="/Users/rabona/Documents/stubs/examples/unit_cube.xml",
+    cyto_mesh = smart.mesh.Mesh(
+        mesh_filename="/Users/rabona/Documents/smart/examples/unit_cube.xml",
         name="cyto",
     )
 
-    model = stubs.model_refactor.ModelRefactor(pc, sc, cc, rc, config, solver_system, cyto_mesh)
+    model = smart.model_refactor.ModelRefactor(pc, sc, cc, rc, config, solver_system, cyto_mesh)
     model.initialize()
 
     # solve system

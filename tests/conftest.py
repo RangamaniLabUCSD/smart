@@ -1,5 +1,5 @@
 import pytest
-import stubs
+import smart
 from pathlib import Path
 import os
 
@@ -21,8 +21,8 @@ def mesh_filename(datadir):
 
 
 @pytest.fixture(scope="module")
-def stubs_mesh(mesh_filename):
-    return stubs.mesh.ParentMesh(
+def smart_mesh(mesh_filename):
+    return smart.mesh.ParentMesh(
         mesh_filename=mesh_filename,
         mesh_filetype=mesh_filename.split(".")[-1],
         name="test_mesh",
@@ -30,5 +30,5 @@ def stubs_mesh(mesh_filename):
 
 
 @pytest.fixture(scope="module")
-def stubs_config(request):
-    return stubs.config.Config()
+def smart_config(request):
+    return smart.config.Config()

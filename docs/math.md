@@ -1,6 +1,6 @@
 # Mathematics
 
-Mathematics related to stubs.
+Mathematics related to smart.
 
 ## Multi-Dimensional Reaction-Diffusion Equations
 

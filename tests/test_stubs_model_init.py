@@ -1,8 +1,8 @@
 import pytest
 import math
 
-import stubs
-from stubs.model_assembly import (
+import smart
+from smart.model_assembly import (
     Parameter,
     Species,
     Compartment,
@@ -14,11 +14,11 @@ from stubs.model_assembly import (
 
 
 @pytest.fixture(name="model")
-def stubs_model(stubs_mesh):
+def smart_model(smart_mesh):
     # initialize
     pc, sc, cc, rc = empty_sbmodel()
     # units
-    unit = stubs.unit  # unit registry
+    unit = smart.unit  # unit registry
     uM = unit.uM
     meter = unit.m
     um = unit.um
@@ -87,12 +87,12 @@ def stubs_model(stubs_mesh):
     )
 
     # config (FFC logger breaks older versions of pytest)
-    stubs_config = stubs.config.Config()
-    stubs_config.loglevel.FFC = "ERROR"
-    stubs_config.loglevel.UFL = "ERROR"
-    stubs_config.loglevel.dolfin = "ERROR"
+    smart_config = smart.config.Config()
+    smart_config.loglevel.FFC = "ERROR"
+    smart_config.loglevel.UFL = "ERROR"
+    smart_config.loglevel.dolfin = "ERROR"
 
-    stubs_config.solver.update(
+    smart_config.solver.update(
         {
             "final_t": 1,
             "initial_dt": 0.01,
@@ -104,20 +104,20 @@ def stubs_model(stubs_mesh):
 
     # Define solvers
     # FIXME: None of these solvers are defined
-    # mps = stubs.solvers.MultiphysicsSolver()
-    # nls = stubs.solvers.NonlinearNewtonSolver()
-    # ls = stubs.solvers.DolfinKrylovSolver()
-    # solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01)
+    # mps = smart.solvers.MultiphysicsSolver()
+    # nls = smart.solvers.NonlinearNewtonSolver()
+    # ls = smart.solvers.DolfinKrylovSolver()
+    # solver_system = smart.solvers.SolverSystem(final_t=0.1, initial_dt=0.01)
 
-    model = stubs.model.Model(pc, sc, cc, rc, stubs_config, stubs_mesh)
+    model = smart.model.Model(pc, sc, cc, rc, smart_config, smart_mesh)
 
     return model
 
 
 # Tests
 @pytest.mark.xfail
-@pytest.mark.stubs_model_init
-def test_stubs_model_init(model):
+@pytest.mark.smart_model_init
+def test_smart_model_init(model):
     "Test the different parts of model initialization"
     # initialize
     model.initialize(initialize_solver=False)

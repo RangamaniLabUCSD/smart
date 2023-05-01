@@ -1,6 +1,6 @@
 import pytest
 
-import stubs
+import smart
 
 
 @pytest.fixture(name="Cyto_kwargs")
@@ -8,11 +8,11 @@ def example_compartment():
     kwargs = dict(
         dimensionality=3,
         name="Cyto",
-        compartment_units=stubs.unit.um,
+        compartment_units=smart.unit.um,
         cell_marker=1,
     )
 
-    Cyto = stubs.model_assembly.Compartment(**kwargs)
+    Cyto = smart.model_assembly.Compartment(**kwargs)
     return (Cyto, kwargs)
 
 

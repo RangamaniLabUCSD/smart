@@ -326,7 +326,7 @@ class ObjectContainer:
 
 class ObjectInstance:
     """
-    Parent class containing general methods used by all stubs
+    Parent class containing general methods used by all smart
     "objects": i.e. parameters, species, compartments, reactions, fluxes, forms
     """
 
@@ -1088,7 +1088,7 @@ class Flux(ObjectInstance):
         self.equation_lambda = sym.lambdify(
             list(self.equation_variables.keys()),
             self.equation,
-            modules=common.stubs_expressions(gset["dolfin_expressions"]),
+            modules=common.smart_expressions(gset["dolfin_expressions"]),
         )
 
         # Update equation with correct unit scale factor
