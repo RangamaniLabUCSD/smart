@@ -13,7 +13,6 @@ import meshio
 
 # import trimesh
 import numpy as np
-import pint
 
 import ufl
 from pytz import timezone
@@ -26,8 +25,6 @@ from .units import unit
 __all__ = [
     "smart_expressions",
     "sub",
-    "pint_unit_to_quantity",
-    "pint_quantity_to_unit",
     "Stopwatch",
     "facet_topology",
     "cube_condition",
@@ -140,22 +137,6 @@ def sub(
 
     else:
         raise ValueError(f"Unknown input type of {func=}")
-
-
-def pint_unit_to_quantity(pint_unit):
-    if not isinstance(pint_unit, pint.Unit):
-        raise TypeError("Input must be a pint unit")
-    # returning pint.Quantity(1, pint_unit) changes the unit
-    # registry which we do NOT want
-    return 1.0 * pint_unit
-
-
-def pint_quantity_to_unit(pint_quantity):
-    if not isinstance(pint_quantity, pint.Quantity):
-        raise TypeError("Input must be a pint quantity")
-    if pint_quantity.magnitude != 1.0:
-        raise ValueError("Trying to convert a pint quantity into a unit with magnitude != 1")
-    return pint_quantity.units
 
 
 # Write a stopwatch class to measure time elapsed

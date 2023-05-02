@@ -31,11 +31,9 @@ def test_Species_initialization(A_kwargs):
     assert (
         A.initial_condition_quantity == kwargs["initial_condition"] * kwargs["concentration_units"]
     )
-    assert A.concentration_units == smart.common.pint_unit_to_quantity(
-        kwargs["concentration_units"]
-    )
+    assert A.concentration_units == smart.units.unit_to_quantity(kwargs["concentration_units"])
     assert math.isclose(A.D, kwargs["D"])
-    assert A.diffusion_units == smart.common.pint_unit_to_quantity(kwargs["diffusion_units"])
+    assert A.diffusion_units == smart.units.unit_to_quantity(kwargs["diffusion_units"])
     assert A.D_quantity == kwargs["D"] * kwargs["diffusion_units"]
 
     assert A.compartment_name == kwargs["compartment_name"]
