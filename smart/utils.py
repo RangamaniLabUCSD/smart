@@ -1,44 +1,40 @@
-# ====================================================
-# fancy printing
-# ====================================================
-
 import os
-
+import numpy as np
 from pandas import read_json
-
+from .deprecation import deprecated
 from .model_assembly import (
     CompartmentContainer,
     ParameterContainer,
     ReactionContainer,
-    SpeciesContainer,
-    nan_to_none,
-)
-
+    SpeciesContainer
+    )
+from typing import Union
+from pathlib import Path
 __all__ = ["json_to_ObjectContainer"]
 
 
-# ====================================================
-# I/O
-# ====================================================
-
-
-def json_to_ObjectContainer(json_str, data_type=None):
+@deprecated
+def json_to_ObjectContainer(json_file: Union[Path, str], data_type:str):
     """
     Converts a json_str (either a string of the json itself, or a filepath to
-    the json)
+    the json) to the appropriate data type (given by a string).
+
+    Args:
+        json_file: Path to json file
+        data_type: Type of container, either parameter, species, compartment or reaction.
+
+    ..note:
+        Several abbreviations of the above are allowed, see source code for details
+
     """
-    if not data_type:
-        raise Exception(
-            "Please include the type of data this is "
-            "(parameters, species, compartments, reactions)."
-        )
+    json_file = Path(json_file)
+    if json_file.suffix != ".json":
+        raise ValueError("Invalid suffix for {json_file}, expected '.json'")
+    if not json_file.exists():
+        raise Exception(f"Cannot find json file: {str(json_file.absolute())}")
 
-    if json_str[-5:] == ".json":
-        if not os.path.exists(json_str):
-            raise Exception("Cannot find JSON file, %s" % json_str)
-
-    df = read_json(json_str).sort_index()
-    df = nan_to_none(df)
+    df = read_json(json_file).sort_index()
+    df =  df.replace({np.nan: None})
     if data_type in ["parameters", "parameter", "param", "p"]:
         return ParameterContainer(df)
     elif data_type in ["species", "sp", "spec", "s"]:
@@ -48,4 +44,4 @@ def json_to_ObjectContainer(json_str, data_type=None):
     elif data_type in ["reactions", "reaction", "r", "rxn"]:
         return ReactionContainer(df)
     else:
-        raise Exception("I don't know what kind of ObjectContainer this .json file should be")
+        raise ValueError(f"Unknown data type {data_type} given for {json_file}")
