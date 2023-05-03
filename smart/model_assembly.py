@@ -3,18 +3,17 @@ Classes for parameters, species, compartments, reactions, fluxes, and forms
 Model class contains functions to efficiently solve a system
 """
 import dataclasses
+import logging
 import numbers
 import sys
-import logging
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from pprint import pformat
 from textwrap import wrap
-from typing import Any, Union
+from typing import Any, List, Optional, Union
 
 import dolfin as d
 import numpy as np
-import numpy.typing as npt
 import pandas
 import pint
 import sympy as sym
@@ -25,10 +24,8 @@ from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
 
 from . import common
-from .common import pint_quantity_to_unit, pint_unit_to_quantity, sub
 from .config import global_settings as gset
-from .units import unit
-
+from .units import quantity_to_unit, unit, unit_to_quantity
 
 __all__ = [
     "empty_sbmodel",
@@ -46,37 +43,6 @@ size = comm.size
 root = 0
 
 logger = logging.getLogger(__name__)
-
-
-def _np_smart_hstack(
-    x1: Union[list, npt.ArrayLike], x2: Union[list, npt.ArrayLike]
-) -> npt.ArrayLike:
-    """
-    Quality of life function. Converts two (N,) numpy arrays or two lists into a
-    (Nx2) array
-
-    Params:
-        x1: First array
-        x2: Second array
-
-    Returns:
-        The stacked array
-
-    Examples:
-
-        .. highlight:: python
-        .. code-block:: python
-
-            a_list = [1,2,3,4]
-            a_np_array = np.array([x**2 for x in a_list])
-            _np_smart_hstack(a_list, a_np_array)
-    """
-    assert len(x1) == len(x2)  # confirm same size
-    if isinstance(x1, list):
-        x1 = np.array(x1)
-    if isinstance(x2, list):
-        x2 = np.array(x2)
-    return np.hstack([x1.reshape(-1, 1), x2.reshape(-1, 1)])
 
 
 # ====================================================
@@ -194,12 +160,26 @@ class ObjectContainer:
     # ObjectContainer - Printing/data-formatting related methods
     # ==============================================================================
 
-    def get_pandas_dataframe(self, properties_to_print=None, include_idx=True):
+    def get_pandas_dataframe(
+        self, properties_to_print: Optional[List[str]] = None, include_idx: bool = True
+    ) -> pandas.DataFrame:
+        """
+        Create a `pandas.DataFrame` of all items in the class (defined through `self.items`)
+
+        Params:
+            properties_to_print: If set only the listed properties (by attribute name)
+              is added to the series
+            include_index: If true, add index as the first column in the data-frame..
+
+
+
+        """
+
         df = pandas.DataFrame()
         if include_idx:
-            if properties_to_print and "idx" not in properties_to_print:
+            if properties_to_print is not None and "idx" not in properties_to_print:
                 properties_to_print.insert(0, "idx")
-            for idx, (name, instance) in enumerate(self.items):
+            for idx, (_, instance) in enumerate(self.items):
                 df = pandas.concat(
                     [
                         df,
@@ -209,7 +189,7 @@ class ObjectContainer:
                     ]
                 )
         else:
-            for idx, (name, instance) in enumerate(self.items):
+            for idx, (_, instance) in enumerate(self.items):
                 df = pandas.concat(
                     [
                         df,
@@ -218,11 +198,6 @@ class ObjectContainer:
                         .T,
                     ]
                 )
-        # # sometimes types are recast. change entries into their original types
-        # for dtypeName, dtype in self.dtypes.items():
-        #     if dtypeName in df.columns:
-        #         df = df.astype({dtypeName: dtype})
-
         return df
 
     def print_to_latex(
@@ -230,7 +205,6 @@ class ObjectContainer:
         properties_to_print=None,
         max_col_width=None,
         sig_figs=2,
-        latex_name_map=None,
         return_df=True,
     ):
         """Requires latex packages \siunitx and \longtable"""
@@ -258,11 +232,14 @@ class ObjectContainer:
                 logger.info(df.to_latex(escape=False, longtable=True, index=False))
 
     def get_pandas_dataframe_formatted(
-        self, properties_to_print=None, max_col_width=50, sig_figs=2
+        self,
+        properties_to_print: Optional[Union[str, List[str]]] = None,
+        max_col_width=50,
+        sig_figs=2,
     ):
         # Get the pandas dataframe with the properties we want to print
-        if properties_to_print:
-            if type(properties_to_print) != list:
+        if properties_to_print is not None:
+            if not isinstance(properties_to_print, list):
                 properties_to_print = [properties_to_print]
         elif hasattr(self, "properties_to_print"):
             properties_to_print = self.properties_to_print
@@ -330,12 +307,6 @@ class ObjectInstance:
     "objects": i.e. parameters, species, compartments, reactions, fluxes, forms
     """
 
-    def _convert_pint_quantity_to_unit(self):
-        # strip the magnitude and keep the units. Warn if magnitude!=1
-        for name, attr in vars(self).items():
-            if isinstance(attr, pint.Quantity):
-                setattr(self, name, pint_quantity_to_unit(attr))
-
     def _check_input_type_validity(self):
         "Check that the inputs have the same type (or are convertible) to the type hint."
         for field in dataclasses.fields(self):
@@ -352,14 +323,35 @@ class ObjectInstance:
                         "Conversion to the expected type was attempted but unsuccessful."
                     )
 
+    def _convert_pint_quantity_to_unit(self):
+        """
+        Convert all attributes of the class that is a `pint.Quantity` into a `pint.Unit`.
+        """
+        # strip the magnitude and keep the units. Warn if magnitude!=1
+        for name, attr in vars(self).items():
+            if isinstance(attr, pint.Quantity):
+                setattr(self, name, quantity_to_unit(attr))
+
     def _convert_pint_unit_to_quantity(self):
-        # convert pint units to quantity
+        """
+        Convert all attributes of the class that is a `pint.Unit` into a `pint.Quantity`.
+        """
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Unit):
-                setattr(self, name, pint_unit_to_quantity(attr))
+                setattr(self, name, unit_to_quantity(attr))
 
-    def get_pandas_series(self, properties_to_print=None, idx=None):
-        if properties_to_print:
+    def get_pandas_series(
+        self, properties_to_print: Optional[List[str]] = None, idx: Optional[int] = None
+    ):
+        """
+        Convert attributes of the class into a `pandas.Series`.
+
+        Params:
+            properties_to_print: If set only the listed properties (by attribute name)
+                is added to the series
+            index: If set add to series
+        """
+        if properties_to_print is not None:
             dict_to_convert = odict({"idx": idx})
             dict_to_convert.update(
                 odict(
@@ -373,7 +365,6 @@ class ObjectInstance:
         else:
             dict_to_convert = self.__dict__
         return pandas.Series(dict_to_convert, name=self.name)
-        # return pandas.Series(dict_to_convert)
 
     def print(self, properties_to_print=None):
         if rank == root:
@@ -608,14 +599,11 @@ class SpeciesContainer(ObjectContainer):
         properties_to_print=None,
         max_col_width=None,
         sig_figs=2,
-        latex_name_map=None,
         return_df=False,
     ):
         properties_to_print = ["_latex_name"]
         properties_to_print.extend(self.properties_to_print)
-        df = super().print_to_latex(
-            properties_to_print, max_col_width, sig_figs, latex_name_map, return_df=True
-        )
+        df = super().print_to_latex(properties_to_print, max_col_width, sig_figs, return_df=True)
         # fix dof_index
         for col in df.columns:
             if col == "dof_index":
@@ -716,7 +704,7 @@ class Species(ObjectInstance):
 
     @cached_property
     def vscalar(self):
-        return d.TestFunction(sub(self.compartment.V, 0, True))
+        return d.TestFunction(common.sub(self.compartment.V, 0, True))
 
     @property
     def dolfin_quantity(self):
@@ -1281,7 +1269,7 @@ class Flux(ObjectInstance):
     #     return self.equation_quantity.magnitude
     # @property
     # def equation_units(self):
-    #     return common.pint_unit_to_quantity(self.equation_quantity.units)
+    #     return unit_to_quantity(self.equation_quantity.units)
 
     def equation_lambda_eval(self, input_type="quantity"):
         """
@@ -1298,7 +1286,7 @@ class Flux(ObjectInstance):
         elif input_type == "value":
             return self._equation_quantity.magnitude
         elif input_type == "units":
-            return common.pint_unit_to_quantity(self._equation_quantity.units)
+            return unit_to_quantity(self._equation_quantity.units)
 
     # Seems like setting this as a @property doesn't cause fenics to recompile
 
