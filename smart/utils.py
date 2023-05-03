@@ -1,4 +1,3 @@
-import os
 import numpy as np
 from pandas import read_json
 from .deprecation import deprecated
