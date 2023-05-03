@@ -6,15 +6,16 @@ from .model_assembly import (
     CompartmentContainer,
     ParameterContainer,
     ReactionContainer,
-    SpeciesContainer
-    )
+    SpeciesContainer,
+)
 from typing import Union
 from pathlib import Path
+
 __all__ = ["json_to_ObjectContainer"]
 
 
 @deprecated
-def json_to_ObjectContainer(json_file: Union[Path, str], data_type:str):
+def json_to_ObjectContainer(json_file: Union[Path, str], data_type: str):
     """
     Converts a json_str (either a string of the json itself, or a filepath to
     the json) to the appropriate data type (given by a string).
@@ -34,7 +35,7 @@ def json_to_ObjectContainer(json_file: Union[Path, str], data_type:str):
         raise Exception(f"Cannot find json file: {str(json_file.absolute())}")
 
     df = read_json(json_file).sort_index()
-    df =  df.replace({np.nan: None})
+    df = df.replace({np.nan: None})
     if data_type in ["parameters", "parameter", "param", "p"]:
         return ParameterContainer(df)
     elif data_type in ["species", "sp", "spec", "s"]:
