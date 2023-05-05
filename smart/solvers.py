@@ -1,26 +1,70 @@
-# # Using PETSc to solve monolithic problem
+"""Interface to PETSc SNES solver"""
 import logging
-import dolfin as d
 import os
+from typing import Dict, List, Optional
+
+import dolfin as d
 import petsc4py.PETSc as p
 
+from .common import Stopwatch
+from .model_assembly import Compartment
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["smartSNESProblem"]
+
+_stopwatch_keys = ["snes jacobian assemble", "snes residual assemble", "snes initialize zero matrices"]
 
 class smartSNESProblem:
-    """To interface with PETSc SNES solver
+    """Interface to PETSc SNES solver.
 
-    Notes on the high-level dolfin solver d.solve()
-    when applied to Mixed Nonlinear problems:
+    Args:
+        u: The function containing the unknown dofs (is a function from a :class:`dolfin.MixedFunctionSpace`)
+        Fforms: Nested list of forms for the residual ``F``. Number of block rows in the rhs vector
+            is given by the number of items in the outermost list.
+        Jforms_all: Nested list of forms for the Jacobian.
 
-    F is the sum of all forms, in smart this is:
-    Fsum = sum([f.lhs for f in model.forms]) # single form F0+F1+...+Fn
-    d.solve(Fsum==0, u) roughly executes the following:
+            .. note::
+                Number of entries in the outermost list should be ``len(Fforms)**2``
+            
+            Flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``, ``i,j=0,..,len(Fforms)-1``.
+            The k-th entry of ``Jforms_all`` is a list of forms that are summed up in a given block.
+        active_compartments: List of compartments used in the variational form.
 
+            .. note::
+                This input is only used to get the compartment names, should we change the input to only be the names?
+        all_compartments: List of all compartments in model. 
 
-    * d.solve(Fsum==0, u)  [fem/solving.py]
-        * _solve_varproblem() [fem/solving.py]
+            .. note::
+                This is only used to get a map from mesh-id to name of compartment. I think we should extract this information
+                from the active compartments.
+        stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
+
+            .. note::
+                Assumes that one has the entries: 
+               
+                - ``'snes jacobian assemble'``
+                - ``'snes residual assemble'``
+                - ``'snes initialize zero matrices'``
+        verbose: If True output logger info
+
+    .. note::
+        High-level dolfin solver ``d.solve()`` when applied to Mixed Nonlinear problems:
+        F is the sum of all forms, in smart this is:
+
+        .. highlight:: python
+        .. code-block:: python
+        
+            Fsum = sum([f.lhs for f in model.forms]) # single form F0+F1+...+Fn
+            d.solve(Fsum==0, u)
+            
+        roughly executes the following:
+
+        .. highlight:: python
+        .. code-block:: python
+    
+            d.solve(Fsum==0, u)  # [fem/solving.py]
+            _solve_varproblem()  # [fem/solving.py]
             eq, ... = _extract_args()
             # tuple of forms (F0, F1, ..., Fn)
             F = extract_blocks(eq.lhs) [fem/formmanipulations -> ufl/algorithms/formsplitter]
@@ -32,83 +76,84 @@ class smartSNESProblem:
             solver  = MixedNonlinearVariationalSolver(problem)
             solver.solve()
 
-    * MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)     [fem/problem.py]
-        u_comps = [u[i]._cpp_object for i in range(len(u))]
+        .. highlight:: python
+        .. code-block:: python
+  
+            MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)  # [fem/problem.py]
+            u_comps = [u[i]._cpp_object for i in range(len(u))]
 
-        # if len(F)!= len(u) -> Fill empty blocks of F with None
+            # if len(F)!= len(u) -> Fill empty blocks of F with None
+            # Check that len(J)==len(u)**2 and len(F)==len(u)
 
-        # Check that len(J)==len(u)**2 and len(F)==len(u)
+            # use F to create Flist. Separate forms by domain:
+            # Flist[i] is a list of Forms separated by domain. E.g. if F1 consists of
+            # integrals on \Omega_1, \Omega_2, and \Omega_3
+            # then Flist[i] is a list with 3 forms
+            If Fi is None -> Flist[i] = cpp.fem.Form(1,0)
+            else -> Flist[i] = [Fi[domain=0], Fi[domain=1], ...]
 
-        # use F to create Flist. Separate forms by domain:
-        # Flist[i] is a list of Forms separated by domain. E.g. if F1 consists of
-        # integrals on \Omega_1, \Omega_2, and \Omega_3
-        # then Flist[i] is a list with 3 forms
-        If Fi is None -> Flist[i] = cpp.fem.Form(1,0)
-        else -> Flist[i] = [Fi[domain=0], Fi[domain=1], ...]
+            # Do the same for J -> Jlist
+            cpp.fem.MixedNonlinearVariationalProblem.__init__(self, Flist, u_comps, bcs, Jlist)
 
-        # Do the same for J -> Jlist
+    .. note::
+        .. highlight:: python
+        .. code-block:: python
 
-        cpp.fem.MixedNonlinearVariationalProblem.__init__(self, Flist, u_comps, bcs, Jlist)
+            # on extract_blocks(F)
+            F  = sum([f.lhs for f in model.forms]) # single form
+            Fb = extract_blocks(F) # tuple of forms
+            Fb0 = Fb[0]
 
-    ========
-    More notes:
-    ========
-    # on extract_blocks(F)
-    F  = sum([f.lhs for f in model.forms]) # single form
-    Fb = extract_blocks(F) # tuple of forms
-    Fb0 = Fb[0]
+            F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
+            F0.equals(Fb0) -> False
 
-    F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
-    F0.equals(Fb0) -> False
+            I0 = F0.integrals()[0].integrand()
+            Ib0 = Fb0.integrals()[0].integrand()
+            (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
+            I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False
+            I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
+            I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
 
-    I0 = F0.integrals()[0].integrand()
-    Ib0 = Fb0.integrals()[0].integrand()
-    (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
-    I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False
-    I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
-    I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
+        ``V.__repr__()`` shows the UFL coordinate element (finite element over coordinate 
+        vector field) and finite element of the function space. We can access individually with:
+        
+        .. highlight:: python
+        .. code-block:: python
 
+            V.ufl_domain().ufl_coordinate_element()
+            V.ufl_element()
+        
+            # on assembler
+            d.fem.assembling.assemble_mixed(form, tensor)
+            assembler = cpp.fem.MixedAssembler()
 
-    # on d.functionspace
-    V.__repr__() shows the UFL coordinate element
-    (finite element over coordinate vector field) and finite element of the function space.
-    We can access individually with:
-    V.ufl_domain().ufl_coordinate_element()
-    V.ufl_element()
-
-    # on assembler
-    d.fem.assembling.assemble_mixed(form, tensor)
-    assembler = cpp.fem.MixedAssembler()
-
-
-    fem.assemble.cpp/assemble_mixed(GenericTensor& A, const Form& a, bool add)
-    MixedAssembler assembler;
-    assembler.add_values = add;
-    assembler.assemble(A, a);
+            fem.assemble.cpp/assemble_mixed(GenericTensor& A, const Form& a, bool add)
+            MixedAssembler assembler;
+            assembler.add_values = add;
+            assembler.assemble(A, a);
     """
 
-    # def __init__(self, model):
     def __init__(
         self,
-        u,
-        Fforms,
-        Jforms_all,
-        active_compartments,
-        all_compartments,
-        stopwatches,
-        print_assembly,
-        mpi_comm_world,
-    ):
+        u:d.Function,
+        Fforms: List[List[d.Form]],
+        Jforms_all: List[List[d.Form]],
+        active_compartments: List[Compartment],
+        all_compartments: List[Compartment],
+        stopwatches:Dict[str, Stopwatch],
+        verbose:bool):
         self.u = u
         self.Fforms = Fforms
         self.Jforms_all = Jforms_all
-
         # for convenience, the mixed function space (model.V)
         self.W = [usub.function_space() for usub in u._functions]
         self.dim = len(self.Fforms)
 
         assert len(self.Jforms_all) == self.dim**2
-        self.comm = mpi_comm_world
+
+        # Extract MPI communicator from one of the underlying meshes
+        assert len(self.u._functions) >= 1
+        self.comm = self.u._functions[0].function_space().mesh().mpi_comm()
         self.rank = self.comm.rank
         self.size = self.comm.size
 
@@ -145,11 +190,13 @@ class smartSNESProblem:
         self.mesh_id_to_name = {c.mesh_id: c.name for c in all_compartments}
 
         # Should we print assembly info (can get very verbose)
-        self.print_assembly = print_assembly
+        self.verbose = verbose
 
         # Timings
+        for key in _stopwatch_keys:
+            if key not in stopwatches.keys():
+                raise ValueError(f"Stopwatch dictionary missing stopwatch {key}")
         self.stopwatches = stopwatches
-
         # Our custom assembler (something about dolfin's init_global_tensor was not
         # correct so we manually initialize the petsc matrix and then wrap with dolfin)
         # This assembly routine is the exact same as d.assemble_mixed() except
@@ -175,7 +222,7 @@ class smartSNESProblem:
                 ):
                     self.empty_forms.append((i, j))
         if len(self.empty_forms) > 0:
-            if self.print_assembly:
+            if self.verbose:
                 logger.debug(
                     f"Forms {self.empty_forms} are empty. Skipping assembly.",
                     extra=dict(format_type="data"),
@@ -194,7 +241,7 @@ class smartSNESProblem:
                     if Jforms[ij][k].function_space(0) is None:
                         # The only reason this is empty is because the whole form is empty
                         assert len(Jforms[ij]) == 1
-                        if self.print_assembly:
+                        if self.verbose:
                             logger.debug(
                                 f"{self.Jijk_name(i,j,k=None)} is empty",
                                 extra=dict(format_type="log"),
@@ -218,7 +265,7 @@ class smartSNESProblem:
 
                 if non_empty_forms == 0:
                     # If all forms are empty, we don't need to assemble. Initialize to zero matrix
-                    if self.print_assembly:
+                    if self.verbose:
                         logger.debug(
                             f"{self.Jijk_name(i,j)} is empty - initializing as "
                             f"empty PETSc Matrix with local size {self.local_sizes[i]}, "
@@ -265,7 +312,7 @@ class smartSNESProblem:
 
     def init_petsc_vecnest(self):
         dim = self.dim
-        if self.print_assembly:
+        if self.verbose:
             logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
 
         Fpetsc = []
@@ -273,7 +320,7 @@ class smartSNESProblem:
             Fsum = None
             for k in range(len(self.Fforms[j])):
                 if self.Fforms[j][k].function_space(0) is None:
-                    if self.print_assembly:
+                    if self.verbose:
                         logger.warning(
                             f"{self.Fjk_name(j,k)}] has no function space",
                             extra=dict(format_type="log"),
@@ -290,7 +337,7 @@ class smartSNESProblem:
                     Fsum += d.assemble_mixed(self.Fforms[j][k], tensor=tensor)
 
             if Fsum is None:
-                if self.print_assembly:
+                if self.verbose:
                     logger.debug(
                         f"{self.Fjk_name(j)} is empty - initializing as empty PETSc "
                         f"Vector with local size {self.local_sizes[j]} "
@@ -318,7 +365,7 @@ class smartSNESProblem:
 
         Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
         """
-        if self.print_assembly:
+        if self.verbose:
             logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
@@ -341,7 +388,7 @@ class smartSNESProblem:
                     Jij_petsc = Jnest.getNestSubMatrix(i, j)
                 Jij_petsc.zeroEntries()  # this maintains sparse (non-zeros) structure
 
-                if self.print_assembly:
+                if self.verbose:
                     logger.debug(
                         f"Assembling {self.Jijk_name(i,j)}:",
                         extra=dict(format_type="assembly_sub"),
@@ -352,7 +399,7 @@ class smartSNESProblem:
                 for k in range(num_subforms):
                     # Check for empty form
                     if Jform[ij][k].function_space(0) is None:
-                        if self.print_assembly:
+                        if self.verbose:
                             logger.debug(
                                 f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.",
                                 extra=dict(format_type="data"),
@@ -366,7 +413,7 @@ class smartSNESProblem:
                     elif self.is_single_domain:
                         self.tensors[ij][k] = d.PETScMatrix(self.comm)
                     else:
-                        if self.print_assembly:
+                        if self.verbose:
                             logger.debug(
                                 f"Reusing tensor for {self.Jijk_name(i,j,k)}",
                                 extra=dict(format_type="data"),
@@ -394,7 +441,7 @@ class smartSNESProblem:
 
     def assemble_Fnest(self, Fnest):
         dim = self.dim
-        if self.print_assembly:
+        if self.verbose:
             logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
 
@@ -493,29 +540,50 @@ class smartSNESProblem:
             V.assemble()
         return V
 
-    def Jijk_name(self, i, j, k=None):
-        ij = i * self.dim + j
+    def Jijk_name(self, i:int, j:int, k:Optional[int]=None):
+        """
+        Get a string representation of an entry of the Jacobian.
+
+        Args:
+            i: Row index
+            j: Column index
+            k: If the Jacobian entry is a sum of forms, get the name of the domain in the `k`th entry.
+        """
         if k is None:
             return (
                 f"J{i}{j} = dF[{self.active_compartment_names[i]}]"
                 f"/du[{self.active_compartment_names[j]}]"
             )
         else:
+            ij = i * self.dim + j
+            if (num_entries:=len(self.Jforms_all[ij])) <= k :
+                raise RuntimeError(f"J[{i},{j}] only consists of {num_entries} componets")
+
             domain_name = self.mesh_id_to_name[self.Jforms_all[ij][k].function_space(0).mesh().id()]
             return (
                 f"J{i}{j}{k} = dF[{self.active_compartment_names[i]}]"
                 f"/du[{self.active_compartment_names[j]}] (domain={domain_name})"
             )
 
-    def Fjk_name(self, j, k=None):
+    def Fjk_name(self, j:int, k:Optional[int]=None):
+        """
+        Get a string representation of an entry of the residual.
+
+        Args:
+            j: Block index
+            k: If the residual entry is a sum of forms, get the name of the domain in the `k`th entry.
+        """
+
         if k is None:
             return f"F{j} = F[{self.active_compartment_names[j]}]"
         else:
+            if (num_entries:=len(self.Fforms[j])) <= k :
+                raise RuntimeError(f"F[{j}] only consists of {num_entries} componets")
             domain_name = self.mesh_id_to_name[self.Fforms[j][k].function_space(0).mesh().id()]
             return f"F{j} = F[{self.active_compartment_names[j]}] (domain={domain_name})"
 
     def print_Jijk_info(self, i, j, k=None, tensor=None):
-        if not self.print_assembly:
+        if not self.verbose:
             return
         if tensor is None:
             return

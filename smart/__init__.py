@@ -1,6 +1,5 @@
 from . import config
-from . import common, mesh, model, model_assembly, solvers
-from .units import unit
+from . import common, mesh, model, model_assembly, solvers, units
 
 __all__ = [
     "config",
@@ -9,5 +8,5 @@ __all__ = [
     "model",
     "common",
     "mesh",
-    "unit",
+    "units"
 ]

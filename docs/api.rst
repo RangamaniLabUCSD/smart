@@ -45,10 +45,5 @@ Testing more verbose documentation.
    :toctree: _autosummary
    :recursive:
 
-   smart.unit
+   smart.units
 
-.. autosummary::
-   :toctree: _autosummary
-   :recursive:
-
-   smart.post_process

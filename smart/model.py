@@ -1044,10 +1044,7 @@ class Model:
                 self._active_compartments,
                 self._all_compartments,
                 self.stopwatches,
-                self.config.solver["print_assembly"],
-                self.mpi_comm_world,
-            )
-            # self.problem = smartSNESProblem(self)
+                self.config.solver["print_assembly"])
 
             self.problem.init_petsc_matnest()
             self.problem.init_petsc_vecnest()
