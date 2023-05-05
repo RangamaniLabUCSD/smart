@@ -24,24 +24,28 @@ class smartSNESProblem:
     """Interface to PETSc SNES solver.
 
     Args:
-        u: The function containing the unknown dofs (is a function from a :class:`dolfin.MixedFunctionSpace`)
-        Fforms: Nested list of forms for the residual ``F``. Number of block rows in the rhs vector
-            is given by the number of items in the outermost list.
+        u: The function containing the unknown dofs (is a function from a
+            :class:`dolfin.MixedFunctionSpace`)
+        Fforms: Nested list of forms for the residual ``F``. Number of
+            block rows in the rhs vector is given by the number of items in the outermost list.
         Jforms_all: Nested list of forms for the Jacobian.
 
             .. note::
                 Number of entries in the outermost list should be ``len(Fforms)**2``
 
-            Flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``, ``i,j=0,..,len(Fforms)-1``.
+            Flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``,
+            ``i,j=0,..,len(Fforms)-1``.
             The k-th entry of ``Jforms_all`` is a list of forms that are summed up in a given block.
         active_compartments: List of compartments used in the variational form.
 
             .. note::
-                This input is only used to get the compartment names, should we change the input to only be the names?
+                This input is only used to get the compartment names, should we change the
+                input to only be the names?
         all_compartments: List of all compartments in model.
 
             .. note::
-                This is only used to get a map from mesh-id to name of compartment. I think we should extract this information
+                This is only used to get a map from mesh-id to name of compartment.
+                I think we should extract this information
                 from the active compartments.
         stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
 
@@ -553,7 +557,8 @@ class smartSNESProblem:
         Args:
             i: Row index
             j: Column index
-            k: If the Jacobian entry is a sum of forms, get the name of the domain in the `k`th entry.
+            k: If the Jacobian entry is a sum of forms, get the name
+                of the domain in the `k`th entry.
         """
         if k is None:
             return (
@@ -577,7 +582,8 @@ class smartSNESProblem:
 
         Args:
             j: Block index
-            k: If the residual entry is a sum of forms, get the name of the domain in the `k`th entry.
+            k: If the residual entry is a sum of forms, get the name
+                of the domain in the `k`th entry.
         """
 
         if k is None:
