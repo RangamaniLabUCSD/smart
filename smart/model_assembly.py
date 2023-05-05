@@ -1449,7 +1449,3 @@ def sbmodel_from_locals(local_values):
     cc.add(compartments)
     rc.add(reactions)
     return pc, sc, cc, rc
-
-
-def nan_to_none(df):
-    return df.replace({np.nan: None})
