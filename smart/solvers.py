@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["smartSNESProblem"]
 
-_stopwatch_keys = ["snes jacobian assemble", "snes residual assemble", "snes initialize zero matrices"]
+_stopwatch_keys = [
+    "snes jacobian assemble",
+    "snes residual assemble",
+    "snes initialize zero matrices",
+]
+
 
 class smartSNESProblem:
     """Interface to PETSc SNES solver.
@@ -26,14 +31,14 @@ class smartSNESProblem:
 
             .. note::
                 Number of entries in the outermost list should be ``len(Fforms)**2``
-            
+
             Flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``, ``i,j=0,..,len(Fforms)-1``.
             The k-th entry of ``Jforms_all`` is a list of forms that are summed up in a given block.
         active_compartments: List of compartments used in the variational form.
 
             .. note::
                 This input is only used to get the compartment names, should we change the input to only be the names?
-        all_compartments: List of all compartments in model. 
+        all_compartments: List of all compartments in model.
 
             .. note::
                 This is only used to get a map from mesh-id to name of compartment. I think we should extract this information
@@ -41,8 +46,8 @@ class smartSNESProblem:
         stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
 
             .. note::
-                Assumes that one has the entries: 
-               
+                Assumes that one has the entries:
+
                 - ``'snes jacobian assemble'``
                 - ``'snes residual assemble'``
                 - ``'snes initialize zero matrices'``
@@ -54,15 +59,15 @@ class smartSNESProblem:
 
         .. highlight:: python
         .. code-block:: python
-        
+
             Fsum = sum([f.lhs for f in model.forms]) # single form F0+F1+...+Fn
             d.solve(Fsum==0, u)
-            
+
         roughly executes the following:
 
         .. highlight:: python
         .. code-block:: python
-    
+
             d.solve(Fsum==0, u)  # [fem/solving.py]
             _solve_varproblem()  # [fem/solving.py]
             eq, ... = _extract_args()
@@ -78,7 +83,7 @@ class smartSNESProblem:
 
         .. highlight:: python
         .. code-block:: python
-  
+
             MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)  # [fem/problem.py]
             u_comps = [u[i]._cpp_object for i in range(len(u))]
 
@@ -114,15 +119,15 @@ class smartSNESProblem:
             I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
             I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
 
-        ``V.__repr__()`` shows the UFL coordinate element (finite element over coordinate 
+        ``V.__repr__()`` shows the UFL coordinate element (finite element over coordinate
         vector field) and finite element of the function space. We can access individually with:
-        
+
         .. highlight:: python
         .. code-block:: python
 
             V.ufl_domain().ufl_coordinate_element()
             V.ufl_element()
-        
+
             # on assembler
             d.fem.assembling.assemble_mixed(form, tensor)
             assembler = cpp.fem.MixedAssembler()
@@ -135,13 +140,14 @@ class smartSNESProblem:
 
     def __init__(
         self,
-        u:d.Function,
+        u: d.Function,
         Fforms: List[List[d.Form]],
         Jforms_all: List[List[d.Form]],
         active_compartments: List[Compartment],
         all_compartments: List[Compartment],
-        stopwatches:Dict[str, Stopwatch],
-        verbose:bool):
+        stopwatches: Dict[str, Stopwatch],
+        verbose: bool,
+    ):
         self.u = u
         self.Fforms = Fforms
         self.Jforms_all = Jforms_all
@@ -540,7 +546,7 @@ class smartSNESProblem:
             V.assemble()
         return V
 
-    def Jijk_name(self, i:int, j:int, k:Optional[int]=None):
+    def Jijk_name(self, i: int, j: int, k: Optional[int] = None):
         """
         Get a string representation of an entry of the Jacobian.
 
@@ -556,7 +562,7 @@ class smartSNESProblem:
             )
         else:
             ij = i * self.dim + j
-            if (num_entries:=len(self.Jforms_all[ij])) <= k :
+            if (num_entries := len(self.Jforms_all[ij])) <= k:
                 raise RuntimeError(f"J[{i},{j}] only consists of {num_entries} componets")
 
             domain_name = self.mesh_id_to_name[self.Jforms_all[ij][k].function_space(0).mesh().id()]
@@ -565,7 +571,7 @@ class smartSNESProblem:
                 f"/du[{self.active_compartment_names[j]}] (domain={domain_name})"
             )
 
-    def Fjk_name(self, j:int, k:Optional[int]=None):
+    def Fjk_name(self, j: int, k: Optional[int] = None):
         """
         Get a string representation of an entry of the residual.
 
@@ -577,7 +583,7 @@ class smartSNESProblem:
         if k is None:
             return f"F{j} = F[{self.active_compartment_names[j]}]"
         else:
-            if (num_entries:=len(self.Fforms[j])) <= k :
+            if (num_entries := len(self.Fforms[j])) <= k:
                 raise RuntimeError(f"F[{j}] only consists of {num_entries} componets")
             domain_name = self.mesh_id_to_name[self.Fforms[j][k].function_space(0).mesh().id()]
             return f"F{j} = F[{self.active_compartment_names[j]}] (domain={domain_name})"

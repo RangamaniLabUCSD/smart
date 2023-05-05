@@ -46,4 +46,3 @@ Testing more verbose documentation.
    :recursive:
 
    smart.units
-
