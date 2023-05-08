@@ -1,5 +1,5 @@
 ##########################
-Stubs modules
+SMART modules
 ##########################
 
 Testing more verbose documentation.
@@ -8,47 +8,47 @@ Testing more verbose documentation.
    :toctree: _autosummary
    :recursive:
 
-   stubs.common
+   smart.common
 
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.config
+   smart.config
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.model_assembly
+   smart.model_assembly
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.solvers
+   smart.solvers
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.model
+   smart.model
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.mesh
+   smart.mesh
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.unit
+   smart.unit
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   stubs.post_process
+   smart.post_process

@@ -6,6 +6,6 @@ print("===================================\n")
 pytest.main(["-v", "-m", "dolfin"])
 
 print("\n===================================")
-print("** Running stubs model initialization tests **")
+print("** Running smart model initialization tests **")
 print("===================================\n")
-pytest.main(["-v", "-m", "stubs_model_init"])
+pytest.main(["-v", "-m", "smart_model_init"])

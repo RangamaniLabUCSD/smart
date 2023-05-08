@@ -1,4 +1,4 @@
-name: Test fenics_stubs
+name: Test fenics_smart
 
 on:
   push:

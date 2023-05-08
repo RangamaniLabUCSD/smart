@@ -272,7 +272,7 @@ LOGGING_CONFIG = {
         "file": {"class": "logging.FileHandler", "formatter": "default", "filename": "output.log"},
     },
     "loggers": {
-        "stubs": {
+        "smart": {
             "handlers": ["console"],
             "level": "DEBUG",
             # Don't send it up my namespace for additional handling

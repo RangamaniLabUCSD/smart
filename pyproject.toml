@@ -2,9 +2,9 @@
 requires = ["setuptools>=61.0.0", "wheel"]
 
 [project]
-name = "stubs"
+name = "fenics-smart"
 version = "0.1.10"
-description = "STUBS is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models"
+description = "SMART is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models"
 authors = [{name = "Justin Laughlin", email = "justinglaughlin@gmail.com"}]
 license = {file = "LICENSE"}
 readme = "README.md"
@@ -26,11 +26,11 @@ dependencies = [
 
 
 [project.urls]
-homepage = "https://rangamanilabucsd.github.io/stubs"
-repository = "https://github.com/RangamaniLabUCSD/stubs"
+homepage = "https://rangamanilabucsd.github.io/smart"
+repository = "https://github.com/RangamaniLabUCSD/smart"
 
 [tool.setuptools]
-packages = ["stubs"]
+packages = ["smart"]
 
 
 [project.optional-dependencies]
@@ -43,15 +43,15 @@ docs = [
    "sphinx-autoapi"
 ]
 all = [
-   "stubs[test]",
-   "stubs[docs]",
-   "stubs[dev]"
+   "smart[test]",
+   "smart[docs]",
+   "smart[dev]"
 ]
 
 
 [tool.pytest.ini_options]
 addopts = [
-   "--cov=stubs",
+   "--cov=smart",
    "--cov-report=html",
    "--cov-report=term-missing",
    "-v"

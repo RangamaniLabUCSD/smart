@@ -8,13 +8,13 @@ import petsc4py.PETSc as p
 logger = logging.getLogger(__name__)
 
 
-class stubsSNESProblem:
+class smartSNESProblem:
     """To interface with PETSc SNES solver
 
     Notes on the high-level dolfin solver d.solve()
     when applied to Mixed Nonlinear problems:
 
-    F is the sum of all forms, in stubs this is:
+    F is the sum of all forms, in smart this is:
     Fsum = sum([f.lhs for f in model.forms]) # single form F0+F1+...+Fn
     d.solve(Fsum==0, u) roughly executes the following:
 

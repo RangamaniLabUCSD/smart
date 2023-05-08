@@ -24,7 +24,7 @@ from .config import global_settings as gset, FancyFormatter
 from .units import unit
 
 __all__ = [
-    "stubs_expressions",
+    "smart_expressions",
     "sub",
     "pint_unit_to_quantity",
     "pint_quantity_to_unit",
@@ -45,16 +45,16 @@ root = 0
 logger = logging.getLogger(__name__)
 
 
-def stubs_expressions(
+def smart_expressions(
     dolfin_expressions: Dict[str, Callable[[Any], Any]]
 ) -> Dict[str, Callable[[Any], Union[ufl.core.expr.Expr, float]]]:
     """
     Map strings to DOLFIN/UFL functions, that takes in
-    `stubs`-Expressions, i.e. functions with a unit.
+    `smart`-Expressions, i.e. functions with a unit.
 
     Args:
         dolfin_expressions: Dictonary of strings mapping
-          to stubs expressions
+          to smart expressions
 
     Example:
 
@@ -62,7 +62,7 @@ def stubs_expressions(
         .. code-block:: python
 
             input = {"sin": ufl.sin}
-            output = stubs_expressions(input)
+            output = smart_expressions(input)
 
         Output is then a dictionary that maps "sin" to
         a function :code:`sin(x)` that takes in a
@@ -183,7 +183,7 @@ class Stopwatch:
         # self.start()
         self.filename = filename
         if filename is not None:
-            self.file_logger = logging.getLogger("stubs_stop_watch")
+            self.file_logger = logging.getLogger("smart_stop_watch")
             handler = logging.FileHandler(filename=filename)
             handler.setFormatter(FancyFormatter())
             self.file_logger.addHandler(handler)

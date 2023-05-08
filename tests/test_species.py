@@ -2,14 +2,14 @@ import math
 
 import pytest
 
-import stubs
+import smart
 
 
 @pytest.fixture(name="A_kwargs")
 def example_species():
     kwargs = dict(
-        concentration_units=stubs.unit.uM,
-        diffusion_units=stubs.unit.um**2 / stubs.unit.sec,
+        concentration_units=smart.unit.uM,
+        diffusion_units=smart.unit.um**2 / smart.unit.sec,
         initial_condition=0.01,
         D=2.0,
         name="A",
@@ -17,7 +17,7 @@ def example_species():
         group="Some group",
     )
 
-    A = stubs.model_assembly.Species(**kwargs)
+    A = smart.model_assembly.Species(**kwargs)
     return (A, kwargs)
 
 
@@ -31,11 +31,11 @@ def test_Species_initialization(A_kwargs):
     assert (
         A.initial_condition_quantity == kwargs["initial_condition"] * kwargs["concentration_units"]
     )
-    assert A.concentration_units == stubs.common.pint_unit_to_quantity(
+    assert A.concentration_units == smart.common.pint_unit_to_quantity(
         kwargs["concentration_units"]
     )
     assert math.isclose(A.D, kwargs["D"])
-    assert A.diffusion_units == stubs.common.pint_unit_to_quantity(kwargs["diffusion_units"])
+    assert A.diffusion_units == smart.common.pint_unit_to_quantity(kwargs["diffusion_units"])
     assert A.D_quantity == kwargs["D"] * kwargs["diffusion_units"]
 
     assert A.compartment_name == kwargs["compartment_name"]
