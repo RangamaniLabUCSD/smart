@@ -242,6 +242,22 @@ class FancyFormatter(logging.Formatter):
         return prefix + formatted_out + postfix
 
 
+def setLogger(name, log_file=None, console_level=None, file_level="DEBUG"):
+    """
+    Initiate logger with user-specific settings
+
+    :param log_file: If not None, then output is sent to both file and console
+    :param console_level: Log level for console (not alterable right now)
+    :param file_level: Log level for file
+    """
+    logger = logging.getLogger(name)
+    if log_file is not None:
+        file_handler = logging.FileHandler("file.log")
+        file_handler.setFormatter(FancyFormatter)
+        file_handler.setLevel(console_level)
+        logger.addHandler(file_handler)
+
+
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -253,6 +269,7 @@ LOGGING_CONFIG = {
     "handlers": {
         "console": {"class": "logging.StreamHandler", "formatter": "default"},
         "root_console": {"class": "logging.StreamHandler", "formatter": "root"},
+        "file": {"class": "logging.FileHandler", "formatter": "default", "filename": "output.log"},
     },
     "loggers": {
         "smart": {
@@ -267,7 +284,7 @@ LOGGING_CONFIG = {
         "dolfin": {"level": "INFO"},
         "dijitso": {"level": "INFO"},
     },
-    "root": {"handlers": ["root_console"], "level": "INFO"},
+    "root": {"handlers": ["root_console"], "level": "DEBUG"},
 }
 
 
@@ -277,6 +294,7 @@ logging_config.dictConfig(LOGGING_CONFIG)
 global_settings = {
     "main_dir": None,
     "log_filename": None,
+    "log_level": None,
     # These functions will be substituted into any expressions
     "dolfin_expressions": {
         "exp": d.exp,
@@ -364,11 +382,14 @@ class FlagsConfig(BaseConfig):
     :param allow_unused_components: Allow parameters not defined in any reaction to be
         defined in any model.
     :param print_verbose_info: Print detailed information about a model
+    :multi_mesh_MPI: If using MPI, treat each process as solving a separate mesh
+                    (use d.MPI.comm_self instead of d.MPI.comm_world)
     """
 
     store_solutions: bool = True
     allow_unused_components: bool = False
     print_verbose_info: bool = True
+    multi_mesh_MPI: bool = False
 
 
 @dataclass
@@ -378,8 +399,8 @@ class Config:
 
     :param solver: Options for the solvers
     :param flags: Various options
-    :param directory: Outputting options
-    :param loglevel: Logging options for FEniCS modules
+    :param log_file: (opt) file to send output to
+    :param log_level: Log level currently used
     """
 
     solver: SolverConfig = field(default_factory=SolverConfig)

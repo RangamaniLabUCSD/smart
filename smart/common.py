@@ -559,11 +559,13 @@ def DemoSpheresMesh(
     gmsh.option.setNumber("Mesh.Algorithm", 5)
 
     gmsh.model.mesh.generate(3)
-    gmsh.write("twoSpheres.msh")  # save locally
+    tmpfol = f"{outerRad}outerRad_{innerRad}innerRad"
+    os.makedirs(f"{tmpfol}", exist_ok=True)
+    gmsh.write(f"{tmpfol}/twoSpheres.msh")  # save locally
     gmsh.finalize()
 
     # load, convert to xdmf, and save as temp files
-    mesh3d_in = meshio.read("twoSpheres.msh")
+    mesh3d_in = meshio.read(f"{tmpfol}/twoSpheres.msh")
 
     def create_mesh(mesh, cell_type):
         cells = mesh.get_cells_type(cell_type)
@@ -577,41 +579,43 @@ def DemoSpheresMesh(
 
     tet_mesh = create_mesh(mesh3d_in, "tetra")
     tri_mesh = create_mesh(mesh3d_in, "triangle")
-    meshio.write("tempmesh_3dout.xdmf", tet_mesh)
-    meshio.write("tempmesh_2dout.xdmf", tri_mesh)
+    meshio.write(f"{tmpfol}/tempmesh_3dout.xdmf", tet_mesh)
+    meshio.write(f"{tmpfol}/tempmesh_2dout.xdmf", tri_mesh)
 
     # convert xdmf mesh to dolfin-style mesh
-    dmesh = d.Mesh()
+    dmesh = d.Mesh(d.MPI.comm_self)
     mvc3 = d.MeshValueCollection("size_t", dmesh, 3)
-    with d.XDMFFile("tempmesh_3dout.xdmf") as infile:
+    with d.XDMFFile(d.MPI.comm_self, f"{tmpfol}/tempmesh_3dout.xdmf") as infile:
         infile.read(dmesh)
         infile.read(mvc3, "mf_data")
     mf3 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc3)
     # set unassigned volumes to tag=0
     mf3.array()[np.where(mf3.array() > 1e9)[0]] = 0
     mvc2 = d.MeshValueCollection("size_t", dmesh, 2)
-    with d.XDMFFile("tempmesh_2dout.xdmf") as infile:
+    with d.XDMFFile(d.MPI.comm_self, f"{tmpfol}/tempmesh_2dout.xdmf") as infile:
         infile.read(mvc2, "mf_data")
     mf2 = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc2)
     # set inner faces to tag=0
     mf2.array()[np.where(mf2.array() > 1e9)[0]] = 0
 
     # use os to remove temp meshes
-    os.remove("tempmesh_2dout.xdmf")
-    os.remove("tempmesh_3dout.xdmf")
-    os.remove("tempmesh_2dout.h5")
-    os.remove("tempmesh_3dout.h5")
-    os.remove("twoSpheres.msh")
+    os.remove(f"{tmpfol}/tempmesh_2dout.xdmf")
+    os.remove(f"{tmpfol}/tempmesh_3dout.xdmf")
+    os.remove(f"{tmpfol}/tempmesh_2dout.h5")
+    os.remove(f"{tmpfol}/tempmesh_3dout.h5")
+    os.remove(f"{tmpfol}/twoSpheres.msh")
+    os.rmdir(f"{tmpfol}")
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 
 
 def write_mesh(mesh, mf2, mf3, filename="DemoCuboidMesh"):
     # Write mesh and meshfunctions to file
-    hdf5 = d.HDF5File(mesh.mpi_comm(), filename + ".h5", "w")
+    # hdf5 = d.HDF5File(mesh.mpi_comm(), filename + ".h5", "w")
+    hdf5 = d.HDF5File(d.MPI.comm_self, filename + ".h5", "w")
     hdf5.write(mesh, "/mesh")
     hdf5.write(mf3, "/mf3")
     hdf5.write(mf2, "/mf2")
     # For visualization of domains
-    d.File(f"{filename}_mf3.pvd") << mf3
-    d.File(f"{filename}_mf2.pvd") << mf2
+    # d.File(f"{filename}_mf3.pvd") << mf3
+    # d.File(f"{filename}_mf2.pvd") << mf2

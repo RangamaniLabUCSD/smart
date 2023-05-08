@@ -7,6 +7,7 @@ from decimal import Decimal
 from itertools import chain
 import logging
 
+import pickle
 import dolfin as d
 import numpy as np
 import pandas
@@ -89,6 +90,10 @@ class Model:
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
+    def to_pickle(self, filename):
+        with open(filename, "wb") as f:
+            pickle.dump(self.to_dict(), f)
+
     def __post_init__(self):
         # # Check that solver_system is valid
 
@@ -135,7 +140,10 @@ class Model:
         self.forms = FormContainer()
 
         # MPI
-        self.mpi_comm_world = d.MPI.comm_world
+        if self.config.flags["multi_mesh_MPI"]:
+            self.mpi_comm_world = d.MPI.comm_self
+        else:
+            self.mpi_comm_world = d.MPI.comm_world
         self.mpi_rank = self.mpi_comm_world.rank
         self.mpi_size = self.mpi_comm_world.size
         self.mpi_root = 0
@@ -1052,7 +1060,9 @@ class Model:
             if len(self.problem.global_sizes) == 1:
                 self._ubackend = u[0].vector().vec().copy()
             else:
-                self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
+                self._ubackend = PETSc.Vec().createNest(
+                    [usub.vector().vec().copy() for usub in u], comm=self.mpi_comm_world
+                )
 
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
 
@@ -1329,6 +1339,11 @@ class Model:
 
         return Jlist
 
+    def set_form_scaling(self, compartment_name, scaling=1.0, print_scaling=True):
+        for form in self.forms:
+            if form.compartment.name == compartment_name:
+                form.set_scaling(scaling, print_scaling)
+
     # ===============================================================================
     # Model - Solving
     # Hierarchy:
@@ -1603,7 +1618,8 @@ class Model:
                         self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                     else:
                         self._ubackend = PETSc.Vec().createNest(
-                            [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                            [usub.vector().vec().copy() for usub in self.u["u"]._functions],
+                            comm=self.mpi_comm_world,
                         )
                     # need to re-link global function with species-specific functions
                     # after re-setting previous solution

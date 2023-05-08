@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.2 20190208//EN"
+                  "JATS-publishing1.dtd">
+<article xmlns:mml="http://www.w3.org/1998/Math/MathML" xmlns:xlink="http://www.w3.org/1999/xlink" dtd-version="1.2" article-type="other">
+<front>
+<journal-meta>
+<journal-id></journal-id>
+<journal-title-group>
+<journal-title>Journal of Open Source Software</journal-title>
+<abbrev-journal-title>JOSS</abbrev-journal-title>
+</journal-title-group>
+<issn publication-format="electronic">2475-9066</issn>
+<publisher>
+<publisher-name>Open Journals</publisher-name>
+</publisher>
+</journal-meta>
+<article-meta>
+<article-id pub-id-type="publisher-id">0</article-id>
+<article-id pub-id-type="doi">N/A</article-id>
+<title-group>
+<article-title>SMART: Spatial Modelling Algorithms for Reactions and
+Transport</article-title>
+</title-group>
+<contrib-group>
+<contrib contrib-type="author">
+<name>
+<surname>Laughlin</surname>
+<given-names>Justin</given-names>
+</name>
+<xref ref-type="aff" rid="aff-1"/>
+</contrib>
+<contrib contrib-type="author">
+<name>
+<surname>Dokken</surname>
+<given-names>Jørgen</given-names>
+</name>
+<xref ref-type="aff" rid="aff-2"/>
+</contrib>
+<contrib contrib-type="author">
+<name>
+<surname>Finsberg</surname>
+<given-names>Henrik</given-names>
+</name>
+<xref ref-type="aff" rid="aff-3"/>
+</contrib>
+<contrib contrib-type="author">
+<name>
+<surname>Francis</surname>
+<given-names>Emmet</given-names>
+</name>
+<xref ref-type="aff" rid="aff-1"/>
+</contrib>
+<contrib contrib-type="author">
+<name>
+<surname>Lee</surname>
+<given-names>Christopher</given-names>
+</name>
+<xref ref-type="aff" rid="aff-1"/>
+</contrib>
+<contrib contrib-type="author">
+<name>
+<surname>Rognes</surname>
+<given-names>Marie E.</given-names>
+</name>
+<xref ref-type="aff" rid="aff-2"/>
+</contrib>
+<contrib contrib-type="author" corresp="yes">
+<name>
+<surname>Rangamani</surname>
+<given-names>Padmini</given-names>
+</name>
+<xref ref-type="aff" rid="aff-1"/>
+<xref ref-type="corresp" rid="cor-1"><sup>*</sup></xref>
+</contrib>
+<aff id="aff-1">
+<institution-wrap>
+<institution>Department of Aerospace and Mechanical Engineering,
+University of California San Diego, La Jolla, CA, USA</institution>
+</institution-wrap>
+</aff>
+<aff id="aff-2">
+<institution-wrap>
+<institution>Department of Numerical Analysis and Scientific Computing,
+Simula Research Laboratory, Oslo, Norway</institution>
+</institution-wrap>
+</aff>
+<aff id="aff-3">
+<institution-wrap>
+<institution>Department of Computational Physiology, Simula Research
+Laboratory, Oslo, Norway</institution>
+</institution-wrap>
+</aff>
+</contrib-group>
+<author-notes>
+<corresp id="cor-1">* E-mail: <email></email></corresp>
+</author-notes>
+<volume>¿VOL?</volume>
+<issue>¿ISSUE?</issue>
+<fpage>¿PAGE?</fpage>
+<permissions>
+<copyright-statement>Authors of papers retain copyright and release the
+work under a Creative Commons Attribution 4.0 International License (CC
+BY 4.0)</copyright-statement>
+<copyright-year>2022</copyright-year>
+<copyright-holder>The article authors</copyright-holder>
+<license license-type="open-access" xlink:href="https://creativecommons.org/licenses/by/4.0/">
+<license-p>Authors of papers retain copyright and release the work under
+a Creative Commons Attribution 4.0 International License (CC BY
+4.0)</license-p>
+</license>
+</permissions>
+<kwd-group kwd-group-type="author">
+<kwd>Python</kwd>
+<kwd>FEniCS</kwd>
+<kwd>reactions</kwd>
+<kwd>transport</kwd>
+<kwd>biophysics</kwd>
+<kwd>cellular processes</kwd>
+</kwd-group>
+</article-meta>
+</front>
+<body>
+<sec id="summary">
+  <title>Summary</title>
+  <p>Biological cells respond to stimuli through chains of chemical
+  reactions generally referred to as <italic>cell signaling
+  pathways</italic>. The propagation of the chemical substances and the
+  cell signalling pathways can be represented by coupled nonlinear
+  systems of reaction-transport equations within intracellular,
+  subcellular and extracellular spaces. The geometries of real
+  biological cells are complicated; subcellular structures such as the
+  endoplasmic reticulum are highly curved and tortuous. <italic>Spatial
+  Modelling Algorithms for Reactions and Transport</italic> (SMART) is a
+  high-performance finite-element-based simulation package for
+  describing, modelling and simulating spatially-varying
+  reaction-transport processes with specific features targeting
+  signaling pathways in biological cell geometries. SMART is based on
+  the FEniCS finite element library, provides a symbolic representation
+  framework for specifying reaction pathways, supports general 2D and 3D
+  geometry specifications, and supports parallelism via MPI.</p>
+</sec>
+<sec id="statement-of-need">
+  <title>Statement of need</title>
+  <p>The traditional approach to modelling cell signalling pathways is
+  to assume that the substances are well-mixed within the cell body or a
+  subcellular compartment. In this case, the governing biophysical
+  equations reduce to ordinary differential equations, for which a
+  plethora of simulation tools exist. This approach has successfully
+  recapitulated many cell-wide signaling events, from calcium elevations
+  in neurons to models of cell mechanotransduction. However, such models
+  obviously neglect many spatial aspects of cell signaling, which are
+  crucially important on short timescales or for slower diffusing
+  species. Recently, there has been increased interest in spatiotemporal
+  modeling of cell signaling.</p>
+  <list list-type="bullet">
+    <list-item>
+      <p>Describe in 1-2 sentences which frameworks that exist in
+      addition to SMART</p>
+    </list-item>
+    <list-item>
+      <p>State in 1-2 sentences why these are insufficient</p>
+    </list-item>
+    <list-item>
+      <p>Describe in 1-2 sentence key SMART features that addresses
+      these insufficiencies.</p>
+    </list-item>
+    <list-item>
+      <p>Include citations, see how to format citations in text.</p>
+    </list-item>
+  </list>
+  <p>Other software tools currently used to model signaling networks in
+  cells either primarily focus on assembling non-spatial models or are
+  restricted to finite-volume methods
+  (<xref alt="Cowan et al., 2012" rid="ref-cowan_spatial_2012" ref-type="bibr">Cowan
+  et al., 2012</xref>) or stochastic, particle-based simulations
+  (<xref alt="Kerr et al., 2008" rid="ref-kerr_fast_2008" ref-type="bibr">Kerr
+  et al., 2008</xref>). Alternatively, there exist many mature platforms
+  such as COMSOL that use the finite element method to solve various
+  PDEs. However, these programs are not open source, they grant the user
+  less control over the choice of solution methods, and they are not wel
+  SMART leverages state-of-the-art finite element software (FEniCS)
+  which is compatible with meshing software such as Gmsh or the newly
+  developed GAMer 2
+  (<xref alt="Lee et al., 2020" rid="ref-lee_3d_2020" ref-type="bibr">Lee
+  et al., 2020</xref>), allowing users to solve highly nonlinear systems
+  of PDEs within complex cellular geometries.</p>
+</sec>
+<sec id="scientific-impact-and-examples-of-smart-use">
+  <title>Scientific impact and examples of SMART use</title>
+  <list list-type="bullet">
+    <list-item>
+      <p>Detail one existing and some upcoming use cases for SMART.</p>
+    </list-item>
+    <list-item>
+      <p>Include 1-2 figures, and 2-3 references.</p>
+    </list-item>
+  </list>
+  <p>SMART offers the unique opportunity to model signaling networks
+  spatially in realistic cell geometries; for instance, using recent
+  electron micrographs of ER geometry in Purkinje neurons, we were able
+  to predict the emergent calcium dynamics within realistic cell volumes
+  (Fig 1). …[mention another example?] In the near future, SMART can be
+  used to solve coupled mechano-chemical systems; for instance, we plan
+  to explore coupling between calcium release and contraction within
+  single skeletal muscle fibers.</p>
+</sec>
+<sec id="acknowledgements">
+  <title>Acknowledgements</title>
+  <p>Acknowledgments.</p>
+</sec>
+</body>
+<back>
+<ref-list>
+  <ref id="ref-cowan_spatial_2012">
+    <element-citation publication-type="chapter">
+      <person-group person-group-type="author">
+        <name><surname>Cowan</surname><given-names>Ann E.</given-names></name>
+        <name><surname>Moraru</surname><given-names>Ion I.</given-names></name>
+        <name><surname>Schaff</surname><given-names>James C.</given-names></name>
+        <name><surname>Slepchenko</surname><given-names>Boris M.</given-names></name>
+        <name><surname>Loew</surname><given-names>Leslie M.</given-names></name>
+      </person-group>
+      <article-title>Spatial modeling of cell signaling networks</article-title>
+      <source>Methods in cell biology</source>
+      <publisher-name>Elsevier</publisher-name>
+      <year iso-8601-date="2012">2012</year>
+      <date-in-citation content-type="access-date"><year iso-8601-date="2023-05-01">2023</year><month>05</month><day>01</day></date-in-citation>
+      <volume>110</volume>
+      <isbn>978-0-12-388403-9</isbn>
+      <uri>https://linkinghub.elsevier.com/retrieve/pii/B9780123884039000084</uri>
+      <pub-id pub-id-type="doi">10.1016/B978-0-12-388403-9.00008-4</pub-id>
+      <fpage>195</fpage>
+      <lpage>221</lpage>
+    </element-citation>
+  </ref>
+  <ref id="ref-lee_3d_2020">
+    <element-citation publication-type="article-journal">
+      <person-group person-group-type="author">
+        <name><surname>Lee</surname><given-names>Christopher T.</given-names></name>
+        <name><surname>Laughlin</surname><given-names>Justin G.</given-names></name>
+        <name><surname>Angliviel De La Beaumelle</surname><given-names>Nils</given-names></name>
+        <name><surname>Amaro</surname><given-names>Rommie E.</given-names></name>
+        <name><surname>McCammon</surname><given-names>J. Andrew</given-names></name>
+        <name><surname>Ramamoorthi</surname><given-names>Ravi</given-names></name>
+        <name><surname>Holst</surname><given-names>Michael</given-names></name>
+        <name><surname>Rangamani</surname><given-names>Padmini</given-names></name>
+      </person-group>
+      <article-title>3D mesh processing using GAMer 2 to enable reaction-diffusion simulations in realistic cellular geometries</article-title>
+      <source>PLOS Computational Biology</source>
+      <person-group person-group-type="editor">
+        <name><surname>Berry</surname><given-names>Hugues</given-names></name>
+      </person-group>
+      <year iso-8601-date="2020-04-06">2020</year><month>04</month><day>06</day>
+      <date-in-citation content-type="access-date"><year iso-8601-date="2023-05-01">2023</year><month>05</month><day>01</day></date-in-citation>
+      <volume>16</volume>
+      <issue>4</issue>
+      <issn>1553-7358</issn>
+      <uri>https://dx.plos.org/10.1371/journal.pcbi.1007756</uri>
+      <pub-id pub-id-type="doi">10.1371/journal.pcbi.1007756</pub-id>
+      <fpage>e1007756</fpage>
+      <lpage></lpage>
+    </element-citation>
+  </ref>
+  <ref id="ref-kerr_fast_2008">
+    <element-citation publication-type="article-journal">
+      <person-group person-group-type="author">
+        <name><surname>Kerr</surname><given-names>Rex A.</given-names></name>
+        <name><surname>Bartol</surname><given-names>Thomas M.</given-names></name>
+        <name><surname>Kaminsky</surname><given-names>Boris</given-names></name>
+        <name><surname>Dittrich</surname><given-names>Markus</given-names></name>
+        <name><surname>Chang</surname><given-names>Jen-Chien Jack</given-names></name>
+        <name><surname>Baden</surname><given-names>Scott B.</given-names></name>
+        <name><surname>Sejnowski</surname><given-names>Terrence J.</given-names></name>
+        <name><surname>Stiles</surname><given-names>Joel R.</given-names></name>
+      </person-group>
+      <article-title>Fast monte carlo simulation methods for biological reaction-diffusion systems in solution and on surfaces</article-title>
+      <source>SIAM Journal on Scientific Computing</source>
+      <year iso-8601-date="2008-01">2008</year><month>01</month>
+      <date-in-citation content-type="access-date"><year iso-8601-date="2023-05-02">2023</year><month>05</month><day>02</day></date-in-citation>
+      <volume>30</volume>
+      <issue>6</issue>
+      <issn>1064-8275</issn>
+      <uri>http://epubs.siam.org/doi/10.1137/070692017</uri>
+      <pub-id pub-id-type="doi">10.1137/070692017</pub-id>
+      <fpage>3126</fpage>
+      <lpage>3149</lpage>
+    </element-citation>
+  </ref>
+</ref-list>
+</back>
+</article>
