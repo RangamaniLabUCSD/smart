@@ -1,3 +1,4 @@
+"""Pint registry from SMART and related convenience function"""
 __all__ = ["unit", "unit_to_quantity", "quantity_to_unit"]
 
 import pint

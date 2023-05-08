@@ -14,7 +14,7 @@ execute:
 
 # Information about where the book exists on the web
 repository:
-  url: https://github.com/justinlaughlin/smart # Online location of your book
+  url: https://github.com/RangamaniLabUCSD/smart # Online location of your book
   branch: development
 
 

@@ -8,8 +8,8 @@ import smart
 @pytest.fixture(name="A_kwargs")
 def example_species():
     kwargs = dict(
-        concentration_units=smart.unit.uM,
-        diffusion_units=smart.unit.um**2 / smart.unit.sec,
+        concentration_units=smart.units.unit.uM,
+        diffusion_units=smart.units.unit.um**2 / smart.units.unit.sec,
         initial_condition=0.01,
         D=2.0,
         name="A",

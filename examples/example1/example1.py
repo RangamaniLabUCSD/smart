@@ -16,23 +16,15 @@
 
 # +
 import os
-import logging
 
 import dolfin as d
 import sympy as sym
 
-from smart import unit, config, common, mesh, model
-from smart.model_assembly import (
-    Compartment,
-    Parameter,
-    Reaction,
-    Species,
-    sbmodel_from_locals,
-)
+from smart import config, common, mesh, model
+from smart.model_assembly import Compartment, Parameter, Reaction, Species, sbmodel_from_locals
+from smart.units import unit
 
 # -
-
-logging.getLogger("smartq").setLevel(logging.INFO)
 
 # First, we define the various units for the inputs
 

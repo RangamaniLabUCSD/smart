@@ -8,7 +8,7 @@ def example_compartment():
     kwargs = dict(
         dimensionality=3,
         name="Cyto",
-        compartment_units=smart.unit.um,
+        compartment_units=smart.units.unit.um,
         cell_marker=1,
     )
 
