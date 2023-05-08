@@ -214,7 +214,9 @@ class stubsSNESProblem:
                         extra=dict(format_type="log"),
                     )
 
-                    d.assemble_mixed(Jforms[ij][k], tensor=self.tensors[ij][k])
+                    d.assemble_mixed(
+                        Jforms[ij][k], tensor=self.tensors[ij][k]
+                    )  # causes issues when running multiple meshes in parallel
 
                 if non_empty_forms == 0:
                     # If all forms are empty, we don't need to assemble. Initialize to zero matrix
@@ -280,7 +282,7 @@ class stubsSNESProblem:
                         )
                     continue
 
-                tensor = d.PETScVector()
+                tensor = d.PETScVector(self.comm)
 
                 if Fsum is None:
                     Fsum = d.assemble_mixed(self.Fforms[j][k], tensor=tensor)
@@ -305,7 +307,7 @@ class stubsSNESProblem:
             # We can't use a nest vector
             self.Fpetsc_nest = d.PETScVector(Fpetsc[0]).vec()
         else:
-            self.Fpetsc_nest = p.Vec().createNest(Fpetsc)
+            self.Fpetsc_nest = p.Vec().createNest(Fpetsc, comm=self.comm)
         self.Fpetsc_nest.assemble()
 
     def assemble_Jnest(self, Jnest):
