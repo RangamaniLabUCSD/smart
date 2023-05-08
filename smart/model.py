@@ -139,11 +139,8 @@ class Model:
         # Functional forms
         self.forms = FormContainer()
 
-        # MPI
-        if self.config.flags["multi_mesh_MPI"]:
-            self.mpi_comm_world = d.MPI.comm_self
-        else:
-            self.mpi_comm_world = d.MPI.comm_world
+        # MPI - define to be consistent with mesh
+        self.mpi_comm_world = self.parent_mesh.mpi_comm
         self.mpi_rank = self.mpi_comm_world.rank
         self.mpi_size = self.mpi_comm_world.size
         self.mpi_root = 0

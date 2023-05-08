@@ -31,7 +31,8 @@ import dolfin as d
 import numpy as np
 import logging
 
-from smart import unit, config, common, mesh, model
+from smart import config, common, mesh, model
+from smart.units import unit
 from smart.model_assembly import Compartment, Parameter, Reaction, Species, sbmodel_from_locals
 from matplotlib import pyplot as plt
 
