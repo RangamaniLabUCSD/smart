@@ -52,7 +52,7 @@ where $\nabla \cdot$ is the spatial divergence operator, $\nabla$ is the spatial
 where $R_i^q$ defines, typically non-linear, non-trivial, surface fluxes, and the surface concentrations $v^q$ are defined below.
 
 ### Surface species
-The (sub)surface concentrations $v^q = \{ v_i^q \}_{i \in \mathcal{I}_q}$, entering in~\eqref{eq:robin} above, are defined on $\Gamma^q \subseteq \Gamma^{mn}$, either as prescribed fields or via subsurface equations as follows: find $v^q = v^q(x, t)$ for $x \in \Gamma^q$, $t \in (0, T]$ such that
+The (sub)surface concentrations $v^q = \{ v_i^q \}_{i \in \mathcal{I}_q}$, entering in {eq}`eq:robin` above, are defined on $\Gamma^q \subseteq \Gamma^{mn}$, either as prescribed fields or via subsurface equations as follows: find $v^q = v^q(x, t)$ for $x \in \Gamma^q$, $t \in (0, T]$ such that
 ```{math}
   \partial_t v_i^q + \mathcal{T}_i^q(v_i^q ) - g_i^q ( u^m, u^n, v^q ) = 0 \qquad \text{ on } \Gamma^{q} .
 ```

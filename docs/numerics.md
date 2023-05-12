@@ -1,9 +1,9 @@
-
 (sec:numerics)=
 # The SMART numerical solution algorithms
 
 
-SMART solves the multi-domain reaction-transport equations outline in Section~\ref{sec:mathematics} via finite difference discretizations in time, a finite element discretizations in space, and either a \emph{monolithic} or \emph{iterative} approach to address the system couplings. We describe the monolithic approach here, considering linear diffusion-only transport relations for concreteness and to illustrate linear-nonlinear strategies.
+SMART solves the multi-domain reaction-transport equations outline in
+{ref}`sec:mathematics` via finite difference discretizations in time, a finite element discretizations in space, and either a *monolithic* or *iterative* approach to address the system couplings. We describe the monolithic approach here, considering linear diffusion-only transport relations for concreteness and to illustrate linear-nonlinear strategies.
 
 \subsection{Monolithic solution of the multi-domain reaction-diffusion equations}
 
@@ -68,4 +68,4 @@ for all $\phi \in U_h$, $\psi \in V_h$, where $F_{\tau_n}$ and $G_{\tau_n}$ are 
 
 ### Nonlinear solution algorithms
 
-By default, the monolithic nonlinear discrete system~\eqref{eq:nonlinear} is solved by Newton-Raphson iteration with a symbolically derived discrete Jacobian.
+By default, the monolithic nonlinear discrete system {eq}`eq:nonlinear` is solved by Newton-Raphson iteration with a symbolically derived discrete Jacobian.
