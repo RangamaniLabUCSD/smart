@@ -8,10 +8,10 @@ SMART solves the multi-domain reaction-transport equations outline in
 \subsection{Monolithic solution of the multi-domain reaction-diffusion equations}
 
 ## Variational formulation
-Introduce the Sobolev spaces $H^1(\Omega^m)$, $m \in \mathcal{M}$ of square-integrable functions on $\Omega^m$ with square-integrable weak derivatives, and analogously for $H^1(\Gamma^q)$, $q \in Q$, as well as the vector function spaces $H^1(\Omega^m, \R^d) = H^1(\Omega)^d$. For solving the multi-domain reaction-diffusion equations, we introduce the two product spaces $U$ and $V$ consisting of (sub)domain fields and (sub)surface fields respectively:
+Introduce the Sobolev spaces $H^1(\Omega^m)$, $m \in \mathcal{M}$ of square-integrable functions on $\Omega^m$ with square-integrable weak derivatives, and analogously for $H^1(\Gamma^q)$, $q \in Q$, as well as the vector function spaces $H^1(\Omega^m, \mathbb{R}^d) = H^1(\Omega)^d$. For solving the multi-domain reaction-diffusion equations, we introduce the two product spaces $U$ and $V$ consisting of (sub)domain fields and (sub)surface fields respectively:
 ```{math}
-    U = \bigotimes_{m \in \mathcal{M}} H^1(\Omega^m; \R^{|\mathcal{I}^m|}), \quad
-    V = \bigotimes_{q \in \mathcal{Q}} H^1(\Gamma^q; \R^{|\mathcal{I}^q|}) .
+    U = \bigotimes_{m \in \mathcal{M}} H^1(\Omega^m; \mathbb{R}^{|\mathcal{I}^m|}), \quad
+    V = \bigotimes_{q \in \mathcal{Q}} H^1(\Gamma^q; \mathbb{R}^{|\mathcal{I}^q|}) .
 ```
 To represent the solution fields $u, v$ comprised of the separate (sub)domain and (sub)surface components, we label
 ```{math}
@@ -35,22 +35,22 @@ where both forms $F$ and $G$ are composed of sums over domains or surfaces and s
 ```
 Furthermore, with the $L^2(O)$-inner product over any given domain $O \subset \Omega$ defined as
 $$
-    \inner{a}{b}_{O} = \int_{O} a \cdot b \, \mathrm{d}x ,
+    \langle a, b \rangle_{O} = \int_{O} a \cdot b \, \mathrm{d}x ,
 $$
 we have defined
 ```{math}
     F_i^m(u, v, \phi_i^m)
-    = \inner{\partial_t u_i^m}{\phi_i^m}_{\Omega^m}
-    + \inner{D_i^m \nabla u_i^m}{\nabla \phi_i^m}_{\Omega^m}
-    - \inner{f_i^m(u^m)}{\phi_i^m}_{\Omega^m}
-    - \sum_{q \in \mathcal{Q}^{mn}} \inner{R_i^q(u^m, u^n, v^q)}{\phi_i^m}_{\Gamma^q}
+    = \langle \partial_t u_i^m, \phi_i^m \rangle_{\Omega^m}
+    + \langle D_i^m \nabla u_i^m, \nabla \phi_i^m \rangle_{\Omega^m}
+    - \langle f_i^m(u^m), \phi_i^m\rangle_{\Omega^m}
+    - \sum_{q \in \mathcal{Q}^{mn}} \langle R_i^q(u^m, u^n, v^q), \phi_i^m\rangle_{\Gamma^q}
 ```
 and, for any $q \in \mathcal{Q}^{mn}$ for given $\Omega^m$ and $\Omega^n$ interfacing $\Omega^m$ via $\Gamma^q$, finally:
 ```{math}
     G_i^q(u, v, \psi_i^q)
-    = \inner{\partial_t v^q}{\psi_i^q}_{\Gamma^q}
-     + \inner{D_i^q \nabla_S v_i^q}{\nabla_S \psi_i^q}_{\Gamma^q}
-     - \inner{g_i^q(u^m, u^n, v^q)}{\psi_i^q}_{\Gamma^q} .
+    = \langle \partial_t v^q, \psi_i^q \rangle_{\Gamma^q}
+     + \langle D_i^q \nabla_S v_i^q, \nabla_S \psi_i^q \rangle_{\Gamma^q}
+     - \langle g_i^q(u^m, u^n, v^q), \psi_i^q \rangle_{\Gamma^q} .
 ```
 
 ### Discretization in time and space

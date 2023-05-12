@@ -13,7 +13,7 @@ SMART is designed to represent and solve coupled systems of nonlinear ordinary a
 
 ## Multi-domain and geometry representation
 
-We consider an open topologically $D$-dimensional manifold $\Omega \subset \R^d$ for $D \leqslant d = 1, 2, 3$, and assume that $\Omega$ is partitioned into $|\mathcal{M}|$ open and disjoint \emph{subdomains} $\Omega^m \subset \R^d$:
+We consider an open topologically $D$-dimensional manifold $\Omega \subset \mathbb{R}^d$ for $D \leqslant d = 1, 2, 3$, and assume that $\Omega$ is partitioned into $|\mathcal{M}|$ open and disjoint \emph{subdomains} $\Omega^m \subset \mathbb{R}^d$:
 
 ```{math}
   \Omega = \bigcup_{m \in \mathcal{M}} \Omega^m ,
