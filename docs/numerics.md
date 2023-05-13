@@ -34,9 +34,9 @@ where both forms $F$ and $G$ are composed of sums over domains or surfaces and s
     G(u, v; \psi) = \sum_{q \in \mathcal{Q}} \sum_{i \in \mathcal{I}^q} G_i^q(u, v; \psi_i^q) .
 ```
 Furthermore, with the $L^2(O)$-inner product over any given domain $O \subset \Omega$ defined as
-$$
+```{math}
     \langle a, b \rangle_{O} = \int_{O} a \cdot b \, \mathrm{d}x ,
-$$
+```
 we have defined
 ```{math}
     F_i^m(u, v, \phi_i^m)
@@ -61,7 +61,7 @@ We now discretize in time via an implicit (first-order) Euler scheme with time s
 ```
 For each time step $t_i$, given discrete solutions $u_h^{-}$ and $v_h^{-}$ at the previous time $t_{i-1}$, we then solve the nonlinear, coupled time-discrete problem: find $u_h \in U_h$ and $v_h \in V_h$
 ```{math}
-    \label{eq:nonlinear}
+:label: eq:nonlinear
     H(u_h, v_h) = F_{\tau_n}(u_h, v_h, \phi) + G_{\tau_n}(u_h, v_h, \psi) = 0
 ```
 for all $\phi \in U_h$, $\psi \in V_h$, where $F_{\tau_n}$ and $G_{\tau_n}$ are defined by the forms $F$ and $G$ after implicit Euler time-discretization and depend on the given $u_h^{-}$ and $v_h^{-}$.
