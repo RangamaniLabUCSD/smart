@@ -5,9 +5,9 @@
 SMART solves the multi-domain reaction-transport equations outline in
 {ref}`sec:mathematics` via finite difference discretizations in time, a finite element discretizations in space, and either a *monolithic* or *iterative* approach to address the system couplings. We describe the monolithic approach here, considering linear diffusion-only transport relations for concreteness and to illustrate linear-nonlinear strategies.
 
-\subsection{Monolithic solution of the multi-domain reaction-diffusion equations}
+## Monolithic solution of the multi-domain reaction-diffusion equations
 
-## Variational formulation
+### Variational formulation
 Introduce the Sobolev spaces $H^1(\Omega^m)$, $m \in \mathcal{M}$ of square-integrable functions on $\Omega^m$ with square-integrable weak derivatives, and analogously for $H^1(\Gamma^q)$, $q \in Q$, as well as the vector function spaces $H^1(\Omega^m, \mathbb{R}^d) = H^1(\Omega)^d$. For solving the multi-domain reaction-diffusion equations, we introduce the two product spaces $U$ and $V$ consisting of (sub)domain fields and (sub)surface fields respectively:
 ```{math}
     U = \bigotimes_{m \in \mathcal{M}} H^1(\Omega^m; \mathbb{R}^{|\mathcal{I}^m|}), \quad
