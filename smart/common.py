@@ -8,8 +8,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import dolfin as d
-import gmsh
-import meshio
+
 
 # import trimesh
 import numpy as np
@@ -481,6 +480,8 @@ def DemoSpheresMesh(
     Returns:
         A triplet (mesh, facet_marker, cell_marker)
     """
+    import gmsh
+
     assert not np.isclose(outerRad, 0)
     if np.isclose(hEdge, 0):
         hEdge = 0.1 * outerRad
@@ -561,6 +562,8 @@ def DemoSpheresMesh(
     gmsh.model.mesh.generate(3)
     gmsh.write("twoSpheres.msh")  # save locally
     gmsh.finalize()
+
+    import meshio
 
     # load, convert to xdmf, and save as temp files
     mesh3d_in = meshio.read("twoSpheres.msh")

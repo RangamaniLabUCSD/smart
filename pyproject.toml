@@ -21,8 +21,6 @@ dependencies = [
     "tabulate",
     "termcolor",
     "termplotlib",
-    "meshio",
-    "gmsh"
 ]
 
 
@@ -43,7 +41,12 @@ docs = [
    "jupyter-book",
    "sphinx-autoapi"
 ]
+examples = [
+    "meshio",
+    "gmsh"
+]
 all = [
+   "smart[examples]",
    "smart[test]",
    "smart[docs]",
    "smart[dev]"
