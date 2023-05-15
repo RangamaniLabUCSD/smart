@@ -74,19 +74,8 @@ Surface mesh    : A set of elements of dimension n-1 if n is the highest geometr
 "Cell" and "Volume" are used interchangeably (e.g. a volume mesh is a collection of cells). "Facet" and "Surface" are used interchangeably.
 
 ## License
-STUBS is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-STUBS is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with STUBS. If not, see <http://www.gnu.org/licenses/>.
+LGPL-3.0
 
 ## Acknowledgements
 
-Thanks to [Christopher Lee](https://github.com/ctlee), [Yuan Gao](https://github.com/Rabona17), and [William Xu](https://github.com/willxu1234) for their valuable input and contributions to STUBS.
+Thanks to [Christopher Lee](https://github.com/ctlee), [Yuan Gao](https://github.com/Rabona17), and [William Xu](https://github.com/willxu1234) for their valuable input and contributions to SMART
