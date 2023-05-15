@@ -15,15 +15,30 @@ Systems biology models are converted by SMART into the appropriate systems of re
 
 ## Installation
 
-### !!! IMPORTANT !!!
-Although FEniCS is a core dependency, because it has many different versions (2019.1, development, FEniCSx, etc.), is quite large, and is complicated to build, it is not packaged with SMART by default. The recommended way to use SMART is to create a container from one of the official FEniCS docker images and to pip install SMART from within the container.
-
-```bash
-# create a container using DOLFIN built on ubuntu 22.04 with Python 3.10
-jgl:~$ docker run -ti --init ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
-# pip install smart from within the container
-root@jgl:~$ python3 -m pip install fenics-smart
+### Using docker (recommended)
+The simplest way to use `fenics-smart` is to use the provided docker image. You can get this image by pulling it from the github registry
 ```
+docker pull ghcr.io/rangamanilabucsd/smart:latest
+```
+It is also possible to pull a specific version by changing the tag, e.g
+```
+docker pull ghcr.io/rangamanilabucsd/smart:v2.0.1
+```
+will use version 2.0.1.
+
+In order to start a container you can use the [`docker run`](https://docs.docker.com/engine/reference/commandline/run/) command. For example the command
+```
+docker run --rm -v $(pwd):/home/shared -w /home/shared -ti ghcr.io/rangamanilabucsd/smart:latest
+```
+will run the latest version and share your current working directory with the container.
+
+### Using pip
+`fenics-smart` is also available on [pypi](https://pypi.org/project/fenics-smart/) and can be installed with
+```
+python3 -m pip install fenics-smart
+```
+However this requires FEniCS version 2019.2.0 or later to already be installed. Currently, FEniCS version 2019.2.0 needs to be built [from source](https://bitbucket.org/fenics-project/dolfin/src/master/) or use some of the [pre-built docker images](https://github.com/orgs/scientificcomputing/packages?repo_name=packages)
+
 
 ### Dependencies
 * SMART uses [FEniCS](https://fenicsproject.org/) to assemble finite element matrices as well as solve the resultant linear algebra systems.
