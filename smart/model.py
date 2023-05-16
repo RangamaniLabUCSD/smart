@@ -1088,10 +1088,11 @@ class Model:
             # fbcgsr, fbcgs (flexible bcgs)
 
             # Field split preconditioning:
-            # If only modeling species within a single domain (other domains may still contribute as BCs),
+            # If only modeling species within a single domain
+            # (other domains may still contribute as BCs),
             # then use LU preconditioner (cannot use field split without multiple domains)
             # May look into using LU in all cases if possible
-            if self.problem.is_single_domain: 
+            if self.problem.is_single_domain:
                 self.solver.ksp.pc.setType("lu")
             else:
                 self.solver.ksp.pc.setType("fieldsplit")
