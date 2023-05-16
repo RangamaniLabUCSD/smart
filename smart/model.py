@@ -1080,26 +1080,29 @@ class Model:
             # bcgsl, ibcgs (improved stabilized bcgs)
             # fbcgsr, fbcgs (flexible bcgs)
 
-            # Field split preconditioning
-            # Note from Emmet - can we solve this directly using LU? (suggestion from Marie)
-            # self.solver.ksp.pc.setType("lu")
-            self.solver.ksp.pc.setType("fieldsplit")
-            # Set the indices
-            nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
-            nest_indices_tuples = [(str(i), val) for i, val in enumerate(nest_indices)]
-            # self.solver.ksp.pc.setFieldSplitIS(("0", is_0), ("1", is_1))
-            self.solver.ksp.pc.setFieldSplitIS(*nest_indices_tuples)
-            # 0 == 'additive' [jacobi], 1 == gauss-seidel
-            self.solver.ksp.pc.setFieldSplitType(1)
-            subksps = self.solver.ksp.pc.getFieldSplitSubKSP()
-            for i, subksp in enumerate(subksps):
-                # subksp.setType('preonly')
-                # # If there is not diffusion then this is really just a distributed set of ODEs
-                # if not self._active_compartments[i].has_diffusive_forms:
-                #     subksp.pc.setType('none')
-                subksp.setType("preonly")
-                subksp.pc.setType("hypre")
-
+            # Field split preconditioning:
+            # If only modeling species within a single domain (other domains may still contribute as BCs),
+            # then use LU preconditioner (cannot use field split without multiple domains)
+            # May look into using LU in all cases if possible
+            if self.problem.is_single_domain: 
+                self.solver.ksp.pc.setType("lu")
+            else:
+                self.solver.ksp.pc.setType("fieldsplit")
+                # Set the indices
+                nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
+                nest_indices_tuples = [(str(i), val) for i, val in enumerate(nest_indices)]
+                # self.solver.ksp.pc.setFieldSplitIS(("0", is_0), ("1", is_1))
+                self.solver.ksp.pc.setFieldSplitIS(*nest_indices_tuples)
+                # 0 == 'additive' [jacobi], 1 == gauss-seidel
+                self.solver.ksp.pc.setFieldSplitType(1)
+                subksps = self.solver.ksp.pc.getFieldSplitSubKSP()
+                for i, subksp in enumerate(subksps):
+                    # subksp.setType('preonly')
+                    # # If there is not diffusion then this is really just a distributed set of ODEs
+                    # if not self._active_compartments[i].has_diffusive_forms:
+                    #     subksp.pc.setType('none')
+                    subksp.setType("preonly")
+                    subksp.pc.setType("hypre")
         else:
             logger.debug(
                 "Using dolfin MixedNonlinearVariationalSolver",
