@@ -416,6 +416,23 @@ class ParameterContainer(ObjectContainer):
 
 @dataclass
 class Parameter(ObjectInstance):
+    """
+    Parameter objects contain information for the various parameters involved in reactions,
+    such as binding rates and dissociation constants.
+    A Parameter object is initialized by calling
+    param_name = Parameter(name, value, unit, group (opt), notes (opt), use_preintegration (opt))
+    where
+    * name: string naming the parameter (should match variable name "param_name")
+    * value: value of the given parameter
+    * unit: units associated with given value
+    * group (optional): string placing this reaction in a reaction group;
+             for organizational purposes when there are multiple reaction modules
+    * notes (optional): string related to this parameter
+    * use_preintegration (optional): if parameter is a time-dependent expression,
+                                     can use preintegration in solution process if
+                                     "use_preintegration" is true (see "from_expression" below)
+    """
+
     name: str
     value: float
     unit: pint.Unit
@@ -622,6 +639,24 @@ class SpeciesContainer(ObjectContainer):
 
 @dataclass
 class Species(ObjectInstance):
+    """
+    Each Species object contains information for one state variable in the model
+    (can be a molecule, receptor open probability, membrane voltage, etc.)
+    Species object is initialized by calling:
+    species_name = Species(name, initial_condition, concentration_units,
+                           D, diffusion_units, compartment_name, group (opt))
+    where
+    * name: string naming the species (should match variable name "species_name")
+    * conc_init: initial concentration for this species
+                  (can be an expression given by a string to be parsed by sympy -
+                  the only unknowns in the expression should be x, y, and z)
+    * conc_units: concentration units for this species
+    * D: diffusion coefficient
+    * diffusion_units: units for diffusion coefficient
+    * compartment_name: each species should be assigned to a single compartment
+    * group (optional): for larger models, specifies a group of species this belongs to
+    """
+
     name: str
     initial_condition: Any
     # initial_condition: float
@@ -768,6 +803,18 @@ class CompartmentContainer(ObjectContainer):
 
 @dataclass
 class Compartment(ObjectInstance):
+    """
+    Each Compartment object contains information describing a surface, volume, or edge
+    within the geometry of interest.
+    The object is initialized by calling:
+    compartment_name = Compartment(name, dimensionality, compartment_units, cell_marker)
+    where
+    * name = string naming the compartment (should match variable name "compartment_name")
+    * dimensionality = topological dimensionality (e.g. 3 for cytosol, 2 for plasma membrane)
+    * compartment_units = length units for the compartment
+    * cell_marker = marker value identifying the compartment in the parent mesh
+    """
+
     name: str
     dimensionality: int
     compartment_units: pint.Unit
@@ -900,6 +947,53 @@ class ReactionContainer(ObjectContainer):
 
 @dataclass
 class Reaction(ObjectInstance):
+    """
+    A Reaction object contains information on a single biochemical interaction
+    between species in a single compartment or across multiple compartments.
+    The Reaction object is initialized by calling:
+    reaction_name = Reaction(name, lhs, rhs, param_map
+                         eqn_f_str (opt), eqn_r_str (opt), reaction_type (opt), species_map (opt),
+                         explicit_restriction_to_domain (opt), group (opt), flux_scaling (opt))
+    required arguments:
+    * name: string naming the parameter (should match variable name "param_name")
+    * lhs: list of strings specifying the reactants for this reaction
+    * rhs: list of strings specifying the products for this reaction
+         ***NOTE: the lists "lhs" and "rhs" determine the stoichiometry of the reaction;
+           for instance, if two A's react to give one B, the reactants list would be ["A","A"],
+           and the products list would be ["B"]
+    * param_map: relationship between the parameters specified in the reaction string
+      and those given in the parameter container. By default, the reaction parameters are
+      "kon" and "koff" when a system obeys simple mass action.
+      If the forward rate is given by a parameter "k1" and the reverse rate is given by "k2",
+      then param_map = {"kon":"k1", "koff":"k2"}
+
+    optional arguments:
+    * eqn_f_str: For systems not obeying simple mass action,
+      this string specifies the forward reaction rate By default,
+      this string is "kon*{all reactants multiplied together}"
+    * eqn_r_str: For systems not obeying simple mass action,
+      this string specifies the reverse reaction rate
+      By default, this string is "koff*{all products multiplied together}"
+    * reaction_type: either "custom" or "mass_action" (default is "mass_action")
+      [never a required argument]
+    * species_map: same format as param_map;
+      only required if the species name in the reaction string
+      do not match the species names given in the species container
+    * explicit_restriction_to_domain: string specifying where the reaction occurs;
+      required if the reaction is not constrained by the reaction string
+      (e.g., if production occurs only at the boundary,
+      but the species being produced exists through the entire volume)
+    * group: string placing this reaction in a reaction group;
+      for organizational purposes when there are multiple reaction modules
+    * flux_scaling: in certain cases, a given reactant or product
+      may experience a scaled flux (for instance, if we assume that
+      some of the molecules are immediately sequestered after the reaction);
+      in this case, to signify that this flux should be rescaled, we specify
+      "flux_scaling = {scaled_species: scale_factor}",
+      where scaled_species is a string specifying the species to be scaled and
+      scale_factor is a number specifying the rescaling factor
+    """
+
     name: str
     lhs: list
     rhs: list
