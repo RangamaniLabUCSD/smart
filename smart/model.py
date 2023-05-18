@@ -1071,23 +1071,23 @@ class Model:
             opts["snes_linesearch_type"] = "l2"
             self.solver.setFromOptions()
 
-            # These are some reasonable preconditioner/linear solver settings for block systems
-            # Krylov solver
-            # biconjugate gradient stabilized. in most cases probably the best option
-            self.solver.ksp.setType("bcgs")
-            self.solver.ksp.setTolerances(rtol=1e-5)
-            # Some other reasonable krylov solvers: (I don't think they work with block systems)
-            # bcgsl, ibcgs (improved stabilized bcgs)
-            # fbcgsr, fbcgs (flexible bcgs)
-
-            # Field split preconditioning:
-            # If only modeling species within a single domain
-            # (other domains may still contribute as BCs),
-            # then use LU preconditioner (cannot use field split without multiple domains)
-            # May look into using LU in all cases if possible
+            # May look into using LU in all cases if possible (seems to converge very slowly)
             if self.problem.is_single_domain:
-                self.solver.ksp.pc.setType("lu")
-            else:
+                # If only modeling species within a single domain
+                # (other domains may still contribute as BCs),
+                # then just use hypre (cannot use field split without multiple domains)
+                self.solver.ksp.setType("bcgs")
+                self.solver.ksp.setTolerances(rtol=1e-5)
+                self.solver.ksp.pc.setType("hypre")
+            else:  # Field split preconditioning:
+                # These are some reasonable preconditioner/linear solver settings for block systems
+                # Krylov solver
+                # biconjugate gradient stabilized. in most cases probably the best option
+                self.solver.ksp.setType("bcgs")
+                self.solver.ksp.setTolerances(rtol=1e-5)
+                # Some other reasonable krylov solvers: (don't think they work with block systems)
+                # bcgsl, ibcgs (improved stabilized bcgs)
+                # fbcgsr, fbcgs (flexible bcgs)
                 self.solver.ksp.pc.setType("fieldsplit")
                 # Set the indices
                 nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
