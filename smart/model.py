@@ -1,5 +1,5 @@
 """
-Model class. Consists of parameters, species, etc. and is used for simulation
+Functions associated with the SMART model class
 """
 from collections import OrderedDict as odict
 from dataclasses import dataclass
@@ -46,8 +46,20 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Model:
     """
-    Main smart class. Consists of parameters,
-    species, compartments, reactions, and can be simulated.
+    SMART model class: consists of parameters,
+    species, compartments, reactions. Given a parent mesh
+    and solver, the system can be solved for spatiotemporal dynamics.
+
+    Object is initialized by calling:
+    model = model.Model(pc, sc, cc, rc, config, parent_mesh)
+    where
+    * pc: Parameter container, initialized in model_assembly
+    * sc: Species container, initialized in model_assembly
+    * cc: Compartment container, initialized in model_assembly
+    * rc: Reaction container, initialized in model_assembly
+    * config: configuration object initialized in config.py
+    * parent_mesh: ParentMesh object initialized in mesh.py
+    * name (optional): string specifying a name for your model
     """
 
     pc: ParameterContainer
@@ -173,9 +185,7 @@ class Model:
     # ===========================================
     def initialize(self, initialize_solver=True):
         """
-        Notes:
-        * Now works with sub-volumes
-        * Removed scale_factor (too ambiguous)
+        Main model initialization function, split into 5 subfunctions
         """
 
         # Solver related parameters
@@ -268,6 +278,10 @@ class Model:
         self._init_4_7_set_initial_conditions()
 
     def _init_5(self, initialize_solver):
+        """
+        convert reactions to fluxes and define variational form.
+        If initialize_solver is true, also initialize solver.
+        """
         logger.debug(
             "Dolfin fluxes, forms, and problems+solvers (step 5 of ZZ)",
             extra=dict(
@@ -282,6 +296,12 @@ class Model:
     # Step 1 - Checking model validity
 
     def _init_1_1_check_mesh_dimensionality(self):
+        """
+        Dimensionality checks:
+        * Error if max_dim - min_dim is greater than 1
+        * Error if max_dim (from compartments) is greater than dimensionality of parent mesh
+        * Warning if max_dim is less than dimensionality of parent mesh
+        """
         logger.debug(
             "Check that mesh/compartment dimensionalities match",
             extra=dict(format_type="log"),
@@ -311,6 +331,13 @@ class Model:
             compartment.is_volume = compartment.dimensionality == self.max_dim
 
     def _init_1_2_check_namespace_conflicts(self):
+        """
+        Namespace checks:
+        * no repeated names of parameters/species/compartments/reactions
+        * no use of x[0], x[1], x[2], t, or unit_scale_factor as names
+        * no two compartments share the same marker number
+        * no compartment has a marker value of 0
+        """
         logger.debug("Checking for namespace conflicts", extra=dict(format_type="log"))
         self._all_keys = set()
         containers = [self.pc, self.sc, self.cc, self.rc]
@@ -348,6 +375,7 @@ class Model:
                     self._all_markers.add(marker)
 
     def _init_1_3_check_parameter_dimensionality(self):
+        "Check no objects reference a higher spatial dimension than max_dim"
         if "x[2]" in self._all_keys and self.max_dim < 3:
             raise ValueError(
                 "An object has the variable name 'x[2]' but there "
@@ -408,6 +436,7 @@ class Model:
                 )
 
     def _init_2_2_check_reaction_validity(self):
+        "Confirms that all reactions have parameters/species defined"
         logger.debug(
             "Make sure all reactions have parameters/species defined",
             extra=dict(format_type="log"),
@@ -429,6 +458,7 @@ class Model:
                     )
 
     def _init_2_3_link_reaction_properties(self):
+        "Link parameters, species, and compartments to reactions"
         logger.debug(
             "Linking parameters, species, and compartments to reactions",
             extra=dict(format_type="log"),
@@ -489,6 +519,10 @@ class Model:
                 raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
 
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
+        """ "
+        If self.config.flags[\"allow_unused_components\"] is true,
+        then unused objects are removed
+        """
         logger.debug(
             "Checking for unused parameters, species, or compartments",
             extra=dict(format_type="log"),
@@ -544,6 +578,7 @@ class Model:
                 raise ValueError(print_str)
 
     def _init_2_5_link_compartments_to_species(self):
+        "Linking compartments and compartment dimensionality to species"
         logger.debug(
             "Linking compartments and compartment dimensionality to species",
             extra=dict(format_type="log"),
@@ -553,6 +588,10 @@ class Model:
             species.dimensionality = self.cc[species.compartment_name].dimensionality
 
     def _init_2_6_link_species_to_compartments(self):
+        """
+        Links species to compartments - a species is considered to be
+        "in a compartment" if it is involved in a reaction there
+        """
         logger.debug("Linking species to compartments", extra=dict(format_type="log"))
         # An species is considered to be "in a compartment" if it is
         # involved in a reaction there
@@ -562,6 +601,7 @@ class Model:
             compartment.num_species = len(compartment.species)
 
     def _init_2_7_get_species_compartment_indices(self):
+        "Store dof indices for species for each compartment"
         logger.debug(
             "Getting indices for species for each compartment",
             extra=dict(format_type="log"),
@@ -574,6 +614,7 @@ class Model:
 
     # Step 3 - Mesh Initializations
     def _init_3_1_define_child_meshes(self):
+        "Initialize all ChildMesh objects"
         logger.debug("Defining child meshes", extra=dict(format_type="log"))
         # Check that there is a parent mesh loaded
         if not isinstance(self.parent_mesh, ParentMesh):
@@ -604,6 +645,7 @@ class Model:
             child_mesh.extract_submesh()
 
     def _init_3_4_build_submesh_mappings(self):
+        "Build MeshView mappings between all child mesh pairs"
         logger.debug(
             "Building MeshView mappings between all child mesh pairs",
             extra=dict(format_type="log"),
@@ -633,6 +675,7 @@ class Model:
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
 
     def _init_3_7_get_integration_measures(self):
+        "Get integration measures for parent mesh and child meshes"
         logger.debug(
             "Getting integration measures for parent mesh and child meshes",
             extra=dict(format_type="log"),
@@ -642,13 +685,13 @@ class Model:
 
     def _init_4_0_initialize_dolfin_parameters(self):
         """
-        Create dolfin objects for each parameter
-        Because we don't want to re-create dolfin constants
-        each time (will cause fenics to recompile form)
-        we only define them once here. That means that once
-        the model is initialized, changing a parameter's
+        Create dolfin objects for each parameter.
+        If we were to re-create dolfin constants
+        each time, FEniCS will recompile the form
+        so we only define them once here.
+        Therefore, once the model is initialized, changing a parameter's
         value does not change the underlying dolfin object.
-        Values must be assigned via paramter.dolfin_constant.assign()
+        Values must be assigned via parameter.dolfin_constant.assign()
         """
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:
@@ -680,6 +723,14 @@ class Model:
     # Step 4 - Dolfin Functions
 
     def _init_4_2_define_dolfin_function_spaces(self):
+        """
+        Define dolfin function spaces for compartments
+        For each compartment, a P1 (linear shape functions for a tri or tet element)
+        vector function space is used, with the vector dimensionality given
+        by the number of species in the compartment.
+        The mixed function space W is the product space of all vector function
+        spaces of individual compartments
+        """
         logger.debug(
             "Defining dolfin function spaces for compartments",
             extra=dict(format_type="log"),
@@ -716,6 +767,8 @@ class Model:
 
     def _init_4_3_define_dolfin_functions(self):
         """
+        Define test functions and trial functions in the mixed function space
+
         Some notes on functions in VectorFunctionSpaces:
         u.sub(idx) gives us a shallow copy to the idx sub-function of u.
         This is useful when we want to look at function values
@@ -728,20 +781,6 @@ class Model:
 
         u.sub(idx) can be used in a variational formulation but
         it won't behave properly.
-        E.g. consider u as a 2d function
-        V  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
-        u  = d.Function(V)
-        u0 = u.sub(0); u1 = u.sub(1)
-        v  = d.TestFunction(V)
-        v0 = v[0]; v1 = v[1]
-        F  = u0*v0*dx + u1*v1*dx
-        G  = d.inner(u,v)*dx
-        get_F    = lambda F: d.assemble(F).get_local()
-        get_dFdu = lambda F,u: d.assemble(d.derivative(F,u)).array()
-        (get_F(F) == get_F(G)).all() # True
-        (get_dFdu(F,u) == get_dFdu(G,u)).all() # False
-
-        Using u0,u1 = d.split(u) will give the right results
 
         For TestFunctions/TrialFunctions, we will always get a
         ufl.indexed.Indexed object
@@ -794,6 +833,7 @@ class Model:
         self._usplit = [c._usplit["u"] for c in self._active_compartments]
 
     def _init_4_4_get_species_u_v_V_dofmaps(self):
+        "Extract subfunctions, function spaces, dofmap for each species"
         logger.debug(
             "Extracting subfunctions/function spaces/dofmap for each species",
             extra=dict(format_type="log"),
@@ -813,6 +853,7 @@ class Model:
                 species.ut = sub(compartment.ut, species.dof_index)
 
     def _init_4_5_name_functions(self):
+        "Assign function names based on compartment name, species index, and species name"
         logger.debug("Naming functions and subfunctions", extra=dict(format_type="log"))
         for compartment in self._active_compartments:
             # name of the compartment function
@@ -825,7 +866,12 @@ class Model:
                         species.u[key].rename(f"{compartment.name}_{sidx}_{species.name}_{key}", "")
 
     def _init_4_6_check_dolfin_function_validity(self):
-        "Sanity check... If an error occurs here it is likely an internal bug..."
+        """
+        Checks to confirm that dolfin functions were created correctly:
+        * function size in compartment == dof in that compartment
+        * number of sub-spaces in compartment == number of species in compartment
+        * function space of compartment matches sub-space of W
+        """
         logger.debug(
             "Checking that dolfin functions were created correctly",
             extra=dict(format_type="log"),
@@ -854,7 +900,12 @@ class Model:
                 assert func.function_space().id() == self.W.sub_space(idx).id()
 
     def _init_4_7_set_initial_conditions(self):
-        "Sets the function values to initial conditions"
+        """
+        Sets the function values to initial conditions,
+        either based on an expression given by a string
+        or a numerical value (float)
+        (see model.dolfin_set_function_values for further details)
+        """
         logger.debug("Set function values to initial conditions", extra=dict(format_type="log"))
         for species in self.sc:
             for ukey in species.u.keys():
@@ -868,6 +919,7 @@ class Model:
                     )
 
     def _init_5_1_reactions_to_fluxes(self):
+        "Convert reactions to flux objects"
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
         for reaction in self.rc:
             reaction.reaction_to_fluxes()
@@ -974,7 +1026,7 @@ class Model:
                     linear_wrt_comp,
                 )
             )
-        # FIXME: `has_diffusive_forms` is only in commeted out code of
+        # FIXME: `has_diffusive_forms` is only in commented out code of
         # `initialize_discrete_variational_problem_and_solver`
         for compartment in self.cc:
             diffusive_forms = [
@@ -992,6 +1044,12 @@ class Model:
                 compartment.has_diffusive_forms = True
 
     def initialize_discrete_variational_problem_and_solver(self):
+        """
+        Formulate problem for Newton iterations
+        and configure solver - currently, only using SNES in PETSc
+        is supported, the dolfin MixedNonlinearVariationalSolver
+        is not tested in this context
+        """
         logger.debug(
             "Formulating problem as F(u;v) == 0 for newton iterations",
             extra=dict(format_type="log"),
