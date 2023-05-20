@@ -676,9 +676,16 @@ class Model:
         # addressing https://github.com/justinlaughlin/smart/issues/36
         self._active_compartments = list(self.cc.Dict.values())
         self._all_compartments = list(self.cc.Dict.values())
+        it_idx = 0
+        rm_idx = np.array([])
         for compartment in self._active_compartments:
             if compartment.num_species < 1:
-                self._active_compartments.remove(compartment)
+                rm_idx = np.append(rm_idx, it_idx)
+            it_idx = it_idx + 1
+        for i in range(len(rm_idx)):
+            rm_cur = int(rm_idx[i])
+            del self._active_compartments[rm_cur]
+            rm_idx = rm_idx - 1  # adjust indices to compensate after deleting
         for idx, compartment in enumerate(self._active_compartments):
             compartment.dof_index = idx
 
