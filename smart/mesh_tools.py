@@ -205,6 +205,7 @@ def DemoEllipsoidsMesh(
         if np.any(np.isclose(innerRad, 0)):
             lc3 = 0.2 * max(outerRad)
             innerRad_scale = 0
+            in_outer = True
         else:
             R_rel_inner = np.sqrt(
                 (x / innerRad[0]) ** 2 + (y / innerRad[1]) ** 2 + (z / innerRad[2]) ** 2
@@ -213,9 +214,10 @@ def DemoEllipsoidsMesh(
             innerRad_scale = np.mean(
                 [innerRad[0] / outerRad[0], innerRad[1] / outerRad[1], innerRad[2] / outerRad[2]]
             )
+            in_outer = R_rel_inner > 1
         lc1 = hEdge
         lc2 = hInnerEdge
-        if R_rel_inner > 1:
+        if in_outer:
             lcTest = lc1 + (lc2 - lc1) * (1 - R_rel_outer) / (1 - innerRad_scale)
         else:
             lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
