@@ -1909,8 +1909,8 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
-        if len(sp.dof_map) == len(unew):
-            # unew is an N x 4 array: [X, Y, Z, function_values]
+        elif len(sp.dof_map) == len(unew):
+            # unew must be an N x 4 array: [X, Y, Z, function_values]
             u = self.cc[sp.compartment_name].u[ukey]
             dof_coord = sp.V.tabulate_dof_coordinates()  # coordinates for the current dof
             mesh_coord = unew[:, 0:3]  # x,y,z coordinates for initial condition
