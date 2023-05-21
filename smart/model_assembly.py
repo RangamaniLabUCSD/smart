@@ -1,6 +1,6 @@
 """
-Classes for parameters, species, compartments, reactions, fluxes, and forms
-Model class contains functions to efficiently solve a system
+Classes for parameters, species, compartments, reactions, fluxes, and forms.
+Model class contains functions to efficiently solve a system.
 """
 import dataclasses
 import logging
@@ -76,17 +76,21 @@ class ObjectContainer:
 
     @property
     def items(self):
+        "Return all items in container"
         return self.Dict.items()
 
     @property
     def values(self):
+        "Return all Dict values"
         return self.Dict.values()
 
     def __iter__(self):
+        "Iteratively return Dict values"
         return iter(self.Dict.values())
 
     @property
     def keys(self):
+        "Return all Dict keys"
         return self.Dict.keys()
 
     @property
@@ -106,6 +110,7 @@ class ObjectContainer:
         self.Dict[key] = newvalue
 
     def add(self, *data):
+        "Add data to object container"
         if len(data) == 1:
             data = data[0]
             # Adding in the ObjectInstance directly
@@ -136,6 +141,7 @@ class ObjectContainer:
             self[obj.name] = obj
 
     def remove(self, name):
+        "Remove data from object container"
         if type(name) != str:
             raise TypeError("Argument must be the name of an object [str] to remove.")
         self.Dict.pop(name)
@@ -151,12 +157,6 @@ class ObjectContainer:
         return list(self.values)[idx]
 
     # ==============================================================================
-    # ObjectContainer - Internal methods
-    # ------------------------------------------------------------------------------
-    # Mostly methods called by Model.initialize()
-    # ==============================================================================
-
-    # ==============================================================================
     # ObjectContainer - Printing/data-formatting related methods
     # ==============================================================================
 
@@ -169,10 +169,7 @@ class ObjectContainer:
         Params:
             properties_to_print: If set only the listed properties (by attribute name)
               is added to the series
-            include_index: If true, add index as the first column in the data-frame..
-
-
-
+            include_index: If true, add index as the first column in the data-frame.
         """
 
         df = pandas.DataFrame()
@@ -207,7 +204,10 @@ class ObjectContainer:
         sig_figs=2,
         return_df=True,
     ):
-        """Requires latex packages \siunitx and \longtable"""
+        """
+        Print object properties in latex format.
+        Requires latex packages \siunitx and \longtable
+        """
 
         df = self.get_pandas_dataframe_formatted(
             properties_to_print=properties_to_print,
@@ -237,6 +237,7 @@ class ObjectContainer:
         max_col_width=50,
         sig_figs=2,
     ):
+        "Get formatted pandas dataframe for printing object properties."
         # Get the pandas dataframe with the properties we want to print
         if properties_to_print is not None:
             if not isinstance(properties_to_print, list):
@@ -269,6 +270,8 @@ class ObjectContainer:
         max_col_width=50,
         sig_figs=2,
     ):
+        "Print object properties to file and/or terminal."
+
         df = self.get_pandas_dataframe_formatted(
             properties_to_print=properties_to_print,
             max_col_width=max_col_width,
@@ -367,6 +370,7 @@ class ObjectInstance:
         return pandas.Series(dict_to_convert, name=self.name)
 
     def print(self, properties_to_print=None):
+        "Print properties in current object instance."
         if rank == root:
             logger.info("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
@@ -419,18 +423,41 @@ class Parameter(ObjectInstance):
     """
     Parameter objects contain information for the various parameters involved in reactions,
     such as binding rates and dissociation constants.
-    A Parameter object is initialized by calling
-    param_name = Parameter(name, value, unit, group (opt), notes (opt), use_preintegration (opt))
+    A Parameter object that is constant over time and space is initialized by calling
+    param_var = Parameter(name, value, unit, group (opt), notes (opt), use_preintegration (opt))
     where
-    * name: string naming the parameter (should match variable name "param_name")
+    * name: string naming the parameter
     * value: value of the given parameter
     * unit: units associated with given value
-    * group (optional): string placing this reaction in a reaction group;
+    * group (optional): string placing this parameter in a designated group;
              for organizational purposes when there are multiple reaction modules
     * notes (optional): string related to this parameter
-    * use_preintegration (optional): if parameter is a time-dependent expression,
-                                     can use preintegration in solution process if
-                                     "use_preintegration" is true (see "from_expression" below)
+    * use_preintegration (optional): not applicable for constant parameter
+
+    To initialize a parameter object that varies over time, you can either
+    specify a string that gives the parameter as a function of time (t)
+    or load data from a .txt file.
+
+    To load from a string expression, call:
+    param_var = Parameter.from_expression(name, sym_expr, unit, preint_sym_expr (opt), group (opt),
+                                          notes (opt), use_preintegration (opt))
+    Inputs are the same as described above, except:
+    * sym_expr: string specifying an expression, "t" should be the only free variable
+    * preint_sym_expr (optional): string giving the integral of the expression; if not given
+                                  and use_preintegration is true, then sympy tries to integrate
+                                  using sympy.integrate()
+    * use_preintegration (optional):  use preintegration in solution process if
+                                     "use_preintegration" is true (defaults to false)
+
+    To load parameter over time from a .txt file, call:
+    param_var = Parameter.from_file(name, sampling_file, unit, group (opt),
+                                          notes (opt), use_preintegration (opt))
+    Inputs are the same as described above, except:
+    * sampling_file: name of text file giving parameter data in two columns (comma-separated) -
+                     first column is time (starting with t=0.0) and second is parameter values
+    * use_preintegration (optional):  use preintegration in solution process if
+                                     "use_preintegration" is true (defaults to false),
+                                     uses sci.integrate.cumtrapz for numerical integration
     """
 
     name: str
@@ -462,10 +489,59 @@ class Parameter(ObjectInstance):
 
     @classmethod
     def from_dict(cls, input_dict):
+        "Read parameter object from Dict"
         parameter = cls(input_dict["name"], input_dict["value"], input_dict["unit"])
         for key, val in input_dict.items():
             setattr(parameter, key, val)
         parameter.__post_init__()
+        return parameter
+
+    @classmethod
+    def from_file(cls, name, sampling_file, unit, group="", notes="", use_preintegration=False):
+        """ "
+        Load in a purely time-dependent scalar function from data
+        Data needs to be read in from a .txt file with two columns
+        where the first column is time (first entry must be 0.0)
+        and the second column is the parameter values.
+        Columns should be comma-separated.
+        """
+        # load in sampling data file
+        sampling_data = np.genfromtxt(sampling_file, dtype="float", delimiter=",")
+        logger.info(f"Loading in data for parameter {name}", extra=dict(format_type="log"))
+        if sampling_data[0, 0] != 0.0 or sampling_data.shape[1] != 2:
+            raise NotImplementedError
+        value = sampling_data[0, 1]  # initial value
+
+        parameter = cls(
+            name,
+            value,
+            unit,
+            group=group,
+            notes=notes,
+            use_preintegration=use_preintegration,
+        )
+
+        if use_preintegration:
+            # preintegrate sampling data using cumtrapz
+            from scipy.integrate import cumtrapz
+
+            int_data = cumtrapz(sampling_data[:, 1], x=sampling_data[:, 0], initial=0)
+            # concatenate time vector
+            preint_sampling_data = np.hstack(
+                sampling_data[:, 0].reshape(-1, 1), int_data.reshape(-1, 1)
+            )
+            parameter.preint_sampling_data = preint_sampling_data
+
+        # initialize instance
+        parameter.sampling_data = sampling_data
+        parameter.is_time_dependent = True
+        parameter.is_space_dependent = False  # not supported yet
+        parameter.type = "from_file"
+        parameter.__post_init__()
+        logger.info(
+            f"Time-dependent parameter {name} loaded from file.", extra=dict(format_type="log")
+        )
+
         return parameter
 
     @classmethod
@@ -479,6 +555,7 @@ class Parameter(ObjectInstance):
         notes="",
         use_preintegration=False,
     ):
+        "Use sympy to parse time-dependent expression for parameter"
         # Parse the given string to create a sympy expression
         if isinstance(sym_expr, str):
             sym_expr = parse_expr(sym_expr)
@@ -566,9 +643,6 @@ class Parameter(ObjectInstance):
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
         self.check_validity()
-
-        # self.dolfin_constant = d.Constant(self.value)
-        # self.value_unit = self.value*self.unit
         self.value_vector = np.array([0, self.value])
 
     @property
@@ -584,6 +658,7 @@ class Parameter(ObjectInstance):
         return self._quantity
 
     def check_validity(self):
+        "Confirm that time-dependent parameter is defined in terms of time"
         if self.is_time_dependent:
             if all(
                 [x in ("", None) for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]
@@ -643,23 +718,23 @@ class Species(ObjectInstance):
     Each Species object contains information for one state variable in the model
     (can be a molecule, receptor open probability, membrane voltage, etc.)
     Species object is initialized by calling:
-    species_name = Species(name, initial_condition, concentration_units,
-                           D, diffusion_units, compartment_name, group (opt))
+    species_var = Species(name, initial_condition, concentration_units,
+                          D, diffusion_units, compartment_name, group (opt))
     where
-    * name: string naming the species (should match variable name "species_name")
+    * name: string naming the species
     * conc_init: initial concentration for this species
                   (can be an expression given by a string to be parsed by sympy -
                   the only unknowns in the expression should be x, y, and z)
     * conc_units: concentration units for this species
-    * D: diffusion coefficient
+    * D: diffusion coefficient value
     * diffusion_units: units for diffusion coefficient
     * compartment_name: each species should be assigned to a single compartment
-    * group (optional): for larger models, specifies a group of species this belongs to
+    * group (optional): for larger models, specifies a group of species this belongs to;
+                        for organizational purposes when there are multiple reaction modules
     """
 
     name: str
     initial_condition: Any
-    # initial_condition: float
     concentration_units: pint.Unit
     D: float
     diffusion_units: pint.Unit
@@ -681,6 +756,7 @@ class Species(ObjectInstance):
 
     @classmethod
     def from_dict(cls, input_dict):
+        "Load Species object from Dict"
         return cls(**input_dict)
 
     def __post_init__(self):
@@ -721,6 +797,12 @@ class Species(ObjectInstance):
         self.check_validity()
 
     def check_validity(self):
+        """
+        Species validity checks:
+        * Initial condition is greater than or equal to 0
+        * Diffusion coefficient is greater than or equal to 0
+        * Diffusion coefficient has units of length^2/time
+        """
         # checking values
         if isinstance(self.initial_condition, float) and self.initial_condition < 0.0:
             raise ValueError(
@@ -807,10 +889,10 @@ class Compartment(ObjectInstance):
     Each Compartment object contains information describing a surface, volume, or edge
     within the geometry of interest.
     The object is initialized by calling:
-    compartment_name = Compartment(name, dimensionality, compartment_units, cell_marker)
+    compartment_var = Compartment(name, dimensionality, compartment_units, cell_marker)
     where
-    * name = string naming the compartment (should match variable name "compartment_name")
-    * dimensionality = topological dimensionality (e.g. 3 for cytosol, 2 for plasma membrane)
+    * name = string naming the compartment
+    * dimensionality = topological dimensionality (e.g. 3 for volume, 2 for surface)
     * compartment_units = length units for the compartment
     * cell_marker = marker value identifying the compartment in the parent mesh
     """
@@ -850,6 +932,11 @@ class Compartment(ObjectInstance):
         self.v = None
 
     def check_validity(self):
+        """
+        Compartment validity checks:
+        * Compartment dimensionality is 1,2, or 3
+        * Compartment units are of type "length"
+        """
         if self.dimensionality not in [1, 2, 3]:
             raise ValueError(
                 f"Compartment {self.name} has dimensionality {self.dimensionality}. "
@@ -1048,6 +1135,13 @@ class Reaction(ObjectInstance):
                 self.flux_scaling[species_name] = None
 
     def check_validity(self):
+        """
+        Reaction validity checks:
+        * LHS (reactants) and RHS (products) are specified as lists of strings
+        * param_map must be specified as a dict of "str:str"
+        * If given, species_map must be specified as a dict of "str:str"
+        * If given, flux scaling must be specified as a dict of "species:scale_factor"
+        """
         # Type checking
         if not all([isinstance(x, str) for x in self.lhs]):
             raise TypeError(f"Reaction {self.name} requires a list of strings as input for lhs.")
@@ -1077,14 +1171,20 @@ class Reaction(ObjectInstance):
                 )
 
     def _parse_custom_reaction(self, reaction_eqn_str):
+        "Substitute parameters and species into reaction expression"
         reaction_expr = parse_expr(reaction_eqn_str)
         reaction_expr = reaction_expr.subs(self.param_map)
-        # # use species_scaling if available
-        # reaction_expr = reaction_expr.subs(self._species_scaling_map)
         reaction_expr = reaction_expr.subs(self.species_map)
         return str(reaction_expr)
 
     def reaction_to_fluxes(self):
+        """
+        Convert reactions to fluxes -
+        in general, for each product and each reactant there are two fluxes,
+        one forward flux (dictated by self.eqn_f_str)
+        and one reverse flux (dictated by self.eqn_r_str),
+        stoichiometry is dictated by the number of times a given species occurs on the lhs or rhs
+        """
         logger.debug(f"Getting fluxes for reaction {self.name}", extra=dict(format_type="log"))
         # set of 2-tuples. (species_name, signed stoichiometry)
         self.species_stoich = {
@@ -1143,12 +1243,23 @@ class FluxContainer(ObjectContainer):
 
 @dataclass
 class Flux(ObjectInstance):
+    """
+    Flux objects are created from reaction objects and should not be
+    explicitly initialized by the user.
+    Each flux object contains:
+    * name: string (created as reaction name + species name + (f) or (r))
+    * destination_species: flux increases or decreases this species
+    * equation: directionality * stoichiometry * reaction string
+    * reaction: reaction object this flux comes from
+    """
+
     name: str
     destination_species: Species
     equation: sym.Expr
     reaction: Reaction
 
     def check_validity(self):
+        "No validity checks for flux objects currently"
         pass
 
     def __post_init__(self):
@@ -1182,6 +1293,7 @@ class Flux(ObjectInstance):
         self._post_init_get_is_linear_comp()
 
     def _post_init_get_involved_species_parameters_compartments(self):
+        "Find species, parameters, and compartments involved in this flux"
         self.destination_compartment = self.destination_species.compartment
 
         # Get the subset of species/parameters/compartments that are relevant
@@ -1194,11 +1306,15 @@ class Flux(ObjectInstance):
 
     def _post_init_get_flux_topology(self):
         """
-        Previous flux topology types:
-        [1d] volume:                    PDE of u
-        [1d] surface:                   PDE of v
-        [2d] volume_to_surface:         PDE of v
-        [2d] surface_to_volume:         BC of u
+        "Flux topology" refers to what types of compartments the flux occurs over
+        For instance, if a reaction occurs only in a volume, its topology is type "volume"
+        or if it involves species moving from one volume to another (across a surface),
+        it is of type "volume-surface_to_volume". Depending on the flux topology,
+        the flux will contribute to the system either as a term in the PDE or as
+        a boundary condition.
+
+        The dimensionality indicated in the left brackets below refers to how many
+        compartments are involved in the given flux (e.g. 3d = 3 compartments)
 
         Flux topology types:
         [1d] volume:                    PDE of u
@@ -1258,6 +1374,20 @@ class Flux(ObjectInstance):
             raise AssertionError()
 
     def _post_init_get_flux_units(self):
+        """
+        Check that flux units match expected type of units.
+        For boundary conditions, the flux units should be
+        (concentration_units / compartment_units) * diffusion_units
+        For fluxes that contribute to the PDE terms, units should be
+        (concentration_units / time)
+        If the units dimensionality does not match the expected form, an error is thrown;
+        if the dimensionality matches, but the units scaling is not 1.0
+        (e.g. if we have a flux specified as nM/s, but concentration_units are defined as uM),
+        then self.unit_scale_factor is set to the appropriate factor
+        (1000 in the example where we need to convert nM -> uM)
+        NOTE: All unit checks are completed using pint, which may not be compatible with
+        certain functions such as sign().
+        """
         concentration_units = self.destination_species.concentration_units
         compartment_units = self.destination_compartment.compartment_units
         diffusion_units = self.destination_species.diffusion_units
@@ -1317,7 +1447,7 @@ class Flux(ObjectInstance):
 
     def _post_init_get_integration_measure(self):
         """
-        Flux topologys:
+        Flux topologies (cf. definitions in _post_init_get_flux_topology above):
         [1d] volume:                    PDE of u
         [1d] surface:                   PDE of v
         [2d] volume_to_surface:         PDE of v
@@ -1358,13 +1488,6 @@ class Flux(ObjectInstance):
         variables.update({"unit_scale_factor": self.unit_scale_factor})
         return variables
 
-    # @property
-    # def equation_value(self):
-    #     return self.equation_quantity.magnitude
-    # @property
-    # def equation_units(self):
-    #     return unit_to_quantity(self.equation_quantity.units)
-
     def equation_lambda_eval(self, input_type="quantity"):
         """
         Evaluates the equation lambda function using either the quantity
@@ -1397,8 +1520,11 @@ class Flux(ObjectInstance):
 
     @property
     def scalar_form(self):
-        """if the destination species is a vector function,
-        the assembled form will be a vector of size NDOF."""
+        """
+        Defines scalar form for given flux.
+        If the destination species is a vector function,
+        the assembled form will be a vector of size NDOF.
+        """
         return (
             d.Constant(-1)
             * self.equation_lambda_eval(input_type="value")
@@ -1408,8 +1534,9 @@ class Flux(ObjectInstance):
 
     @property
     def assembled_flux(self):
-        """Same thing as molecules_per_second but doesn't try to convert
-        units (e.g. volumetric concentration is being used on a 2d domain)"""
+        """
+        Attempt to convert flux units to molecules_per_second for printing.
+        """
         try:
             self._assembled_flux = -1 * (
                 d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units
@@ -1422,7 +1549,8 @@ class Flux(ObjectInstance):
 
     def _post_init_get_is_linear_comp(self):
         """
-        Is the flux linear in terms of a compartment vector (e.g. dj/du['pm'])
+        If the flux is linear in terms of a compartment vector (e.g. dj/du['pm']),
+        then sets self.is_lienar_wrt_comp[comp_name] to True
         """
         umap = {}
 
@@ -1518,6 +1646,7 @@ class Form(ObjectInstance):
 
 
 def empty_sbmodel():
+    "Initialize empty containers (pc, sc, cc, and rc)"
     pc = ParameterContainer()
     sc = SpeciesContainer()
     cc = CompartmentContainer()
@@ -1526,6 +1655,9 @@ def empty_sbmodel():
 
 
 def sbmodel_from_locals(local_values):
+    """
+    Assemble containers from local variables
+    """
     # FIXME: Add typing
     # Initialize containers
     pc, sc, cc, rc = empty_sbmodel()

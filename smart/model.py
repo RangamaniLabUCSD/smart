@@ -1,6 +1,7 @@
 """
 Functions associated with the SMART model class
 """
+import pickle
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from decimal import Decimal
@@ -72,6 +73,7 @@ class Model:
     name: str = ""
 
     def to_dict(self):
+        "Convert model information to Dict"
         parameters = self.pc.to_dicts()
         species = self.sc.to_dicts()
         compartments = self.cc.to_dicts()
@@ -89,6 +91,7 @@ class Model:
 
     @classmethod
     def from_dict(cls, input_dict):
+        "Read model information from Dict"
         pc, sc, cc, rc = empty_sbmodel()
         pc.add([Parameter.from_dict(parameter) for parameter in input_dict["parameters"]])
         sc.add([Species.from_dict(species) for species in input_dict["species"]])
@@ -101,7 +104,22 @@ class Model:
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
+    def to_pickle(self, filename):
+        "Save model information to file by pickling"
+        with open(filename, "wb") as f:
+            pickle.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_pickle(cls, filename):
+        "Read model information from file by unpickling"
+        with open(filename, "rb") as f:
+            input_dict = pickle.load(f)
+        return cls.from_dict(input_dict)
+
     def __post_init__(self):
+        """
+        Initialize solver-related parameters, timers, and MPI.
+        """
         # # Check that solver_system is valid
 
         # FunctionSpaces, Functions, etc
@@ -161,20 +179,24 @@ class Model:
 
     @property
     def mpi_am_i_root(self):
+        "Returns True if current process is root"
         return self.mpi_rank == self.mpi_root
 
     @property
     def child_meshes(self):
+        "Returns all child meshes in current parent mesh"
         return self.parent_mesh.child_meshes
 
     @cached_property
     def min_dim(self):
+        "Returns minimum dimension in current model"
         dim = min([comp.dimensionality for comp in self.cc])
         self.parent_mesh.min_dim = dim
         return dim
 
     @cached_property
     def max_dim(self):
+        "Returns maximum dimension in current model"
         dim = max([comp.dimensionality for comp in self.cc])
         self.max_dim = dim
         self.parent_mesh.max_dim = dim
@@ -1174,6 +1196,10 @@ class Model:
 
     def get_block_system(self, Fsum, u):
         """
+        Modify F and define J in specific structure required
+        for d.assemble_mixed() - use to preassemble linear system
+        for the dolfin MixedNonlinearVariationalSolver (untested)
+
         The high level dolfin.solve(F==0, u) eventually
         calls cpp.fem.MixedNonlinearVariationalSolver,
         but first modifies F and defines J into a specific
@@ -1202,21 +1228,8 @@ class Model:
         I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
 
-        # Fblocks = self.get_block_F(Fsum, u)
-        # Jblocks = self.get_block_J(Fsum, u)
-        # block_sizes = self.get_block_sizes(u)
-        # return Fblocks, Jblocks, block_sizes
-
-        # =====================================================================
-        # doflin.fem.solving._solve_varproblem()
-        # =====================================================================
         # blocks/partitions are by compartment, not species
         Fblock = d.extract_blocks(Fsum)
-        # J = []
-        # for Fi in Fblock:
-        #     for uj in u:
-        #         dFdu = expand_derivatives(d.derivative(Fi, uj))
-        #         J.append(dFdu)
 
         # =====================================================================
         # doflin.fem.problem.MixedNonlinearVariationalProblem()
@@ -1305,9 +1318,14 @@ class Model:
         return Flist, Jlist, global_sizes
 
     def get_global_sizes(self, u):
+        "Return total number of dof for current model"
         return [uj.function_space().dim() for uj in u]
 
     def get_block_F(self, Fsum, u):
+        """
+        Assemble block F-vector by compartment
+        (F is the residual)
+        """
         # blocks/partitions are by compartment, not species
         Fblock = d.extract_blocks(Fsum)
 
@@ -1349,6 +1367,10 @@ class Model:
         return Flist
 
     def get_block_J(self, Fsum, u):
+        """
+        Assemble block J by compartment
+        (J is the Jacobian)
+        """
         # blocks/partitions are by compartment, not species
         Fblock = d.extract_blocks(Fsum)
         J = []
@@ -1387,52 +1409,6 @@ class Model:
 
         return Jlist
 
-    # ===============================================================================
-    # Model - Solving
-    # Hierarchy:
-    #
-    # solve():
-    #   - highest level solve. solves over all timesteps
-    # solve_single_timestep()
-    #   - recommended level to solve at. time-loop must be in driver script but
-    #     this allows explicit pre/post processing
-    #     monolithic_solve(), iterative_mpsolve()
-    #   - multiphysics level (for now, we are only considering monolithic formulation)
-    #     newton_solve(), picard_solve()
-    #   - nonlinear level. Only relevant for iterative_mpsolve().
-    #     linear solve
-    #   - For any kind of non-linear problem these should simply be parameters passed
-    #     to the non-linear solver
-    #     (we don't want nonlinear solve implemented at the python level)
-    # ===============================================================================
-    def solve(self, plot_period=1):
-        # Initialize
-        # self.init_solutions_and_plots()
-        # Time loop
-        while True:
-            end_simulation = self.solve_single_timestep(plot_period)
-            if end_simulation:
-                break
-
-    # def solve_single_timestep(self, plot_period=1):
-    #     if self.idx == 0:
-    #         self.stopwatch("Total simulation")
-    #     # Solve using specified multiphysics scheme (just monolithic for now)
-    #     self.monolithic_solve()
-
-    #     # # post processing
-    #     # self.post_process()
-    #     # if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
-    #     #     self.plot_solution()
-
-    #     # if we've reached final time
-    #     end_simulation = self.t >= self.final_t
-    #     if end_simulation:
-    #         self.stopwatch("Total simulation", stop=True)
-    #         fancy_print(f"Model \'{self.name}\' finished simulating
-    #         (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
-
-    #     return end_simulation
     # ===============================================================================
     # Model - Solving (time related functions)
     # ===============================================================================
@@ -1557,6 +1533,18 @@ class Model:
         # self.update_time_dependent_parameters()
 
     def monolithic_solve(self):
+        """
+        Solve entire monolithic system using Newton iterations,
+        with the specified PETSc SNES solver
+        (or using the dolfin MixedNonlinearVariationalSolver, untested).
+        If the solver diverges or the solution is negative,
+        this function may call itself to solve the system with
+        a smaller time step if
+        self.config.solver["attempt_timestep_restart_on_divergence"]
+        and/or
+        self.config.solver["reset_timestep_for_negative_solution"]
+        are true.
+        """
         self.idx += 1
         # start a timer for the total time step
         self.stopwatches["Total time step"].start()
@@ -1752,7 +1740,7 @@ class Model:
 
     def reset_timestep(self, dt_scale=0.20):
         """
-        t failed. Revert t->tn. Revert solution
+        t failed. Revert t->tn and revert solution
         """
         logger.debug(f"Resetting time-step: {self.idx}", extra=dict(format_type="log"))
         # Change t and decrease dt
@@ -1784,7 +1772,8 @@ class Model:
         self.update_solution(ukeys=["u"], unew="n")
 
     def update_time_dependent_parameters(self):
-        r"""Updates all time dependent parameters. Time-dependent parameters are
+        """
+        Updates all time dependent parameters. Time-dependent parameters are
         either defined either symbolically or through a data file, and each of
         these can either be defined as a direct function of t, p(t), or a
         "pre-integrated expression", \int_{t_n}^{t_{n+1}} P(tau) dtau, which allows for
@@ -1881,18 +1870,6 @@ class Model:
             for idx in range(self.num_active_compartments):
                 self.u[ukey].sub(idx).assign(self.u[unew].sub(idx))
 
-    # ===============================================================================
-    # Model - Post-processing
-    # ===============================================================================
-
-    def post_process(self):
-        self.data.compute_statistics(
-            self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx
-        )
-        self.data.compute_probe_values(self.u, self.sc)
-        self.data.output_pickle()
-        self.data.output_csv()
-
     # =========================================================
     # Model - Data manipulation
     # =========================================================
@@ -1901,8 +1878,8 @@ class Model:
     @staticmethod
     def dolfin_get_dof_indices(species):  # V, species_idx):
         """
-        Returned indices are *local* to the CPU (not global)
-        function values can be returned e.g.
+        Returns indices *local* to the CPU (not global).
+        Function values can then be returned e.g.
         indices = dolfin_get_dof_indices(V,species_idx)
         u.vector().get_local()[indices]
         """
@@ -1920,6 +1897,9 @@ class Model:
 
     def dolfin_set_function_values(self, sp, ukey, unew):
         """
+        Set values for dolfin function (usually for initial condition)
+        Input unew should either be an expression giving the spatial dependence
+        of u, a constant (float), or a vector of values.
         d.assign(uold, unew) works when uold is a subfunction
         uold.assign(unew) does not (it will replace the entire function)
         """
@@ -1929,28 +1909,27 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
-        elif len(unew) > 1:
-            if len(sp.dof_map) == len(unew):
-                # unew is an N x 4 array: [X, Y, Z, function_values]
-                u = self.cc[sp.compartment_name].u[ukey]
-                dof_coord = sp.V.tabulate_dof_coordinates()  # coordinates for the current dof
-                mesh_coord = unew[:, 0:3]  # x,y,z coordinates for initial condition
-                function_values = unew[:, 3]
-                # nearest neighbor interpolation
-                # (in this case, matching up exactly with mesh points)
-                dof_vals_cur = np.zeros((len(mesh_coord),))
-                for i in range(len(dof_coord)):
-                    dist_vec = np.sum((dof_coord[i, :] - mesh_coord) ** 2, axis=1)
-                    dof_vals_cur[i] = function_values[np.argmin(dist_vec)]
-                    if i % 1000 == 0:
-                        logger.debug(f"Set {i} of {len(dof_coord)} function values for {sp.name}")
-                # indices = self.dolfin_get_dof_indices(sp)
-                indices = sp.dof_map
-                uvec = u.vector()
-                values = uvec.get_local()
-                values[indices] = dof_vals_cur
-                uvec.set_local(values)
-                uvec.apply("insert")
+        if len(sp.dof_map) == len(unew):
+            # unew is an N x 4 array: [X, Y, Z, function_values]
+            u = self.cc[sp.compartment_name].u[ukey]
+            dof_coord = sp.V.tabulate_dof_coordinates()  # coordinates for the current dof
+            mesh_coord = unew[:, 0:3]  # x,y,z coordinates for initial condition
+            function_values = unew[:, 3]
+            # nearest neighbor interpolation
+            # (in this case, matching up exactly with mesh points)
+            dof_vals_cur = np.zeros((len(mesh_coord),))
+            for i in range(len(dof_coord)):
+                dist_vec = np.sum((dof_coord[i, :] - mesh_coord) ** 2, axis=1)
+                dof_vals_cur[i] = function_values[np.argmin(dist_vec)]
+                if i % 1000 == 0:
+                    logger.debug(f"Set {i} of {len(dof_coord)} function values for {sp.name}")
+            # indices = self.dolfin_get_dof_indices(sp)
+            indices = sp.dof_map
+            uvec = u.vector()
+            values = uvec.get_local()
+            values[indices] = dof_vals_cur
+            uvec.set_local(values)
+            uvec.apply("insert")
         elif isinstance(unew, d.Function):
             logger.debug(f"Function already set for {sp.name}")
         else:
@@ -1958,9 +1937,11 @@ class Model:
 
     @property
     def num_active_compartments(self):
+        "number of compartments with dofs"
         return len(self._active_compartments)
 
     def get_compartment_residual(self, compartment, norm=None):
+        "returns compartment residual as given norm"
         res_vec = sum(
             [d.assemble_mixed(form).get_local() for form in self.Fblocks_all[compartment.dof_index]]
         )
@@ -1970,6 +1951,7 @@ class Model:
             return np.linalg.norm(res_vec, norm)
 
     def get_total_residual(self, norm=None):
+        "returns total residual for all active compartment as given norm"
         res_vec = np.hstack(
             [d.assemble_mixed(form).get_local() for form in chain.from_iterable(self.Fblocks_all)]
         )
@@ -1986,6 +1968,7 @@ class Model:
             return np.linalg.norm(res_vec, norm)
 
     def get_mesh_by_id(self, mesh_id):
+        "returns mesh with id, mesh_id"
         for mesh in self.parent_mesh.all_meshes.values():
             if mesh.id == mesh_id:
                 return mesh
@@ -1996,6 +1979,11 @@ class Model:
     # Model - Printing
     # ============================================================
     def print_meshes(self, tablefmt="fancy_grid"):
+        """ "
+        Print information associated with child meshes:
+        name, id, dimensionality,
+        num_cells, num_facets, and num_vertices
+        """
         if self.mpi_am_i_root:
             properties_to_print = [
                 "name",
@@ -2053,4 +2041,5 @@ class Model:
             print(tabulate(df, headers="keys", tablefmt=tablefmt))
 
     def rounded_decimal(self, x):
+        "Round time value to specified decimal point"
         return Decimal(x).quantize(self._base_t)
