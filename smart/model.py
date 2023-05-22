@@ -1,6 +1,7 @@
 """
 Model class. Consists of parameters, species, etc. and is used for simulation
 """
+import pickle
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from decimal import Decimal
@@ -91,8 +92,16 @@ class Model:
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
     def to_pickle(self, filename):
+        "Save model information to file by pickling"
         with open(filename, "wb") as f:
             pickle.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_pickle(cls, filename):
+        "Read model information from file by unpickling"
+        with open(filename, "rb") as f:
+            input_dict = pickle.load(f)
+        return cls.from_dict(input_dict)
 
     def __post_init__(self):
         # # Check that solver_system is valid
