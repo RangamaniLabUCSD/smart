@@ -34,3 +34,6 @@ jobs:
           cd examples/example${{ matrix.example }}/
           jupytext example${{ matrix.example }}.ipynb --to py
           python3 example${{ matrix.example }}.py
+
+      - name: Run MPI example
+        run: mpirun -n 2 python3 examples/example2/example2_multimeshMPI.py

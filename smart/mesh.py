@@ -210,7 +210,6 @@ class ParentMesh(_Mesh):
         self.dimensionality = self.dolfin_mesh.topology().dim()
         self.dolfin_mesh.init(self.dimensionality - 1)
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
-        self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
         logger.info(f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
 

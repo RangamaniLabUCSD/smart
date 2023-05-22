@@ -30,8 +30,9 @@ import os
 import dolfin as d
 import numpy as np
 import logging
+import pathlib
 
-from smart import config, common, mesh, model
+from smart import config, mesh, model, mesh_tools
 from smart.units import unit
 from smart.model_assembly import Compartment, Parameter, Reaction, Species, sbmodel_from_locals
 from matplotlib import pyplot as plt
@@ -139,18 +140,20 @@ for idx in range(conditions_per_process * rank, conditions_per_process * (rank +
     # Create/load in mesh
     # =============================================================================================
     # Base mesh
-    domain, facet_markers, cell_markers = common.DemoSpheresMesh(
-        curRadius, 0, hEdge=0.2
+    domain, facet_markers, cell_markers = mesh_tools.DemoSpheresMesh(
+        curRadius, 0, hEdge=0.2, comm=d.MPI.comm_self
     )  # 0 in second argument corresponds to no inner sphere
     # Write mesh and meshfunctions to file
-    os.makedirs(f"mesh_{curRadius:03f}", exist_ok=True)
-    common.write_mesh(
-        domain, facet_markers, cell_markers, filename=f"mesh_{curRadius:03f}/DemoSphere"
+    mesh_folder = pathlib.Path("mesh_{curRadius:03f}")
+    mesh_folder.mkdir(exist_ok=True)
+    mesh_path = mesh_folder / "DemoSphere.h5"
+    mesh_tools.write_mesh(
+        domain, facet_markers, cell_markers, filename=mesh_path
     )
 
     # Must use mpi_comm_self when defining mesh here!!
     parent_mesh = mesh.ParentMesh(
-        mesh_filename=f"mesh_{curRadius:03f}/DemoSphere.h5",
+        mesh_filename=str(mesh_path),
         mesh_filetype="hdf5",
         name="parent_mesh",
         mpi_comm=d.MPI.comm_self,
@@ -170,10 +173,11 @@ for idx in range(conditions_per_process * rank, conditions_per_process * (rank +
     modelCur.initialize_discrete_variational_problem_and_solver()
     # Write initial condition(s) to file
     results = dict()
-    os.makedirs(f"resultsSphere_{curRadius:03f}", exist_ok=True)
+    result_folder = pathlib.Path(f"resultsSphere_{curRadius:03f}")
+    result_folder.mkdir(exist_ok=True)
     for species_name, species in modelCur.sc.items:
         results[species_name] = d.XDMFFile(
-            modelCur.mpi_comm_world, f"resultsSphere_{curRadius:03f}/{species_name}.xdmf"
+            modelCur.mpi_comm_world, str(result_folder / f"{species_name}.xdmf")
         )
         results[species_name].parameters["flush_output"] = True
         results[species_name].write(modelCur.sc[species_name].u["u"], modelCur.t)
