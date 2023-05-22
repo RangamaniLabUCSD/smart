@@ -455,7 +455,7 @@ class Parameter(ObjectInstance):
     def from_file(cls, name, sampling_file, unit, group="", notes="", use_preintegration=False):
         """ "
         Load in a purely time-dependent scalar function from data
-        Data needs to be read in from a .txt file with two columns
+        Data needs to be read in from a text file with two columns
         where the first column is time (first entry must be 0.0)
         and the second column is the parameter values.
         Columns should be comma-separated.
@@ -488,6 +488,7 @@ class Parameter(ObjectInstance):
             parameter.preint_sampling_data = preint_sampling_data
 
         # initialize instance
+        parameter.sampling_file = sampling_file
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
         parameter.is_space_dependent = False  # not supported yet
