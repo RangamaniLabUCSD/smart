@@ -364,7 +364,7 @@ class FlagsConfig(BaseConfig):
     :param allow_unused_components: Allow parameters not defined in any reaction to be
         defined in any model.
     :param print_verbose_info: Print detailed information about a model
-    :param multi_mesh_MPI: 
+    :param multi_mesh_MPI:
 
         ..fixme ::
 
@@ -376,6 +376,7 @@ class FlagsConfig(BaseConfig):
     allow_unused_components: bool = False
     print_verbose_info: bool = True
     multi_mesh_MPI: bool = False
+
 
 @dataclass
 class Config:

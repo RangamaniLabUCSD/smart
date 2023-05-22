@@ -147,9 +147,7 @@ for idx in range(conditions_per_process * rank, conditions_per_process * (rank +
     mesh_folder = pathlib.Path("mesh_{curRadius:03f}")
     mesh_folder.mkdir(exist_ok=True)
     mesh_path = mesh_folder / "DemoSphere.h5"
-    mesh_tools.write_mesh(
-        domain, facet_markers, cell_markers, filename=mesh_path
-    )
+    mesh_tools.write_mesh(domain, facet_markers, cell_markers, filename=mesh_path)
 
     # Must use mpi_comm_self when defining mesh here!!
     parent_mesh = mesh.ParentMesh(

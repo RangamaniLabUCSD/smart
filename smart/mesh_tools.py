@@ -83,7 +83,7 @@ def DemoSpheresMesh(
     outer_marker: int = 10,
     inner_vol_tag: int = 2,
     outer_vol_tag: int = 1,
-    comm: MPI.Comm = d.MPI.comm_world
+    comm: MPI.Comm = d.MPI.comm_world,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a mesh for use in examples that contains
@@ -210,7 +210,7 @@ def DemoSpheresMesh(
     tet_mesh = create_mesh(mesh3d_in, "tetra")
     tri_mesh = create_mesh(mesh3d_in, "triangle")
     temp_2D = pathlib.Path(f"tempmesh_2dout{rank}.xdmf")
-    temp_3D = pathlib.Path(f"tempmesh_3dout{rank}.xdmf")    
+    temp_3D = pathlib.Path(f"tempmesh_3dout{rank}.xdmf")
     meshio.write(temp_3D, tet_mesh)
     meshio.write(temp_2D, tri_mesh)
 
@@ -240,7 +240,12 @@ def DemoSpheresMesh(
     return (dmesh, mf2, mf3)
 
 
-def write_mesh(mesh:d.Mesh, mf2:d.MeshFunction, mf3:d.MeshFunction, filename:pathlib.Path=pathlib.Path("DemoCuboidMesh.h5")):
+def write_mesh(
+    mesh: d.Mesh,
+    mf2: d.MeshFunction,
+    mf3: d.MeshFunction,
+    filename: pathlib.Path = pathlib.Path("DemoCuboidMesh.h5"),
+):
     # Write mesh and meshfunctions to file
     hdf5 = d.HDF5File(mesh.mpi_comm(), str(filename.with_suffix(".h5")), "w")
     hdf5.write(mesh, "/mesh")
@@ -248,5 +253,5 @@ def write_mesh(mesh:d.Mesh, mf2:d.MeshFunction, mf3:d.MeshFunction, filename:pat
     hdf5.write(mf2, "/mf2")
     # For visualization of domains
     filename.with_stem()
-    d.File(str(filename.with_stem(filename.stem+"_mf3").with_suffix(".pvd"))) << mf3
-    d.File(str(filename.with_stem(filename.stem+"_mf2").with_suffix(".pvd"))) << mf2
+    d.File(str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd"))) << mf3
+    d.File(str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd"))) << mf2
