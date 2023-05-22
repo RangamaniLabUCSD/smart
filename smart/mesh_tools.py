@@ -251,6 +251,5 @@ def write_mesh(
     hdf5.write(mf3, "/mf3")
     hdf5.write(mf2, "/mf2")
     # For visualization of domains
-    filename.with_stem()
     d.File(str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd"))) << mf3
     d.File(str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd"))) << mf2
