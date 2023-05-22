@@ -1,5 +1,4 @@
 from typing import Tuple
-import os
 import pathlib
 import numpy as np
 import dolfin as d
