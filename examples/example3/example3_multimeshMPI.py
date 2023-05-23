@@ -112,15 +112,34 @@ rc.add([r1, r2])
 # We assess 10 different meshes, with cell radius log-spaced from 1 to 10.
 # Radii are divided among the processes running in parallel via MPI.
 
+
+def compute_local_range(comm, N: int):
+    """
+    Divide a set of `N` objects into `M` partitions, where `M` is
+    the size of the MPI communicator `comm`.
+
+    NOTE: If N is not divisible by the number of ranks, the first `r`
+    processes gets an extra value
+
+    Returns the local range of values
+    """
+    rank = comm.rank
+    size = comm.size
+    n = N // size
+    r = N % size
+    # First r processes has one extra value
+    if rank < r:
+        return [rank * (n + 1), (rank + 1) * (n + 1)]
+    else:
+        return [rank * n + r, (rank + 1) * n + r]
+
+
 # +
 radiusVec = np.logspace(0, 1, num=10)  # currently testing 10 radius values
-sim_num = 0
-conditions_per_process = int(
-    len(radiusVec) / size
-)  # currently only works for same number of conditions per process!
+local_range = compute_local_range(d.MPI.comm_world, len(radiusVec))
+conditions_per_process = local_range[1] - local_range[0]
 ss_vec_cur = np.zeros(conditions_per_process)
-for idx in range(rank, len(radiusVec), conditions_per_process):
-    curRadius = radiusVec[idx]
+for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     pc["VolSA"].value = curRadius / 3
     # log_file = f"resultsSphere_{curRadius:03f}/output.log"
     configCur = config.Config()
@@ -185,8 +204,7 @@ for idx in range(rank, len(radiusVec), conditions_per_process):
     dx = d.Measure("dx", domain=modelCur.cc["Cyto"].dolfin_mesh)
     int_val = d.assemble(modelCur.sc["Aphos"].u["u"] * dx)
     volume = d.assemble(1.0 * dx)
-    ss_vec_cur[sim_num] = int_val / volume
-    sim_num = sim_num + 1
+    ss_vec_cur[i] = int_val / volume
 
 d.MPI.comm_world.Barrier()
 
