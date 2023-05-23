@@ -8,7 +8,6 @@ from decimal import Decimal
 from itertools import chain
 import logging
 
-import pickle
 import dolfin as d
 import numpy as np
 import pandas

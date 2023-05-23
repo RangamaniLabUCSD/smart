@@ -48,7 +48,7 @@ from smart.model_assembly import (
 from matplotlib import pyplot as plt
 
 logger = logging.getLogger("smart")
-file_handler = logging.FileHandler("output.log")
+file_handler = logging.FileHandler("output.txt")
 file_handler.setFormatter(logging.Formatter(config.fancy_format))
 logger.addHandler(file_handler)
 
@@ -119,7 +119,7 @@ conditions_per_process = int(
     len(radiusVec) / size
 )  # currently only works for same number of conditions per process!
 ss_vec_cur = np.zeros(conditions_per_process)
-for idx in range(conditions_per_process * rank, conditions_per_process * (rank + 1)):
+for idx in range(rank, len(radiusVec), conditions_per_process):
     curRadius = radiusVec[idx]
     pc["VolSA"].value = curRadius / 3
     # log_file = f"resultsSphere_{curRadius:03f}/output.log"
@@ -187,6 +187,8 @@ for idx in range(conditions_per_process * rank, conditions_per_process * (rank +
     volume = d.assemble(1.0 * dx)
     ss_vec_cur[sim_num] = int_val / volume
     sim_num = sim_num + 1
+
+d.MPI.comm_world.Barrier()
 
 # gather all steady-state values into a single vector
 ss_vec = comm.gather(ss_vec_cur, root=0)
