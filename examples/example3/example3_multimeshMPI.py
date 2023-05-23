@@ -139,6 +139,9 @@ radiusVec = np.logspace(0, 1, num=10)  # currently testing 10 radius values
 local_range = compute_local_range(d.MPI.comm_world, len(radiusVec))
 conditions_per_process = local_range[1] - local_range[0]
 ss_vec_cur = np.zeros(conditions_per_process)
+
+logger.info(f"cpu {rank}: starting idx: {local_range[0]}, ending idx: {local_range[1]}")
+
 for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     pc["VolSA"].value = curRadius / 3
     # log_file = f"resultsSphere_{curRadius:03f}/output.log"
@@ -210,8 +213,10 @@ d.MPI.comm_world.Barrier()
 
 # gather all steady-state values into a single vector
 ss_vec = comm.gather(ss_vec_cur, root=0)
+print(ss_vec)
 if rank == 0:
-    ss_vec = np.reshape(ss_vec, len(radiusVec))
+    ss_vec = np.concatenate(ss_vec).ravel()
+    # ss_vec = np.reshape(ss_vec, len(radiusVec))
     np.savetxt("ss_vec_MPI.txt", ss_vec)
     plt.plot(radiusVec, ss_vec, "ro")
     radiusTest = np.logspace(0, 1, 100)
