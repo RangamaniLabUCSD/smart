@@ -131,7 +131,7 @@ for idx in range(rank, len(radiusVec), conditions_per_process):
     # =============================================================================================
     # Base mesh
     domain, facet_markers, cell_markers = mesh_tools.DemoSpheresMesh(
-        curRadius, 0, hEdge=0.2, comm=d.MPI.comm_self
+        curRadius, 0, hEdge=0.2, comm=d.MPI.comm_self, verbose=False
     )  # 0 in second argument corresponds to no inner sphere
     # Write mesh and meshfunctions to file
     mesh_folder = pathlib.Path(f"mesh_{curRadius:03f}")

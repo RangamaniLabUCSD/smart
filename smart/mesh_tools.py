@@ -85,6 +85,7 @@ def DemoSpheresMesh(
     inner_vol_tag: int = 2,
     outer_vol_tag: int = 1,
     comm: MPI.Comm = d.MPI.comm_world,
+    verbose:bool=False
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Calls DemoEllipsoidsMesh() to make spherical mesh
@@ -98,7 +99,7 @@ def DemoSpheresMesh(
         outer_marker,
         inner_vol_tag,
         outer_vol_tag,
-        comm,
+        comm, verbose
     )
     return (dmesh, mf2, mf3)
 
@@ -113,6 +114,7 @@ def DemoEllipsoidsMesh(
     inner_vol_tag: int = 2,
     outer_vol_tag: int = 1,
     comm: MPI.Comm = d.MPI.comm_world,
+    verbose: bool = False
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a mesh for use in examples that contains
@@ -131,6 +133,7 @@ def DemoEllipsoidsMesh(
         inner_vol_tag: The value to mark the inner spherical volume with
         outer_vol_tag: The value to mark the outer spherical volume with
         comm: MPI communicator to create the mesh with
+        verbose: If true print gmsh output, else skip
     Returns:
         A triplet (mesh, facet_marker, cell_marker)
     """
@@ -146,6 +149,8 @@ def DemoEllipsoidsMesh(
         ValueError("Inner ellipsoid does not fit inside outer ellipsoid")
     # Create the two ellipsoid mesh using gmsh
     gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+
     gmsh.model.add("twoellipsoids")
     # first add ellipsoid 1 of radius outerRad and center (0,0,0)
     outer_ellipsoid = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
@@ -396,12 +401,13 @@ def write_mesh(
     mf2: d.MeshFunction,
     mf3: d.MeshFunction,
     filename: pathlib.Path = pathlib.Path("DemoCuboidMesh.h5"),
-):
+): 
+    comm = mesh.mpi_comm()
     # Write mesh and meshfunctions to file
-    hdf5 = d.HDF5File(mesh.mpi_comm(), str(filename.with_suffix(".h5")), "w")
+    hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")
     hdf5.write(mesh, "/mesh")
     hdf5.write(mf3, "/mf3")
     hdf5.write(mf2, "/mf2")
     # For visualization of domains
-    d.File(str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd"))) << mf3
-    d.File(str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd"))) << mf2
+    d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd"))) << mf3
+    d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd"))) << mf2
