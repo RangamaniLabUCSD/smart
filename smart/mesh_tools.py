@@ -237,7 +237,7 @@ def DemoEllipsoidsMesh(
     gmsh.model.mesh.generate(3)
     rank = MPI.COMM_WORLD.rank
     tmp_folder = pathlib.Path(f"tmp_ellipsoid_{outerRad}_{innerRad}_{rank}")
-    tmp_folder.makedir(exist_ok=True)
+    tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "ellipsoids.msh"
     gmsh.write(str(gmsh_file))
     gmsh.finalize()
@@ -246,7 +246,7 @@ def DemoEllipsoidsMesh(
     dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
     # remove tmp mesh and tmp folder
     gmsh_file.unlink(missing_ok=False)
-    tmp_folder.rmdir(missing_ok=False)
+    tmp_folder.rmdir()
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 
@@ -299,7 +299,7 @@ def DemoEllipseMesh(
     gmsh.model.mesh.generate(2)
     rank = MPI.COMM_WORLD.rank
     tmp_folder = pathlib.Path(f"tmp_ellipse_{xrad}_{yrad}_{rank}")
-    tmp_folder.makedir(exist_ok=True)
+    tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "ellipse.msh"
     gmsh.write(str(gmsh_file))  # save locally
     gmsh.finalize()
@@ -307,13 +307,13 @@ def DemoEllipseMesh(
     # return dolfin mesh of max dimension (parent mesh) and marker functions mf1 and mf2
     dmesh, mf1, mf2 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 2, comm)
     gmsh_file.unlink(missing_ok=False)
-    tmp_folder.rmdir(missing_ok=False)
+    tmp_folder.rmdir()
     return (dmesh, mf1, mf2)
 
 
 def gmsh_to_dolfin(
     gmsh_file_name: str,
-    tmp_folder: str = "tmp_mesh",
+    tmp_folder: pathlib.Path = pathlib.Path("tmp_folder"),
     dimension: int = 3,
     comm: MPI.Comm = d.MPI.comm_world,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:

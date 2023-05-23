@@ -26,14 +26,25 @@
 
 # +
 
+import logging
+
 import dolfin as d
 import numpy as np
-import logging
 import pathlib
 
 from smart import config, mesh, model, mesh_tools
 from smart.units import unit
-from smart.model_assembly import Compartment, Parameter, Reaction, Species, sbmodel_from_locals
+from smart.model_assembly import (
+    Compartment,
+    Parameter,
+    Reaction,
+    Species,
+    SpeciesContainer,
+    ParameterContainer,
+    CompartmentContainer,
+    ReactionContainer,
+)
+
 from matplotlib import pyplot as plt
 
 logger = logging.getLogger("smart")
@@ -47,8 +58,6 @@ rank = comm.rank
 size = comm.size
 root = 0
 logger.info(f"MPI rank {rank} of size {size}")
-
-# -
 
 # First, we define the various units for the inputs
 
@@ -67,56 +76,38 @@ surf_unit = molecule / um**2
 
 # Next we generate the model.
 
-
-def make_model(curRadius):
-    # =============================================================================================
-    # Species
-    # =============================================================================================
-    # name, initial concentration, concentration units, diffusion, diffusion units, compartment
-    Aphos = Species("Aphos", 0.1, vol_unit, 10.0, D_unit, "Cyto")
-    kinMem = Species(
-        "kinMem", 1.0, dimensionless, 0.0, D_unit, "PM"
-    )  # dummy variable; without this, the current version of SMART throws an error
-
-    # =============================================================================================
-    # Compartments
-    # =============================================================================================
-    # name, topological dimensionality, length scale units, marker value
-    Cyto = Compartment("Cyto", 3, um, 1)
-    PM = Compartment("PM", 2, um, 10)
-
-    # =============================================================================================
-    # Parameters and Reactions
-    # =============================================================================================
-    Atot = Parameter("Atot", 1.0, vol_unit)
-    # Phosphorylation of Adephos at the PM
-    kkin = Parameter("kkin", 50.0, 1 / sec)
-    VolSA = Parameter("VolSA", curRadius / 3, um)  # vol to surface area ratio of the cell
-    r1 = Reaction(
-        "r1",
-        [],
-        ["Aphos"],
-        param_map={"kon": "kkin", "Atot": "Atot", "VolSA": "VolSA"},
-        eqn_f_str="kinMem*kon*VolSA*(Atot - Aphos)",
-        species_map={"Aphos": "Aphos", "kinMem": "kinMem"},
-        explicit_restriction_to_domain="PM",
-    )
-    # Dephosphorylation of Aphos in the cytosol
-    kp = Parameter("kp", 10.0, 1 / sec)
-    r2 = Reaction(
-        "r2",
-        ["Aphos"],
-        [],
-        param_map={"kon": "kp"},
-        eqn_f_str="kon*Aphos",
-        species_map={"Aphos": "Aphos"},
-    )
-
-    # =============================================================================================
-    # Gather all parameters, species, compartments and reactions
-    # =============================================================================================
-    return sbmodel_from_locals(locals().values())
-
+Cyto = Compartment("Cyto", 3, um, 1)
+PM = Compartment("PM", 2, um, 10)
+cc = CompartmentContainer()
+cc.add([PM, Cyto])
+Aphos = Species("Aphos", 0.1, vol_unit, 10.0, D_unit, "Cyto")
+sc = SpeciesContainer()
+sc.add([Aphos])
+Atot = Parameter("Atot", 1.0, vol_unit)
+# Phosphorylation of Adephos at the PM
+kkin = Parameter("kkin", 50.0, 1 / sec)
+curRadius = 1  # first radius value to test
+VolSA = Parameter(
+    "VolSA", curRadius / 3, um
+)  # vol to surface area ratio of the cell (overwritten for each cell size)
+r1 = Reaction(
+    "r1",
+    [],
+    ["Aphos"],
+    param_map={"kon": "kkin", "Atot": "Atot", "VolSA": "VolSA"},
+    eqn_f_str="kon*VolSA*(Atot - Aphos)",
+    species_map={"Aphos": "Aphos"},
+    explicit_restriction_to_domain="PM",
+)
+# Dephosphorylation of Aphos in the cytosol
+kp = Parameter("kp", 10.0, 1 / sec)
+r2 = Reaction(
+    "r2", ["Aphos"], [], param_map={"kon": "kp"}, eqn_f_str="kp*Aphos"
+)  # , species_map={"Aphos": "Aphos"})
+pc = ParameterContainer()
+pc.add([Atot, kkin, VolSA, kp])
+rc = ReactionContainer()
+rc.add([r1, r2])
 
 # We assess 10 different meshes, with cell radius log-spaced from 1 to 10.
 # Radii are divided among the processes running in parallel via MPI.
@@ -130,7 +121,7 @@ conditions_per_process = int(
 ss_vec_cur = np.zeros(conditions_per_process)
 for idx in range(conditions_per_process * rank, conditions_per_process * (rank + 1)):
     curRadius = radiusVec[idx]
-    pc, sc, cc, rc = make_model(curRadius)
+    pc["VolSA"].value = curRadius / 3
     # log_file = f"resultsSphere_{curRadius:03f}/output.log"
     configCur = config.Config()
     configCur.flags.update({"multi_mesh_MPI": True})
@@ -143,7 +134,7 @@ for idx in range(conditions_per_process * rank, conditions_per_process * (rank +
         curRadius, 0, hEdge=0.2, comm=d.MPI.comm_self
     )  # 0 in second argument corresponds to no inner sphere
     # Write mesh and meshfunctions to file
-    mesh_folder = pathlib.Path("mesh_{curRadius:03f}")
+    mesh_folder = pathlib.Path(f"mesh_{curRadius:03f}")
     mesh_folder.mkdir(exist_ok=True)
     mesh_path = mesh_folder / "DemoSphere.h5"
     mesh_tools.write_mesh(domain, facet_markers, cell_markers, filename=mesh_path)
