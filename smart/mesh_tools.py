@@ -85,7 +85,7 @@ def DemoSpheresMesh(
     inner_vol_tag: int = 2,
     outer_vol_tag: int = 1,
     comm: MPI.Comm = d.MPI.comm_world,
-    verbose:bool=False
+    verbose: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Calls DemoEllipsoidsMesh() to make spherical mesh
@@ -99,7 +99,8 @@ def DemoSpheresMesh(
         outer_marker,
         inner_vol_tag,
         outer_vol_tag,
-        comm, verbose
+        comm,
+        verbose,
     )
     return (dmesh, mf2, mf3)
 
@@ -114,7 +115,7 @@ def DemoEllipsoidsMesh(
     inner_vol_tag: int = 2,
     outer_vol_tag: int = 1,
     comm: MPI.Comm = d.MPI.comm_world,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a mesh for use in examples that contains
@@ -401,7 +402,7 @@ def write_mesh(
     mf2: d.MeshFunction,
     mf3: d.MeshFunction,
     filename: pathlib.Path = pathlib.Path("DemoCuboidMesh.h5"),
-): 
+):
     comm = mesh.mpi_comm()
     # Write mesh and meshfunctions to file
     hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")
@@ -409,5 +410,11 @@ def write_mesh(
     hdf5.write(mf3, "/mf3")
     hdf5.write(mf2, "/mf2")
     # For visualization of domains
-    d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd"))) << mf3
-    d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd"))) << mf2
+    (
+        d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd")))
+        << mf3
+    )
+    (
+        d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd")))
+        << mf2
+    )
