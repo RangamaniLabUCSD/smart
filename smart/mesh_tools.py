@@ -98,6 +98,7 @@ def DemoSpheresMesh(
         outer_marker,
         inner_vol_tag,
         outer_vol_tag,
+        comm,
     )
     return (dmesh, mf2, mf3)
 
@@ -111,6 +112,7 @@ def DemoEllipsoidsMesh(
     outer_marker: int = 10,
     inner_vol_tag: int = 2,
     outer_vol_tag: int = 1,
+    comm: MPI.Comm = d.MPI.comm_world,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a mesh for use in examples that contains
@@ -233,17 +235,18 @@ def DemoEllipsoidsMesh(
     gmsh.option.setNumber("Mesh.Algorithm", 5)
 
     gmsh.model.mesh.generate(3)
-    tmp_folder = f"tmp_ellipsoid_{outerRad}_{innerRad}"
-    os.makedirs(tmp_folder, exist_ok=True)
-    gmsh_file_name = f"{tmp_folder}/ellipsoids.msh"
-    gmsh.write(gmsh_file_name)
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_ellipsoid_{outerRad}_{innerRad}_{rank}")
+    tmp_folder.makedir(exist_ok=True)
+    gmsh_file = tmp_folder / "ellipsoids.msh"
+    gmsh.write(str(gmsh_file))
     gmsh.finalize()
 
     # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
-    dmesh, mf2, mf3 = gmsh_to_dolfin(gmsh_file_name, tmp_folder, 3)
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
     # remove tmp mesh and tmp folder
-    os.remove(gmsh_file_name)
-    os.rmdir(tmp_folder)
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir(missing_ok=False)
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 
@@ -254,6 +257,7 @@ def DemoEllipseMesh(
     h_ellipse: float = 0.1,
     inside_tag: int = 1,
     edge_tag: int = 3,
+    comm: MPI.Comm = d.MPI.comm_world,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a mesh for an ellipse surface
@@ -263,6 +267,7 @@ def DemoEllipseMesh(
         h_ellipse: mesh resolution
         inside_tag: mesh marker value for triangles in the ellipse
         edge_tag: mesh marker value for edge 1D elements
+        comm: MPI communicator to create the mesh with
     Returns:
         A triplet (mesh, facet_marker (mf1), cell_marker(mf2))
     """
@@ -292,21 +297,25 @@ def DemoEllipseMesh(
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
     gmsh.model.mesh.generate(2)
-    tmp_folder = f"tmp_ellipse_{xrad}_{yrad}"
-    os.makedirs(tmp_folder, exist_ok=True)
-    gmsh_file_name = f"{tmp_folder}/ellipse.msh"
-    gmsh.write(gmsh_file_name)  # save locally
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_ellipse_{xrad}_{yrad}_{rank}")
+    tmp_folder.makedir(exist_ok=True)
+    gmsh_file = tmp_folder / "ellipse.msh"
+    gmsh.write(str(gmsh_file))  # save locally
     gmsh.finalize()
 
     # return dolfin mesh of max dimension (parent mesh) and marker functions mf1 and mf2
-    dmesh, mf1, mf2 = gmsh_to_dolfin(gmsh_file_name, tmp_folder, 2)
-    os.remove(gmsh_file_name)
-    os.rmdir(tmp_folder)
+    dmesh, mf1, mf2 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 2, comm)
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir(missing_ok=False)
     return (dmesh, mf1, mf2)
 
 
 def gmsh_to_dolfin(
-    gmsh_file_name: str, tmp_folder_name: str = "tmp_mesh", dimension: int = 3
+    gmsh_file_name: str,
+    tmp_folder: str = "tmp_mesh",
+    dimension: int = 3,
+    comm: MPI.Comm = d.MPI.comm_world,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Convert .msh file from gmsh to dolfin mesh
@@ -342,8 +351,8 @@ def gmsh_to_dolfin(
         cells={cell_type: cells},
         cell_data={"mf_data": [cell_data]},
     )
-    tmp_file_cell = f"{tmp_folder_name}/tempmesh_cell"
-    meshio.write(f"{tmp_file_cell}.xdmf", out_mesh_cell)
+    tmp_file_cell = tmp_folder / "tempmesh_cell.xdmf"
+    meshio.write(tmp_file_cell, out_mesh_cell)
     # convert facet mesh
     facets = mesh_in.get_cells_type(facet_type)
     facet_data = mesh_in.get_cell_data("gmsh:physical", facet_type)  # extract values of tags
@@ -352,13 +361,14 @@ def gmsh_to_dolfin(
         cells={facet_type: facets},
         cell_data={"mf_data": [facet_data]},
     )
-    tmp_file_facet = f"{tmp_folder_name}/tempmesh_facet"
-    meshio.write(f"{tmp_file_facet}.xdmf", out_mesh_facet)
+    tmp_file_facet = tmp_folder / "tempmesh_facet.xdmf"
+    meshio.write(tmp_file_facet, out_mesh_facet)
 
     # convert xdmf mesh to dolfin-style mesh
-    dmesh = d.Mesh()
+
+    dmesh = d.Mesh(comm)
     mvc_cell = d.MeshValueCollection("size_t", dmesh, dimension)
-    with d.XDMFFile(f"{tmp_file_cell}.xdmf") as infile:
+    with d.XDMFFile(comm, str(tmp_file_cell)) as infile:
         infile.read(dmesh)
         infile.read(mvc_cell, "mf_data")
     mf_cell = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc_cell)
@@ -366,17 +376,17 @@ def gmsh_to_dolfin(
     mf_cell.array()[np.where(mf_cell.array() > 1e9)[0]] = 0
 
     mvc_facet = d.MeshValueCollection("size_t", dmesh, dimension - 1)
-    with d.XDMFFile(f"{tmp_file_facet}.xdmf") as infile:
+    with d.XDMFFile(comm, str(tmp_file_facet)) as infile:
         infile.read(mvc_facet, "mf_data")
     mf_facet = d.cpp.mesh.MeshFunctionSizet(dmesh, mvc_facet)
     # set unassigned faces to tag=0
     mf_facet.array()[np.where(mf_facet.array() > 1e9)[0]] = 0
 
-    # use os to remove temp meshes
-    os.remove(f"{tmp_file_cell}.xdmf")
-    os.remove(f"{tmp_file_cell}.h5")
-    os.remove(f"{tmp_file_facet}.xdmf")
-    os.remove(f"{tmp_file_facet}.h5")
+    # remove temp meshes
+    tmp_file_cell.unlink(missing_ok=False)
+    tmp_file_cell.with_suffix(".h5").unlink(missing_ok=False)
+    tmp_file_facet.unlink(missing_ok=False)
+    tmp_file_facet.with_suffix(".h5").unlink(missing_ok=False)
     # return dolfin mesh and mfs (marker functions)
     return (dmesh, mf_facet, mf_cell)
 
