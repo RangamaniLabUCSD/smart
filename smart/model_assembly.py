@@ -452,6 +452,55 @@ class Parameter(ObjectInstance):
         return parameter
 
     @classmethod
+    def from_file(cls, name, sampling_file, unit, group="", notes="", use_preintegration=False):
+        """ "
+        Load in a purely time-dependent scalar function from data
+        Data needs to be read in from a text file with two columns
+        where the first column is time (first entry must be 0.0)
+        and the second column is the parameter values.
+        Columns should be comma-separated.
+        """
+        # load in sampling data file
+        sampling_data = np.genfromtxt(sampling_file, dtype="float", delimiter=",")
+        logger.info(f"Loading in data for parameter {name}", extra=dict(format_type="log"))
+        if sampling_data[0, 0] != 0.0 or sampling_data.shape[1] != 2:
+            raise NotImplementedError
+        value = sampling_data[0, 1]  # initial value
+
+        parameter = cls(
+            name,
+            value,
+            unit,
+            group=group,
+            notes=notes,
+            use_preintegration=use_preintegration,
+        )
+
+        if use_preintegration:
+            # preintegrate sampling data using cumtrapz
+            from scipy.integrate import cumtrapz
+
+            int_data = cumtrapz(sampling_data[:, 1], x=sampling_data[:, 0], initial=0)
+            # concatenate time vector
+            preint_sampling_data = np.hstack(
+                sampling_data[:, 0].reshape(-1, 1), int_data.reshape(-1, 1)
+            )
+            parameter.preint_sampling_data = preint_sampling_data
+
+        # initialize instance
+        parameter.sampling_file = sampling_file
+        parameter.sampling_data = sampling_data
+        parameter.is_time_dependent = True
+        parameter.is_space_dependent = False  # not supported yet
+        parameter.type = "from_file"
+        parameter.__post_init__()
+        logger.info(
+            f"Time-dependent parameter {name} loaded from file.", extra=dict(format_type="log")
+        )
+
+        return parameter
+
+    @classmethod
     def from_expression(
         cls,
         name,
@@ -1280,6 +1329,8 @@ class Flux(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
+        # note - throws an error when it doesn't return a float
+        # (happens when it returns 0 from sign function, for instance)
         self._equation_quantity = self.equation_lambda(**self.equation_variables)
         if input_type == "quantity":
             return self._equation_quantity

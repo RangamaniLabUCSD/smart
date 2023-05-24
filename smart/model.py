@@ -1,6 +1,7 @@
 """
 Model class. Consists of parameters, species, etc. and is used for simulation
 """
+import pickle
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from decimal import Decimal
@@ -89,6 +90,18 @@ class Model:
         )
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
+    def to_pickle(self, filename):
+        "Save model information to file by pickling"
+        with open(filename, "wb") as f:
+            pickle.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_pickle(cls, filename):
+        "Read model information from file by unpickling"
+        with open(filename, "rb") as f:
+            input_dict = pickle.load(f)
+        return cls.from_dict(input_dict)
+
     def __post_init__(self):
         # # Check that solver_system is valid
 
@@ -134,8 +147,8 @@ class Model:
         # Functional forms
         self.forms = FormContainer()
 
-        # MPI
-        self.mpi_comm_world = d.MPI.comm_world
+        # MPI - define to be consistent with mesh
+        self.mpi_comm_world = self.parent_mesh.mpi_comm
         self.mpi_rank = self.mpi_comm_world.rank
         self.mpi_size = self.mpi_comm_world.size
         self.mpi_root = 0
@@ -671,9 +684,16 @@ class Model:
         # addressing https://github.com/justinlaughlin/smart/issues/36
         self._active_compartments = list(self.cc.Dict.values())
         self._all_compartments = list(self.cc.Dict.values())
+        it_idx = 0
+        rm_idx = np.array([])
         for compartment in self._active_compartments:
             if compartment.num_species < 1:
-                self._active_compartments.remove(compartment)
+                rm_idx = np.append(rm_idx, it_idx)
+            it_idx = it_idx + 1
+        for i in range(len(rm_idx)):
+            rm_cur = int(rm_idx[i])
+            del self._active_compartments[rm_cur]
+            rm_idx = rm_idx - 1  # adjust indices to compensate after deleting
         for idx, compartment in enumerate(self._active_compartments):
             compartment.dof_index = idx
 
@@ -1052,7 +1072,9 @@ class Model:
             if len(self.problem.global_sizes) == 1:
                 self._ubackend = u[0].vector().vec().copy()
             else:
-                self._ubackend = PETSc.Vec().createNest([usub.vector().vec().copy() for usub in u])
+                self._ubackend = PETSc.Vec().createNest(
+                    [usub.vector().vec().copy() for usub in u], comm=self.mpi_comm_world
+                )
 
             self.solver = PETSc.SNES().create(self.mpi_comm_world)
 
@@ -1071,35 +1093,39 @@ class Model:
             opts["snes_linesearch_type"] = "l2"
             self.solver.setFromOptions()
 
-            # These are some reasonable preconditioner/linear solver settings for block systems
-            # Krylov solver
-            # biconjugate gradient stabilized. in most cases probably the best option
-            self.solver.ksp.setType("bcgs")
-            self.solver.ksp.setTolerances(rtol=1e-5)
-            # Some other reasonable krylov solvers: (I don't think they work with block systems)
-            # bcgsl, ibcgs (improved stabilized bcgs)
-            # fbcgsr, fbcgs (flexible bcgs)
-
-            # Field split preconditioning
-            # Note from Emmet - can we solve this directly using LU? (suggestion from Marie)
-            # self.solver.ksp.pc.setType("lu")
-            self.solver.ksp.pc.setType("fieldsplit")
-            # Set the indices
-            nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
-            nest_indices_tuples = [(str(i), val) for i, val in enumerate(nest_indices)]
-            # self.solver.ksp.pc.setFieldSplitIS(("0", is_0), ("1", is_1))
-            self.solver.ksp.pc.setFieldSplitIS(*nest_indices_tuples)
-            # 0 == 'additive' [jacobi], 1 == gauss-seidel
-            self.solver.ksp.pc.setFieldSplitType(1)
-            subksps = self.solver.ksp.pc.getFieldSplitSubKSP()
-            for i, subksp in enumerate(subksps):
-                # subksp.setType('preonly')
-                # # If there is not diffusion then this is really just a distributed set of ODEs
-                # if not self._active_compartments[i].has_diffusive_forms:
-                #     subksp.pc.setType('none')
-                subksp.setType("preonly")
-                subksp.pc.setType("hypre")
-
+            # May look into using LU in all cases if possible (seems to converge very slowly)
+            if self.problem.is_single_domain:
+                # If only modeling species within a single domain
+                # (other domains may still contribute as BCs),
+                # then just use hypre (cannot use field split without multiple domains)
+                self.solver.ksp.setType("bcgs")
+                self.solver.ksp.setTolerances(rtol=1e-5)
+                self.solver.ksp.pc.setType("hypre")
+            else:  # Field split preconditioning:
+                # These are some reasonable preconditioner/linear solver settings for block systems
+                # Krylov solver
+                # biconjugate gradient stabilized. in most cases probably the best option
+                self.solver.ksp.setType("bcgs")
+                self.solver.ksp.setTolerances(rtol=1e-5)
+                # Some other reasonable krylov solvers: (don't think they work with block systems)
+                # bcgsl, ibcgs (improved stabilized bcgs)
+                # fbcgsr, fbcgs (flexible bcgs)
+                self.solver.ksp.pc.setType("fieldsplit")
+                # Set the indices
+                nest_indices = self.problem.Jpetsc_nest.getNestISs()[0]
+                nest_indices_tuples = [(str(i), val) for i, val in enumerate(nest_indices)]
+                # self.solver.ksp.pc.setFieldSplitIS(("0", is_0), ("1", is_1))
+                self.solver.ksp.pc.setFieldSplitIS(*nest_indices_tuples)
+                # 0 == 'additive' [jacobi], 1 == gauss-seidel
+                self.solver.ksp.pc.setFieldSplitType(1)
+                subksps = self.solver.ksp.pc.getFieldSplitSubKSP()
+                for i, subksp in enumerate(subksps):
+                    # subksp.setType('preonly')
+                    # # If there is not diffusion then this is really just a distributed set of ODEs
+                    # if not self._active_compartments[i].has_diffusive_forms:
+                    #     subksp.pc.setType('none')
+                    subksp.setType("preonly")
+                    subksp.pc.setType("hypre")
         else:
             logger.debug(
                 "Using dolfin MixedNonlinearVariationalSolver",
@@ -1328,6 +1354,11 @@ class Model:
                 Jlist.append(Js)
 
         return Jlist
+
+    def set_form_scaling(self, compartment_name, scaling=1.0, print_scaling=True):
+        for form in self.forms:
+            if form.compartment.name == compartment_name:
+                form.set_scaling(scaling, print_scaling)
 
     # ===============================================================================
     # Model - Solving
@@ -1603,7 +1634,8 @@ class Model:
                         self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
                     else:
                         self._ubackend = PETSc.Vec().createNest(
-                            [usub.vector().vec().copy() for usub in self.u["u"]._functions]
+                            [usub.vector().vec().copy() for usub in self.u["u"]._functions],
+                            comm=self.mpi_comm_world,
                         )
                     # need to re-link global function with species-specific functions
                     # after re-setting previous solution
