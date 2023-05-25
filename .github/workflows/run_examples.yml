@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [1, 2, 3, 4]
+        example: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-22.04
     # Runs against FEniCS main branch built the 16-01-2023
     container: ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
@@ -34,3 +34,6 @@ jobs:
           cd examples/example${{ matrix.example }}/
           jupytext example${{ matrix.example }}.ipynb --to py
           python3 example${{ matrix.example }}.py
+
+      - name: Run MPI example
+        run: mpirun -n 2 python3 examples/example3/example3_multimeshMPI.py

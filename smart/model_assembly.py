@@ -500,7 +500,7 @@ class Parameter(ObjectInstance):
     def from_file(cls, name, sampling_file, unit, group="", notes="", use_preintegration=False):
         """ "
         Load in a purely time-dependent scalar function from data
-        Data needs to be read in from a .txt file with two columns
+        Data needs to be read in from a text file with two columns
         where the first column is time (first entry must be 0.0)
         and the second column is the parameter values.
         Columns should be comma-separated.
@@ -1497,6 +1497,8 @@ class Flux(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
+        # note - throws an error when it doesn't return a float
+        # (happens when it returns 0 from sign function, for instance)
         self._equation_quantity = self.equation_lambda(**self.equation_variables)
         if input_type == "quantity":
             return self._equation_quantity

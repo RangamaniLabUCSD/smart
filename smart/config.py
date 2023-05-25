@@ -364,11 +364,18 @@ class FlagsConfig(BaseConfig):
     :param allow_unused_components: Allow parameters not defined in any reaction to be
         defined in any model.
     :param print_verbose_info: Print detailed information about a model
+    :param multi_mesh_MPI:
+
+        ..fixme ::
+
+            This parameter should be documented
+
     """
 
     store_solutions: bool = True
     allow_unused_components: bool = False
     print_verbose_info: bool = True
+    multi_mesh_MPI: bool = False
 
 
 @dataclass
@@ -378,8 +385,6 @@ class Config:
 
     :param solver: Options for the solvers
     :param flags: Various options
-    :param directory: Outputting options
-    :param loglevel: Logging options for FEniCS modules
     """
 
     solver: SolverConfig = field(default_factory=SolverConfig)
