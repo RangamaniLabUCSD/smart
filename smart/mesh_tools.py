@@ -1,3 +1,18 @@
+"""
+Functions to create meshes for demos.
+
+`DemoCuboidsMesh` defines a 'cube-in-a-cube' mesh using the
+built in dolfin.UnitCubeMesh(), with subdomains defined and
+marked by `facet_topology` and `cube_condition`
+
+`DemoSpheresMesh`, `DemoEllipsoidsMesh`, and `DemoEllipseMesh`
+define meshes using gmsh, which are then converted to
+dolfin meshes using `gmsh_to_dolfin`
+
+`write_mesh` writes 3d meshes with cell markers 'mf3' and
+facet markers 'mf2' to hdf5 and pvd files.
+"""
+
 from typing import Tuple
 import pathlib
 import numpy as np
@@ -11,13 +26,18 @@ __all__ = [
     "DemoSpheresMesh",
     "DemoEllipsoidsMesh",
     "DemoEllipseMesh",
+    "gmsh_to_dolfin",
     "write_mesh",
 ]
 
 
 def facet_topology(f: d.Facet, mf3: d.MeshFunction):
-    """Given a facet and cell mesh function,
-    return the topology of the face"""
+    """
+    Given a facet and cell mesh function,
+    return the topology of the face
+    as either 'boundary' (outer boundary),
+    'internal', or 'interface' (boundary of inner cube)
+    """
     # cells adjacent face
     localCells = [mf3.array()[c.index()] for c in d.cells(f)]
     if len(localCells) == 1:
@@ -32,6 +52,10 @@ def facet_topology(f: d.Facet, mf3: d.MeshFunction):
 
 
 def cube_condition(cell, xmin=0.3, xmax=0.7):
+    """
+    Returns true when inside an inner cube region defined as:
+    xmin <= x <= xmax, xmin <= y <= xmax, xmin <= z <= xmax
+    """
     return (
         (xmin - d.DOLFIN_EPS < cell.midpoint().x() < xmax + d.DOLFIN_EPS)
         and (xmin - d.DOLFIN_EPS < cell.midpoint().y() < xmax + d.DOLFIN_EPS)
@@ -44,13 +68,12 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
     Creates a mesh for use in examples that contains
     two distinct cuboid subvolumes with a shared interface surface.
     Cell markers:
-    1 - Default subvolume
+    1 - Default subvolume (volume outside the inner cube)
     2 - Subvolume specified by condition function
 
     Facet markers:
     12 - Interface between subvolumes
     10 - Boundary of subvolume 1
-    20 - Boundary of subvolume 2
     0  - Interior facets
     """
     # Create a mesh
@@ -89,6 +112,9 @@ def DemoSpheresMesh(
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Calls DemoEllipsoidsMesh() to make spherical mesh
+    * outerRad: radius of the outer sphere
+    * innerRad: radius of the inner sphere
+    All other arguments are the same as described for DemoEllipsoidsMesh()
     """
     dmesh, mf2, mf3 = DemoEllipsoidsMesh(
         (outerRad, outerRad, outerRad),
@@ -124,19 +150,19 @@ def DemoEllipsoidsMesh(
     single ellipsoid.
 
     Args:
-        outerRad: The radius of the outer ellipsoid
-        innerRad: The radius of the inner ellipsoid
-        hEdge: maximum mesh size at the outer edge
-        hInnerEdge: maximum mesh size at the edge
+    * outerRad: The radius of the outer ellipsoid
+    * innerRad: The radius of the inner ellipsoid
+    * hEdge: maximum mesh size at the outer edge
+    * hInnerEdge: maximum mesh size at the edge
         of the inner ellipsoid interface_marker: The
-        value to mark facets on the interface with
-        outer_marker: The value to mark facets on the outer ellipsoid with
-        inner_vol_tag: The value to mark the inner spherical volume with
-        outer_vol_tag: The value to mark the outer spherical volume with
-        comm: MPI communicator to create the mesh with
-        verbose: If true print gmsh output, else skip
+        value to mark facets on the interface
+    * outer_marker: The value to mark facets on the outer ellipsoid
+    * inner_vol_tag: The value to mark the inner spherical volume
+    * outer_vol_tag: The value to mark the outer spherical volume
+    * comm: MPI communicator to use when creating the mesh
+    * verbose: If true print gmsh output, else skip
     Returns:
-        A triplet (mesh, facet_marker, cell_marker)
+    * A triplet (mesh, facet_marker, cell_marker)
     """
     import gmsh
 
@@ -268,14 +294,14 @@ def DemoEllipseMesh(
     """
     Creates a mesh for an ellipse surface
     Args:
-        xrad: radius assoc with major axis
-        yrad: radius assoc with minor axis
-        h_ellipse: mesh resolution
-        inside_tag: mesh marker value for triangles in the ellipse
-        edge_tag: mesh marker value for edge 1D elements
-        comm: MPI communicator to create the mesh with
+    * xrad: radius assoc with x axis
+    * yrad: radius assoc with y axis
+    * h_ellipse: mesh resolution
+    * inside_tag: mesh marker value for triangles in the ellipse
+    * edge_tag: mesh marker value for edge 1D elements
+    * comm: MPI communicator to create the mesh with
     Returns:
-        A triplet (mesh, facet_marker (mf1), cell_marker(mf2))
+    * A triplet (mesh, facet_marker (mf1), cell_marker(mf2))
     """
     import gmsh
 
@@ -403,6 +429,10 @@ def write_mesh(
     mf3: d.MeshFunction,
     filename: pathlib.Path = pathlib.Path("DemoCuboidMesh.h5"),
 ):
+    """
+    Write 3D mesh, with cell markers (mf3)
+    and facet markers (mf2) to hdf5 file and pvd files.
+    """
     comm = mesh.mpi_comm()
     # Write mesh and meshfunctions to file
     hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")

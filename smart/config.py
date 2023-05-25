@@ -1,5 +1,5 @@
 """
-Configuration settings for simulation: plotting, reaction types, solution output, etc.
+Configuration settings for simulation: logger formatting, solver configuration, other flags
 """
 import logging
 from logging import config as logging_config
@@ -216,6 +216,8 @@ def format_message(title_text: str, format_option: FormatOption) -> Tuple[str, s
 
 
 class FancyFormatter(logging.Formatter):
+    "Custom Formatter for logging"
+
     def format(self, record: logging.LogRecord) -> str:
         # Set the rank attribute with is a parameter in the `fancy_format``
         record.rank = f"CPU {rank}: " if size > 1 else ""
@@ -332,13 +334,12 @@ class SolverConfig(BaseConfig):
     :param final_t: End time of simulation
     :param use_snes: Use PETScSNES solver if true, else use DOLFINs NewtonSolver
     :param snes_preassemble_linear_system: If True separate linear components during assembly
+        (in development, untested)
     :param initial_dt: Initial time-stepping
     :param adjust_dt: A tuple (t, dt) of floats indicating when to next adjust the
         time-stepping and to what value
     :param dt: Number of digits for rounding `dt`
     :param print_assembly: Print information during assembly process
-    :param dt_decrease_factor:
-    :param dt_increase_factor:
     :param attempt_timestep_restart_on_divergence: Restart snes solver if it diverges
     """
 
@@ -349,9 +350,7 @@ class SolverConfig(BaseConfig):
     adjust_dt: Optional[Tuple[float, float]] = None
     time_precision: int = 6
     print_assembly: bool = True
-    dt_decrease_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    dt_increase_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    attempt_timestep_restart_on_divergence: bool = False  # testing in progress
+    attempt_timestep_restart_on_divergence: bool = False
     reset_timestep_for_negative_solution: bool = False
 
 
@@ -360,22 +359,14 @@ class FlagsConfig(BaseConfig):
     """
     Various flags
 
-    :param store_solutions: Store solutions to file.
     :param allow_unused_components: Allow parameters not defined in any reaction to be
         defined in any model.
     :param print_verbose_info: Print detailed information about a model
-    :param multi_mesh_MPI:
-
-        ..fixme ::
-
-            This parameter should be documented
 
     """
 
-    store_solutions: bool = True
     allow_unused_components: bool = False
     print_verbose_info: bool = True
-    multi_mesh_MPI: bool = False
 
 
 @dataclass
