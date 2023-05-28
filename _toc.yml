@@ -10,6 +10,9 @@ parts:
   - caption: Demo
     chapters:
     - file: examples/example1/example1
+    - file: examples/example2/example2
+    - file: examples/example3/example3
+    - file: examples/example4/example4
   - caption: API documentation
     chapters:
     - file: CONTRIBUTING
