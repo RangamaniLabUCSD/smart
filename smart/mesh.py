@@ -155,9 +155,17 @@ class ParentMesh(_Mesh):
     parent_mesh: "ParentMesh"
     use_partition: bool
 
-    def __init__(self, mesh_filename: str, mesh_filetype, name, use_partition=False):
+    def __init__(
+        self,
+        mesh_filename: str,
+        mesh_filetype,
+        name,
+        use_partition=False,
+        mpi_comm=d.MPI.comm_world,
+    ):
         super().__init__(name)
         self.use_partition = use_partition
+        self.mpi_comm = mpi_comm
         if mesh_filetype == "xml":
             self.load_mesh_from_xml(mesh_filename)
         elif mesh_filetype == "hdf5":
@@ -188,18 +196,19 @@ class ParentMesh(_Mesh):
 
         logger.info(f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
 
-    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False, comm=d.MPI.comm_world):
+    def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
+        comm = self.mpi_comm
         # mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh(comm)
         hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), mesh_filename, "r")
         hdf5.read(self.dolfin_mesh, "/mesh", use_partition)
 
-        d.MPI.comm_world.Barrier()
+        if comm.size > 1:
+            d.MPI.comm_world.Barrier()
         hdf5.close()
 
         self.dimensionality = self.dolfin_mesh.topology().dim()
         self.dolfin_mesh.init(self.dimensionality - 1)
-        self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
         logger.info(f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
@@ -213,7 +222,8 @@ class ParentMesh(_Mesh):
             # hdf5.read(mf, f'/mesh/{dim}')
             hdf5 = d.HDF5File(self.dolfin_mesh.mpi_comm(), self.mesh_filename, "r")
             hdf5.read(mf, f"/mf{dim}")
-            d.MPI.comm_world.Barrier()
+            if self.dolfin_mesh.mpi_comm().size > 1:
+                d.MPI.comm_world.Barrier()
             hdf5.close()
         return mf
 

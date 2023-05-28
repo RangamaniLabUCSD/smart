@@ -33,6 +33,7 @@ sphinx:
   config:
     html_last_updated_fmt: "%b %d, %Y"
     autoapi_dirs: ['smart']
+    bibtex_bibfiles: ["docs/refs.bib"]
     # Ref: https://github.com/executablebooks/sphinx-external-toc/issues/36
     suppress_warnings: ["etoc.toctree"]
 
@@ -42,3 +43,4 @@ sphinx:
   - 'sphinx.ext.viewcode'
   - 'sphinx.ext.autosummary'
   - 'autoapi.extension'
+  - 'sphinxcontrib.bibtex'

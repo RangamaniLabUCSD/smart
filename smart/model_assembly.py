@@ -535,6 +535,7 @@ class Parameter(ObjectInstance):
             parameter.preint_sampling_data = preint_sampling_data
 
         # initialize instance
+        parameter.sampling_file = sampling_file
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
         parameter.is_space_dependent = False  # not supported yet
@@ -1516,6 +1517,8 @@ class Flux(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
+        # note - throws an error when it doesn't return a float
+        # (happens when it returns 0 from sign function, for instance)
         self._equation_quantity = self.equation_lambda(**self.equation_variables)
         if input_type == "quantity":
             return self._equation_quantity
