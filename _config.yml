@@ -3,7 +3,7 @@
 
 title: fenics-smart
 author: Justin Laughlin
-copyright: "2022"
+copyright: "2023"
 only_build_toc_files: true
 
 # Force re-execution of notebooks on each build.
@@ -29,7 +29,6 @@ parse:
     - linkify
 
 sphinx:
-
   config:
     html_last_updated_fmt: "%b %d, %Y"
     autoapi_dirs: ['smart']

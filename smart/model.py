@@ -1213,10 +1213,9 @@ class Model:
         but first modifies F and defines J into a specific
         structure that is required for  :code:`dolfin.assemble_mixed()`
 
-        ====================================================
         Comments on :code:`d.extract_blocks(F)` (which is just a wrapper
         around ufl.algorithms.formsplitter)
-        ====================================================
+
         There is some indexing going on behind the scenes, so just
         manually summing what we know to be the
         components of Fblock[0] will not be the same as extract_blocks(F)[0].
@@ -1928,8 +1927,8 @@ class Model:
         """Set values for dolfin function (usually for initial condition)
         Input unew should either be an expression giving the spatial dependence
         of u, a constant (float), or a vector of values.
-        d.assign(uold, unew) works when uold is a subfunction
-        uold.assign(unew) does not (it will replace the entire function)
+        :code:`d.assign(uold, unew)` works when uold is a subfunction
+        :code:`uold.assign(unew)` does not (it will replace the entire function)
         """
         if isinstance(unew, d.Expression):
             uinterp = d.interpolate(unew, sp.V)

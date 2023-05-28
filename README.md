@@ -92,5 +92,5 @@ LGPL-3.0
 * [Henrik Finsberg](https://github.com/finsberg)
 
 Previous contributors:
-* [Yuan Gao] (https://github.com/Rabona17)
-* [William Xu] (https://github.com/willxu1234)
+* [Yuan Gao](https://github.com/Rabona17)
+* [William Xu](https://github.com/willxu1234)
