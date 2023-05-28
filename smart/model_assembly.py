@@ -891,10 +891,10 @@ class Compartment(ObjectInstance):
     The object is initialized by calling:
     compartment_var = Compartment(name, dimensionality, compartment_units, cell_marker)
     where
-    * name = string naming the compartment
-    * dimensionality = topological dimensionality (e.g. 3 for volume, 2 for surface)
-    * compartment_units = length units for the compartment
-    * cell_marker = marker value identifying the compartment in the parent mesh
+    * name: string naming the compartment
+    * dimensionality: topological dimensionality (e.g. 3 for volume, 2 for surface)
+    * compartment_units: length units for the compartment
+    * cell_marker: marker value identifying the compartment in the parent mesh
     """
 
     name: str
