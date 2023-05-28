@@ -1,5 +1,5 @@
 format: jb-book
-root: docs/index
+root: README
 
 parts:
   - caption: Getting started

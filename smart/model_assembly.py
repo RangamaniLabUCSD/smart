@@ -539,7 +539,8 @@ class Parameter(ObjectInstance):
         parameter.type = "from_file"
         parameter.__post_init__()
         logger.info(
-            f"Time-dependent parameter {name} loaded from file.", extra=dict(format_type="log")
+            f"Time-dependent parameter {name} loaded from file.",
+            extra=dict(format_type="log"),
         )
 
         return parameter
@@ -886,15 +887,21 @@ class CompartmentContainer(ObjectContainer):
 @dataclass
 class Compartment(ObjectInstance):
     """
-    Each Compartment object contains information describing a surface, volume, or edge
-    within the geometry of interest.
-    The object is initialized by calling:
-    compartment_var = Compartment(name, dimensionality, compartment_units, cell_marker)
-    where
-    * name = string naming the compartment
-    * dimensionality = topological dimensionality (e.g. 3 for volume, 2 for surface)
-    * compartment_units = length units for the compartment
-    * cell_marker = marker value identifying the compartment in the parent mesh
+    Args:
+        name = string naming the compartment
+        dimensionality = topological dimensionality (e.g. 3 for volume, 2 for surface)
+        compartment_units = length units for the compartment
+        cell_marker = marker value identifying the compartment in the parent mesh
+
+    .. note::
+        Each Compartment object contains information describing a surface, volume, or edge
+        within the geometry of interest.
+        The object is initialized by calling:
+
+        .. code:: python
+
+            compartment_var = Compartment(name, dimensionality, compartment_units, cell_marker)
+
     """
 
     name: str
