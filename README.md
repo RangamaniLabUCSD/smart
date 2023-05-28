@@ -85,11 +85,11 @@ Detailed contributing guidelines are given here.
 LGPL-3.0
 
 ## SMART development team
-* [Justin Laughlin] - original author of the repository
+* [Justin Laughlin](https://github.com/justinlaughlin) - original author of the repository
 * [Christopher Lee](https://github.com/ctlee)
-* [Emmet Francis]
-* [Jorgen Dokken]
-* [Henrik Finsberg]
+* [Emmet Francis](https://github.com/emmetfrancis)
+* [Jorgen Dokken](https://github.com/jorgensd)
+* [Henrik Finsberg](https://github.com/finsberg)
 
 Previous contributors:
 * [Yuan Gao] (https://github.com/Rabona17)
