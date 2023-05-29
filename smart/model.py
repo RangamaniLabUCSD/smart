@@ -1,5 +1,4 @@
-"""
-Model class. Consists of parameters, species, etc. and is used for simulation
+"""Functions associated with the SMART model class
 """
 import pickle
 from collections import OrderedDict as odict
@@ -46,9 +45,26 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Model:
-    """
-    Main smart class. Consists of parameters,
-    species, compartments, reactions, and can be simulated.
+    """SMART model class: consists of parameters,
+    species, compartments, reactions.
+
+    Args:
+        pc: Parameter container, initialized in model_assembly
+        sc: Species container, initialized in model_assembly
+        cc: Compartment container, initialized in model_assembly
+        rc: Reaction container, initialized in model_assembly
+        config: configuration object initialized in config.py
+        parent_mesh: ParentMesh object initialized in mesh.py
+        name (optional): string specifying a name for your model
+
+    .. note::
+        Given a parent mesh
+        and solver, the system can be solved for spatiotemporal dynamics.
+        Object is initialized by calling:
+
+        .. code:: python
+
+            model = model.Model(pc, sc, cc, rc, config, parent_mesh)
     """
 
     pc: ParameterContainer
@@ -61,6 +77,7 @@ class Model:
     name: str = ""
 
     def to_dict(self):
+        """Convert model information to Dict"""
         parameters = self.pc.to_dicts()
         species = self.sc.to_dicts()
         compartments = self.cc.to_dicts()
@@ -78,6 +95,7 @@ class Model:
 
     @classmethod
     def from_dict(cls, input_dict):
+        """Read model information from Dict"""
         pc, sc, cc, rc = empty_sbmodel()
         pc.add([Parameter.from_dict(parameter) for parameter in input_dict["parameters"]])
         sc.add([Species.from_dict(species) for species in input_dict["species"]])
@@ -91,18 +109,19 @@ class Model:
         return cls(pc, sc, cc, rc, config, parent_mesh, input_dict["name"])
 
     def to_pickle(self, filename):
-        "Save model information to file by pickling"
+        """Save model information to file by pickling"""
         with open(filename, "wb") as f:
             pickle.dump(self.to_dict(), f)
 
     @classmethod
     def from_pickle(cls, filename):
-        "Read model information from file by unpickling"
+        """Read model information from file by unpickling"""
         with open(filename, "rb") as f:
             input_dict = pickle.load(f)
         return cls.from_dict(input_dict)
 
     def __post_init__(self):
+        """Initialize solver-related parameters, timers, and MPI."""
         # # Check that solver_system is valid
 
         # FunctionSpaces, Functions, etc
@@ -162,34 +181,31 @@ class Model:
 
     @property
     def mpi_am_i_root(self):
+        """Returns True if current process is root"""
         return self.mpi_rank == self.mpi_root
 
     @property
     def child_meshes(self):
+        """Returns all child meshes in current parent mesh"""
         return self.parent_mesh.child_meshes
 
     @cached_property
     def min_dim(self):
+        """Returns minimum dimension in current model"""
         dim = min([comp.dimensionality for comp in self.cc])
         self.parent_mesh.min_dim = dim
         return dim
 
     @cached_property
     def max_dim(self):
+        """Returns maximum dimension in current model"""
         dim = max([comp.dimensionality for comp in self.cc])
         self.max_dim = dim
         self.parent_mesh.max_dim = dim
         return dim
 
-    # ===========================================
-    # Model - Initialization
-    # ===========================================
     def initialize(self, initialize_solver=True):
-        """
-        Notes:
-        * Now works with sub-volumes
-        * Removed scale_factor (too ambiguous)
-        """
+        """Main model initialization function, split into 5 subfunctions"""
 
         # Solver related parameters
         self._base_t = Decimal("0." + (self.config.solver["time_precision"] - 1) * "0" + "1")
@@ -218,7 +234,7 @@ class Model:
             self.rc.print()
 
     def _init_1(self):
-        "Checking validity of model"
+        """Checking validity of model"""
         logger.debug("Checking validity of model (step 1 of ZZ)", extra=dict(format_type="title"))
         self._init_1_1_check_mesh_dimensionality()
         self._init_1_2_check_namespace_conflicts()
@@ -250,7 +266,7 @@ class Model:
         )
 
     def _init_3(self):
-        "Mesh-related initializations"
+        """Mesh-related initializations"""
         logger.debug(
             "Mesh-related Initializations (step 3 of ZZ)",
             extra=dict(format_type="title"),
@@ -269,7 +285,7 @@ class Model:
         )
 
     def _init_4(self):
-        "Dolfin function initializations"
+        """Dolfin function initializations"""
         logger.debug("Dolfin Initializations (step 4 of ZZ)", extra=dict(format_type="title"))
         self._init_4_0_initialize_dolfin_parameters()
         self._init_4_1_get_active_compartments()
@@ -281,6 +297,9 @@ class Model:
         self._init_4_7_set_initial_conditions()
 
     def _init_5(self, initialize_solver):
+        """Convert reactions to fluxes and define variational form.
+        If initialize_solver is true, also initialize solver.
+        """
         logger.debug(
             "Dolfin fluxes, forms, and problems+solvers (step 5 of ZZ)",
             extra=dict(
@@ -295,6 +314,12 @@ class Model:
     # Step 1 - Checking model validity
 
     def _init_1_1_check_mesh_dimensionality(self):
+        """Dimensionality checks:
+
+        * Error if max_dim - min_dim is greater than 1
+        * Error if max_dim (from compartments) is greater than dimensionality of parent mesh
+        * Warning if max_dim is less than dimensionality of parent mesh
+        """
         logger.debug(
             "Check that mesh/compartment dimensionalities match",
             extra=dict(format_type="log"),
@@ -324,6 +349,13 @@ class Model:
             compartment.is_volume = compartment.dimensionality == self.max_dim
 
     def _init_1_2_check_namespace_conflicts(self):
+        """Namespace checks:
+
+        * no repeated names of parameters/species/compartments/reactions
+        * no use of x[0], x[1], x[2], t, or unit_scale_factor as names
+        * no two compartments share the same marker number
+        * no compartment has a marker value of 0
+        """
         logger.debug("Checking for namespace conflicts", extra=dict(format_type="log"))
         self._all_keys = set()
         containers = [self.pc, self.sc, self.cc, self.rc]
@@ -361,6 +393,7 @@ class Model:
                     self._all_markers.add(marker)
 
     def _init_1_3_check_parameter_dimensionality(self):
+        """Check no objects reference a higher spatial dimension than max_dim"""
         if "x[2]" in self._all_keys and self.max_dim < 3:
             raise ValueError(
                 "An object has the variable name 'x[2]' but there "
@@ -375,9 +408,7 @@ class Model:
     # Step 2 - Cross-container Dependent Initialization
 
     def _init_2_1_reactions_to_symbolic_strings(self):
-        """
-        Turn all reactions into unsigned symbolic flux strings
-        """
+        """Turn all reactions into unsigned symbolic flux strings"""
         logger.debug(
             "Turning reactions into unsigned symbolic flux strings",
             extra=dict(format_type="log"),
@@ -421,6 +452,7 @@ class Model:
                 )
 
     def _init_2_2_check_reaction_validity(self):
+        """Confirms that all reactions have parameters/species defined"""
         logger.debug(
             "Make sure all reactions have parameters/species defined",
             extra=dict(format_type="log"),
@@ -442,6 +474,7 @@ class Model:
                     )
 
     def _init_2_3_link_reaction_properties(self):
+        """Link parameters, species, and compartments to reactions"""
         logger.debug(
             "Linking parameters, species, and compartments to reactions",
             extra=dict(format_type="log"),
@@ -502,6 +535,10 @@ class Model:
                 raise ValueError("Number of compartments involved in a flux must be in [1,2,3]!")
 
     def _init_2_4_check_for_unused_parameters_species_compartments(self):
+        """
+        If :code:`self.config.flags["allow_unused_components"]` is true,
+        then unused objects are removed
+        """
         logger.debug(
             "Checking for unused parameters, species, or compartments",
             extra=dict(format_type="log"),
@@ -557,6 +594,7 @@ class Model:
                 raise ValueError(print_str)
 
     def _init_2_5_link_compartments_to_species(self):
+        """Linking compartments and compartment dimensionality to species"""
         logger.debug(
             "Linking compartments and compartment dimensionality to species",
             extra=dict(format_type="log"),
@@ -566,6 +604,9 @@ class Model:
             species.dimensionality = self.cc[species.compartment_name].dimensionality
 
     def _init_2_6_link_species_to_compartments(self):
+        """Links species to compartments - a species is considered to be
+        "in a compartment" if it is involved in a reaction there
+        """
         logger.debug("Linking species to compartments", extra=dict(format_type="log"))
         # An species is considered to be "in a compartment" if it is
         # involved in a reaction there
@@ -575,6 +616,7 @@ class Model:
             compartment.num_species = len(compartment.species)
 
     def _init_2_7_get_species_compartment_indices(self):
+        """Store dof indices for species for each compartment"""
         logger.debug(
             "Getting indices for species for each compartment",
             extra=dict(format_type="log"),
@@ -587,6 +629,7 @@ class Model:
 
     # Step 3 - Mesh Initializations
     def _init_3_1_define_child_meshes(self):
+        """Initialize all ChildMesh objects"""
         logger.debug("Defining child meshes", extra=dict(format_type="log"))
         # Check that there is a parent mesh loaded
         if not isinstance(self.parent_mesh, ParentMesh):
@@ -600,8 +643,7 @@ class Model:
         assert len(self.child_meshes) == self.cc.size
 
     def _init_3_2_read_parent_mesh_functions_from_file(self):
-        """
-        Reads mesh functions from an .xml or .hdf5 file.
+        """Reads mesh functions from an .xml or .hdf5 file.
         If told that a child mesh consists of a list of markers,
         creates a separate mesh function
         for the list and for the combined list (can be used for post-processing)
@@ -610,13 +652,14 @@ class Model:
         self.parent_mesh.read_parent_mesh_functions_from_file()
 
     def _init_3_3_extract_submeshes(self):
-        """Use dolfin.MeshView.create() to extract submeshes"""
+        """Use :code:`dolfin.MeshView.create()` to extract submeshes"""
         logger.debug("Extracting submeshes using MeshView", extra=dict(format_type="log"))
         # Loop through child meshes and extract submeshes
         for child_mesh in self.child_meshes.values():
             child_mesh.extract_submesh()
 
     def _init_3_4_build_submesh_mappings(self):
+        """Build MeshView mappings between all child mesh pairs"""
         logger.debug(
             "Building MeshView mappings between all child mesh pairs",
             extra=dict(format_type="log"),
@@ -646,6 +689,7 @@ class Model:
                 child_mesh.dolfin_mesh.build_mapping(sibling_volume_mesh.dolfin_mesh)
 
     def _init_3_7_get_integration_measures(self):
+        """Get integration measures for parent mesh and child meshes"""
         logger.debug(
             "Getting integration measures for parent mesh and child meshes",
             extra=dict(format_type="log"),
@@ -654,14 +698,13 @@ class Model:
             mesh.get_integration_measures()
 
     def _init_4_0_initialize_dolfin_parameters(self):
-        """
-        Create dolfin objects for each parameter
-        Because we don't want to re-create dolfin constants
-        each time (will cause fenics to recompile form)
-        we only define them once here. That means that once
-        the model is initialized, changing a parameter's
+        """Create dolfin objects for each parameter.
+        If we were to re-create dolfin constants
+        each time, FEniCS will recompile the form
+        so we only define them once here.
+        Therefore, once the model is initialized, changing a parameter's
         value does not change the underlying dolfin object.
-        Values must be assigned via paramter.dolfin_constant.assign()
+        Values must be assigned via :code:`parameter.dolfin_constant.assign()`
         """
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:
@@ -677,8 +720,7 @@ class Model:
                 parameter.dolfin_constant = d.Constant(parameter.value)
 
     def _init_4_1_get_active_compartments(self):
-        """
-        Arrange the compartments based on the number of degrees of freedom they have
+        """Arrange the compartments based on the number of degrees of freedom they have
         (We want to have the highest number of dofs first)
         """
         # addressing https://github.com/justinlaughlin/smart/issues/36
@@ -700,6 +742,13 @@ class Model:
     # Step 4 - Dolfin Functions
 
     def _init_4_2_define_dolfin_function_spaces(self):
+        """Define dolfin function spaces for compartments
+        For each compartment, a P1 (linear shape functions for a tri or tet element)
+        vector function space is used, with the vector dimensionality given
+        by the number of species in the compartment.
+        The mixed function space W is the product space of all vector function
+        spaces of individual compartments
+        """
         logger.debug(
             "Defining dolfin function spaces for compartments",
             extra=dict(format_type="log"),
@@ -735,46 +784,35 @@ class Model:
         self.W = d.MixedFunctionSpace(*self.V)
 
     def _init_4_3_define_dolfin_functions(self):
-        """
-        Some notes on functions in VectorFunctionSpaces:
-        u.sub(idx) gives us a shallow copy to the idx sub-function of u.
-        This is useful when we want to look at function values
+        """Define test functions and trial functions in the mixed function space
 
-        u.split()[idx] is equivalent to u.sub(idx)
+        .. note::
+            Some notes on functions in VectorFunctionSpaces:
+            :code:`u.sub(idx)` gives us a shallow copy to the idx sub-function of
+            :code:`u`.
+            This is useful when we want to look at function values
+            :code:`u.split()[idx]` is equivalent to :code:`u.sub(idx)`
 
-        d.split(u)[idx] (same thing as ufl.split(u)) gives us
-        ufl objects (ufl.indexed.Indexed)
-        that can be used in variational formulations.
+            :code:`d.split(u)[idx]` (same thing as ufl.split(u)) gives us
+            ufl objects (:code:`ufl.indexed.Indexed`)
+            that can be used in variational formulations.
 
-        u.sub(idx) can be used in a variational formulation but
-        it won't behave properly.
-        E.g. consider u as a 2d function
-        V  = d.VectorFunctionSpace(mesh, "P", 1, dim=2)
-        u  = d.Function(V)
-        u0 = u.sub(0); u1 = u.sub(1)
-        v  = d.TestFunction(V)
-        v0 = v[0]; v1 = v[1]
-        F  = u0*v0*dx + u1*v1*dx
-        G  = d.inner(u,v)*dx
-        get_F    = lambda F: d.assemble(F).get_local()
-        get_dFdu = lambda F,u: d.assemble(d.derivative(F,u)).array()
-        (get_F(F) == get_F(G)).all() # True
-        (get_dFdu(F,u) == get_dFdu(G,u)).all() # False
+            :code:`u.sub(idx)` can be used in a variational formulation but
+            it won't behave properly.
 
-        Using u0,u1 = d.split(u) will give the right results
+            For TestFunctions/TrialFunctions, we will always get a
+            :code:`ufl.indexed.Indexed` object
 
-        For TestFunctions/TrialFunctions, we will always get a
-        ufl.indexed.Indexed object
-        # type(v) == d.function.argument.Argument
-        v = d.TestFunction(V)
-        v[0] == d.split(v)[0]
-        # type(v_) == tuple(ufl.indexed.Indexed, ufl.indexed.Indexed)
-        v_ = d.TestFunctions(V)
-        v_[0] == v[0] == d.split(v)[0]
+            .. code python
+                # type(v) == d.function.argument.Argument
+                v = d.TestFunction(V)
+                v[0] == d.split(v)[0]
+                # type(v_) == tuple(ufl.indexed.Indexed, ufl.indexed.Indexed)
+                v_ = d.TestFunctions(V)
+                v_[0] == v[0] == d.split(v)[0]
 
-        For a MixedFunctionSpace e.g. W=d.MixedFunctionSpace(*[V1,V2])
-        we can use sub() to get the subfunctions
-
+            For a MixedFunctionSpace e.g. :code:`W=d.MixedFunctionSpace(*[V1,V2])`
+            we can use :code:`sub()` to get the subfunctions
         """
         logger.debug("Defining dolfin functions", extra=dict(format_type="log"))
         # dolfin functions created from MixedFunctionSpace
@@ -814,6 +852,7 @@ class Model:
         self._usplit = [c._usplit["u"] for c in self._active_compartments]
 
     def _init_4_4_get_species_u_v_V_dofmaps(self):
+        """Extract subfunctions, function spaces, dofmap for each species"""
         logger.debug(
             "Extracting subfunctions/function spaces/dofmap for each species",
             extra=dict(format_type="log"),
@@ -833,6 +872,7 @@ class Model:
                 species.ut = sub(compartment.ut, species.dof_index)
 
     def _init_4_5_name_functions(self):
+        """Assign function names based on compartment name, species index, and species name"""
         logger.debug("Naming functions and subfunctions", extra=dict(format_type="log"))
         for compartment in self._active_compartments:
             # name of the compartment function
@@ -845,7 +885,13 @@ class Model:
                         species.u[key].rename(f"{compartment.name}_{sidx}_{species.name}_{key}", "")
 
     def _init_4_6_check_dolfin_function_validity(self):
-        "Sanity check... If an error occurs here it is likely an internal bug..."
+        """
+        Checks to confirm that dolfin functions were created correctly:
+
+        * function size in compartment == dof in that compartment
+        * number of sub-spaces in compartment == number of species in compartment
+        * function space of compartment matches sub-space of W
+        """
         logger.debug(
             "Checking that dolfin functions were created correctly",
             extra=dict(format_type="log"),
@@ -874,7 +920,12 @@ class Model:
                 assert func.function_space().id() == self.W.sub_space(idx).id()
 
     def _init_4_7_set_initial_conditions(self):
-        "Sets the function values to initial conditions"
+        """
+        Sets the function values to initial conditions,
+        either based on an expression given by a string
+        or a numerical value (float)
+        (see model.dolfin_set_function_values for further details)
+        """
         logger.debug("Set function values to initial conditions", extra=dict(format_type="log"))
         for species in self.sc:
             for ukey in species.u.keys():
@@ -888,6 +939,7 @@ class Model:
                     )
 
     def _init_5_1_reactions_to_fluxes(self):
+        """Convert reactions to flux objects"""
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
         for reaction in self.rc:
             reaction.reaction_to_fluxes()
@@ -897,8 +949,11 @@ class Model:
         """
         Setup the variational forms in dolfin
         Forms:
-        F(u;v) =    Muform      +   Munform   +       Dform         +         Rform           = 0
-                 linear wrt u         (v)         linear wrt u       possibly nonlinear wrt u
+
+        .. code:: python
+
+            F(u;v) =    Muform    + Munform   +    Dform     +     Rform              = 0
+                    linear wrt u      (v)      linear wrt u  possibly nonlinear wrt u
         """
         logger.debug("Creating functional forms", extra=dict(format_type="log"))
 
@@ -994,7 +1049,7 @@ class Model:
                     linear_wrt_comp,
                 )
             )
-        # FIXME: `has_diffusive_forms` is only in commeted out code of
+        # FIXME: `has_diffusive_forms` is only in commented out code of
         # `initialize_discrete_variational_problem_and_solver`
         for compartment in self.cc:
             diffusive_forms = [
@@ -1012,6 +1067,12 @@ class Model:
                 compartment.has_diffusive_forms = True
 
     def initialize_discrete_variational_problem_and_solver(self):
+        """
+        Formulate problem for Newton iterations
+        and configure solver - currently, only using SNES in PETSc
+        is supported, the dolfin MixedNonlinearVariationalSolver
+        is not tested in this context
+        """
         logger.debug(
             "Formulating problem as F(u;v) == 0 for newton iterations",
             extra=dict(format_type="log"),
@@ -1142,49 +1203,42 @@ class Model:
 
     def get_block_system(self, Fsum, u):
         """
-        The high level dolfin.solve(F==0, u) eventually
+        Modify F and define J in specific structure required
+        for  :code:`dolfin.assemble_mixed()` - use to preassemble linear system
+        for the dolfin MixedNonlinearVariationalSolver (untested)
+
+
+        The high level  :code:`dolfin.solve(F==0, u)` eventually
         calls cpp.fem.MixedNonlinearVariationalSolver,
         but first modifies F and defines J into a specific
-        structure that is required for d.assemble_mixed()
+        structure that is required for  :code:`dolfin.assemble_mixed()`
 
-        ====================================================
-        Comments on d.extract_blocks(F) (which is just a wrapper
+        Comments on :code:`d.extract_blocks(F)` (which is just a wrapper
         around ufl.algorithms.formsplitter)
-        ====================================================
+
         There is some indexing going on behind the scenes, so just
         manually summing what we know to be the
         components of Fblock[0] will not be the same as extract_blocks(F)[0].
         Here is an example:
 
-        F  = sum([f.lhs for f in model.forms]) # single form
-        # first compartment
-        F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
-        Fb0 = extract_blocks(F)[0] # tuple of forms
+        .. code:: python
 
-        F0.equals(Fb0) -> False
-        I0 = F0.integrals()[0].integrand()
-        Ib0 = Fb0.integrals()[0].integrand()
-        # (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
-        I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False
-        I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
-        I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
+            F  = sum([f.lhs for f in model.forms]) # single form
+            # first compartment
+            F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
+            Fb0 = extract_blocks(F)[0] # tuple of forms
+
+            F0.equals(Fb0) -> False
+            I0 = F0.integrals()[0].integrand()
+            Ib0 = Fb0.integrals()[0].integrand()
+            # (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
+            I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False
+            I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
+            I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
 
-        # Fblocks = self.get_block_F(Fsum, u)
-        # Jblocks = self.get_block_J(Fsum, u)
-        # block_sizes = self.get_block_sizes(u)
-        # return Fblocks, Jblocks, block_sizes
-
-        # =====================================================================
-        # doflin.fem.solving._solve_varproblem()
-        # =====================================================================
         # blocks/partitions are by compartment, not species
         Fblock = d.extract_blocks(Fsum)
-        # J = []
-        # for Fi in Fblock:
-        #     for uj in u:
-        #         dFdu = expand_derivatives(d.derivative(Fi, uj))
-        #         J.append(dFdu)
 
         # =====================================================================
         # doflin.fem.problem.MixedNonlinearVariationalProblem()
@@ -1273,9 +1327,13 @@ class Model:
         return Flist, Jlist, global_sizes
 
     def get_global_sizes(self, u):
+        """Return total number of dof for current model"""
         return [uj.function_space().dim() for uj in u]
 
     def get_block_F(self, Fsum, u):
+        """Assemble block F-vector by compartment
+        (F is the residual)
+        """
         # blocks/partitions are by compartment, not species
         Fblock = d.extract_blocks(Fsum)
 
@@ -1317,6 +1375,9 @@ class Model:
         return Flist
 
     def get_block_J(self, Fsum, u):
+        """Assemble block J by compartment
+        (J is the Jacobian)
+        """
         # blocks/partitions are by compartment, not species
         Fblock = d.extract_blocks(Fsum)
         J = []
@@ -1361,63 +1422,17 @@ class Model:
                 form.set_scaling(scaling, print_scaling)
 
     # ===============================================================================
-    # Model - Solving
-    # Hierarchy:
-    #
-    # solve():
-    #   - highest level solve. solves over all timesteps
-    # solve_single_timestep()
-    #   - recommended level to solve at. time-loop must be in driver script but
-    #     this allows explicit pre/post processing
-    #     monolithic_solve(), iterative_mpsolve()
-    #   - multiphysics level (for now, we are only considering monolithic formulation)
-    #     newton_solve(), picard_solve()
-    #   - nonlinear level. Only relevant for iterative_mpsolve().
-    #     linear solve
-    #   - For any kind of non-linear problem these should simply be parameters passed
-    #     to the non-linear solver
-    #     (we don't want nonlinear solve implemented at the python level)
-    # ===============================================================================
-    def solve(self, plot_period=1):
-        # Initialize
-        # self.init_solutions_and_plots()
-        # Time loop
-        while True:
-            end_simulation = self.solve_single_timestep(plot_period)
-            if end_simulation:
-                break
-
-    # def solve_single_timestep(self, plot_period=1):
-    #     if self.idx == 0:
-    #         self.stopwatch("Total simulation")
-    #     # Solve using specified multiphysics scheme (just monolithic for now)
-    #     self.monolithic_solve()
-
-    #     # # post processing
-    #     # self.post_process()
-    #     # if (self.idx % plot_period == 0 or self.t >= self.final_t) and plot_period!=0:
-    #     #     self.plot_solution()
-
-    #     # if we've reached final time
-    #     end_simulation = self.t >= self.final_t
-    #     if end_simulation:
-    #         self.stopwatch("Total simulation", stop=True)
-    #         fancy_print(f"Model \'{self.name}\' finished simulating
-    #         (final time = {self.final_t}, {self.idx} time-steps)", format_type='title')
-
-    #     return end_simulation
-    # ===============================================================================
     # Model - Solving (time related functions)
     # ===============================================================================
     def set_time(self, t):
-        "Explicitly change time"
+        """Explicitly change time"""
         if t != self.t:
             logger.debug(f"Time changed from {self.t} to {t}", extra=dict(format_type="log"))
             self.t = t
             self.T.assign(t)
 
     def set_dt(self, dt):
-        "Explicitly change time-step"
+        """Explicitly change time-step"""
         dt = self.rounded_decimal(dt)
         if self.config.solver["time_precision"] is not None:
             dt = round(dt, self.config.solver["time_precision"])
@@ -1428,8 +1443,7 @@ class Model:
             self.dT.assign(dt)
 
     def adjust_dt_if_prescribed(self):
-        """
-        Checks to see if the size of a full-time step would pass a "reset dt"
+        """Checks to see if the size of a full-time step would pass a "reset dt"
         checkpoint. At these checkpoints dt is reset to some value
         (e.g. to force smaller sampling during fast events)
         """
@@ -1499,9 +1513,7 @@ class Model:
                 self.reset_dt = True
 
     def adjust_dt_if_pass_tfinal(self):
-        """
-        Check if current value of t and dt would cause t+dt > t_final
-        """
+        """Check if current value of t and dt would cause t+dt > t_final"""
         tnext = self.t + self.dt
         if tnext > self.final_t:
             new_dt = self.final_t - self.t
@@ -1515,7 +1527,7 @@ class Model:
             self.set_dt(new_dt)
 
     def forward_time_step(self):
-        "Take a step forward in time"
+        """Take a step forward in time"""
         self.dt = self.rounded_decimal(self.dt)
         if self.config.solver["time_precision"] is not None:
             self.dt = round(self.dt, self.config.solver["time_precision"])
@@ -1530,6 +1542,25 @@ class Model:
         # self.update_time_dependent_parameters()
 
     def monolithic_solve(self):
+        """Solve entire monolithic system using Newton iterations,
+        with the specified PETSc SNES solver
+        (or using the dolfin MixedNonlinearVariationalSolver, untested).
+        If the solver diverges or the solution is negative,
+        this function may call itself to solve the system with
+        a smaller time step if
+
+        .. code:: python
+
+            self.config.solver["attempt_timestep_restart_on_divergence"]
+
+        and/or
+
+        .. code:: python
+
+            self.config.solver["reset_timestep_for_negative_solution"]
+
+        are true.
+        """
         self.idx += 1
         # start a timer for the total time step
         self.stopwatches["Total time step"].start()
@@ -1725,9 +1756,7 @@ class Model:
         self.stopwatches["Total time step"].stop()
 
     def reset_timestep(self, dt_scale=0.20):
-        """
-        t failed. Revert t->tn. Revert solution
-        """
+        """t failed. Revert t->tn and revert solution"""
         logger.debug(f"Resetting time-step: {self.idx}", extra=dict(format_type="log"))
         # Change t and decrease dt
         self.set_time(self.tvec[-2])  # t=tn
@@ -1758,23 +1787,35 @@ class Model:
         self.update_solution(ukeys=["u"], unew="n")
 
     def update_time_dependent_parameters(self):
-        r"""Updates all time dependent parameters. Time-dependent parameters are
+        r"""
+        Updates all time dependent parameters. Time-dependent parameters are
         either defined either symbolically or through a data file, and each of
-        these can either be defined as a direct function of t, p(t), or a
-        "pre-integrated expression", \int_{t_n}^{t_{n+1}} P(tau) dtau, which allows for
+        these can either be defined as a direct function of :math:`t, p(t)`, or a
+        "pre-integrated expression", :math:`\int_{t_n}^{t_{n+1}} P(\tau) d\tau`, which allows for
         exact integration when the expression the parameter appears in doesn't rely
         on any other time-dependet variables. This may be useful for guaranteeing
         a certain amount of flux independent of time-stepping.
 
         Backward Euler is essentially making the approximation:
-        du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \int_{t_n}^{t_{n+1}}
-        f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
-        If some portion of f is only dependent on t, e.g. f=f_1+f_2+...+f_n, f_i=f_i(t),
-        we can use the exact expression where F_i(t) is the anti-derivative of f_i(t).
-        \int_{t_n}^{t_{n+1}} f_i(t_{n+1}) -> (F_i(t_{n+1}) - F_i(t_n))
+
+        .. math::
+
+            du/dt = f(u,t)  ->  (u(t_{n+1}) - u(t_n)) = \int_{t_n}^{t_{n+1}}
+            f(u(t_{n+1}),t_{n+1}) dt \approx dt*f(u(t_{n+1}),t_{n+1})
+
+        If some portion of f is only dependent on t, e.g. :math:`f=f_1+f_2+...+f_n, f_i=f_i(t)`,
+        we can use the exact expression where :math:`F_i(t)` is
+        the anti-derivative of :math:`f_i(t)`.
+
+        .. math::
+
+            \int_{t_n}^{t_{n+1}} f_i(t_{n+1}) -> (F_i(t_{n+1}) - F_i(t_n))
 
         Therefore,
-        f(t_{n+1}) = (F_i(t_{n+1}) - F_i(t_n))/dt
+
+        .. math::
+
+            f(t_{n+1}) = (F_i(t_{n+1}) - F_i(t_n))/dt
         """
         # Aliases
         t = float(self.t)
@@ -1841,8 +1882,7 @@ class Model:
                 raise AssertionError()
 
     def update_solution(self, ukeys=["n"], unew="u"):
-        """
-        After finishing a time step, assign all the most recently computed solutions as
+        """After finishing a time step, assign all the most recently computed solutions as
         the solutions for the previous time step.
         """
         if ukeys is None:
@@ -1855,18 +1895,6 @@ class Model:
             for idx in range(self.num_active_compartments):
                 self.u[ukey].sub(idx).assign(self.u[unew].sub(idx))
 
-    # ===============================================================================
-    # Model - Post-processing
-    # ===============================================================================
-
-    def post_process(self):
-        self.data.compute_statistics(
-            self.u, self.t, self.dt, self.sc, self.pc, self.cc, self.fc, self.nl_idx
-        )
-        self.data.compute_probe_values(self.u, self.sc)
-        self.data.output_pickle()
-        self.data.output_csv()
-
     # =========================================================
     # Model - Data manipulation
     # =========================================================
@@ -1875,10 +1903,13 @@ class Model:
     @staticmethod
     def dolfin_get_dof_indices(species):  # V, species_idx):
         """
-        Returned indices are *local* to the CPU (not global)
-        function values can be returned e.g.
-        indices = dolfin_get_dof_indices(V,species_idx)
-        u.vector().get_local()[indices]
+        Returns indices *local* to the CPU (not global).
+        Function values can then be returned e.g.
+
+        .. code:: python
+
+            indices = dolfin_get_dof_indices(V,species_idx)
+            u.vector().get_local()[indices]
         """
         if species.dof_map is not None:
             return species.dof_map
@@ -1893,9 +1924,11 @@ class Model:
         return indices - first_idx  # subtract index offset to go from global -> local indices
 
     def dolfin_set_function_values(self, sp, ukey, unew):
-        """
-        d.assign(uold, unew) works when uold is a subfunction
-        uold.assign(unew) does not (it will replace the entire function)
+        """Set values for dolfin function (usually for initial condition)
+        Input unew should either be an expression giving the spatial dependence
+        of u, a constant (float), or a vector of values.
+        :code:`d.assign(uold, unew)` works when uold is a subfunction
+        :code:`uold.assign(unew)` does not (it will replace the entire function)
         """
         if isinstance(unew, d.Expression):
             uinterp = d.interpolate(unew, sp.V)
@@ -1903,28 +1936,27 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
-        elif len(unew) > 1:
-            if len(sp.dof_map) == len(unew):
-                # unew is an N x 4 array: [X, Y, Z, function_values]
-                u = self.cc[sp.compartment_name].u[ukey]
-                dof_coord = sp.V.tabulate_dof_coordinates()  # coordinates for the current dof
-                mesh_coord = unew[:, 0:3]  # x,y,z coordinates for initial condition
-                function_values = unew[:, 3]
-                # nearest neighbor interpolation
-                # (in this case, matching up exactly with mesh points)
-                dof_vals_cur = np.zeros((len(mesh_coord),))
-                for i in range(len(dof_coord)):
-                    dist_vec = np.sum((dof_coord[i, :] - mesh_coord) ** 2, axis=1)
-                    dof_vals_cur[i] = function_values[np.argmin(dist_vec)]
-                    if i % 1000 == 0:
-                        logger.debug(f"Set {i} of {len(dof_coord)} function values for {sp.name}")
-                # indices = self.dolfin_get_dof_indices(sp)
-                indices = sp.dof_map
-                uvec = u.vector()
-                values = uvec.get_local()
-                values[indices] = dof_vals_cur
-                uvec.set_local(values)
-                uvec.apply("insert")
+        elif len(sp.dof_map) == len(unew):
+            # unew must be an N x 4 array: [X, Y, Z, function_values]
+            u = self.cc[sp.compartment_name].u[ukey]
+            dof_coord = sp.V.tabulate_dof_coordinates()  # coordinates for the current dof
+            mesh_coord = unew[:, 0:3]  # x,y,z coordinates for initial condition
+            function_values = unew[:, 3]
+            # nearest neighbor interpolation
+            # (in this case, matching up exactly with mesh points)
+            dof_vals_cur = np.zeros((len(mesh_coord),))
+            for i in range(len(dof_coord)):
+                dist_vec = np.sum((dof_coord[i, :] - mesh_coord) ** 2, axis=1)
+                dof_vals_cur[i] = function_values[np.argmin(dist_vec)]
+                if i % 1000 == 0:
+                    logger.debug(f"Set {i} of {len(dof_coord)} function values for {sp.name}")
+            # indices = self.dolfin_get_dof_indices(sp)
+            indices = sp.dof_map
+            uvec = u.vector()
+            values = uvec.get_local()
+            values[indices] = dof_vals_cur
+            uvec.set_local(values)
+            uvec.apply("insert")
         elif isinstance(unew, d.Function):
             logger.debug(f"Function already set for {sp.name}")
         else:
@@ -1932,9 +1964,11 @@ class Model:
 
     @property
     def num_active_compartments(self):
+        """number of compartments with dofs"""
         return len(self._active_compartments)
 
     def get_compartment_residual(self, compartment, norm=None):
+        """returns compartment residual as given norm"""
         res_vec = sum(
             [d.assemble_mixed(form).get_local() for form in self.Fblocks_all[compartment.dof_index]]
         )
@@ -1944,6 +1978,7 @@ class Model:
             return np.linalg.norm(res_vec, norm)
 
     def get_total_residual(self, norm=None):
+        """returns total residual for all active compartment as given norm"""
         res_vec = np.hstack(
             [d.assemble_mixed(form).get_local() for form in chain.from_iterable(self.Fblocks_all)]
         )
@@ -1960,6 +1995,7 @@ class Model:
             return np.linalg.norm(res_vec, norm)
 
     def get_mesh_by_id(self, mesh_id):
+        """returns mesh with id, mesh_id"""
         for mesh in self.parent_mesh.all_meshes.values():
             if mesh.id == mesh_id:
                 return mesh
@@ -1970,6 +2006,10 @@ class Model:
     # Model - Printing
     # ============================================================
     def print_meshes(self, tablefmt="fancy_grid"):
+        """Print information associated with child meshes:
+        name, id, dimensionality,
+        num_cells, num_facets, and num_vertices
+        """
         if self.mpi_am_i_root:
             properties_to_print = [
                 "name",
@@ -2027,4 +2067,5 @@ class Model:
             print(tabulate(df, headers="keys", tablefmt=tablefmt))
 
     def rounded_decimal(self, x):
+        """Round time value to specified decimal point"""
         return Decimal(x).quantize(self._base_t)
