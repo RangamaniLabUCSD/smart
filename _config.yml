@@ -43,3 +43,5 @@ sphinx:
   - 'sphinx.ext.autosummary'
   - 'autoapi.extension'
   - 'sphinxcontrib.bibtex'
+
+exclude_patterns: [".pytest_cache/*", ".github/*"]

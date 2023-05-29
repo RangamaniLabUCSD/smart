@@ -17,6 +17,8 @@ parts:
     - file: examples/example2/example2
     - file: examples/example3/example3
     - file: examples/example4/example4
+    - file: examples/example5/example5
+    - file: examples/example6/example6
   - caption: API documentation
     chapters:
     - file: CONTRIBUTING
