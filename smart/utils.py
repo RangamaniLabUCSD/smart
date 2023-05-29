@@ -23,7 +23,7 @@ def json_to_ObjectContainer(json_file: Union[Path, str], data_type: str):
         json_file: Path to json file
         data_type: Type of container, either parameter, species, compartment or reaction.
 
-    ..note:
+    .. note::
         Several abbreviations of the above are allowed, see source code for details
 
     """

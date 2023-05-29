@@ -1,12 +1,13 @@
-Spatial Modelling Algorithms for Reaction-Transport [systems|models|equations]
-==============================
-[//]: # (Badges)
+[![Test fenics_smart](https://github.com/RangamaniLabUCSD/smart/actions/workflows/test_fenics_smart.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/test_fenics_smart.yml)
 [![PyPI](https://img.shields.io/pypi/v/fenics-smart)](https://pypi.org/project/fenics-smart/)
+[![Deploy static content to Pages](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml)
+[![pre-commit](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml)
+# Spatial Modelling Algorithms for Reaction-Transport [systems|models|equations]
 
 ## Statement of Need
 
 SMART is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models.
-SMART is highly suited for building systems biology models and simulating them as deterministic partial differential equations `[PDEs]` in realistic geometries using the Finite Element Method `[FEM]`.
+SMART is highly suited for building systems biology models and simulating them as deterministic partial differential equations (PDEs)` in realistic geometries using the Finite Element Method (FEM).
 Systems biology models are converted by SMART into the appropriate systems of reaction-diffusion PDEs with proper boundary conditions.
 [FEniCS](https://fenicsproject.org/) is a core dependency of SMART which handles the assembly of finite element matrices as well as solving the resultant linear algebra systems.
 
@@ -84,12 +85,12 @@ Detailed contributing guidelines are given here.
 LGPL-3.0
 
 ## SMART development team
-* [Justin Laughlin] - original author of the repository
+* [Justin Laughlin](https://github.com/justinlaughlin) - original author of the repository
 * [Christopher Lee](https://github.com/ctlee)
-* [Emmet Francis]
-* [Jorgen Dokken]
-* [Henrik Finsberg]
+* [Emmet Francis](https://github.com/emmetfrancis)
+* [Jorgen Dokken](https://github.com/jorgensd)
+* [Henrik Finsberg](https://github.com/finsberg)
 
 Previous contributors:
-* [Yuan Gao] (https://github.com/Rabona17)
-* [William Xu] (https://github.com/willxu1234)
+* [Yuan Gao](https://github.com/Rabona17)
+* [William Xu](https://github.com/willxu1234)
