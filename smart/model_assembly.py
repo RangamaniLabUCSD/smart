@@ -51,6 +51,10 @@ logger = logging.getLogger(__name__)
 # ====================================================
 
 
+class InvalidObjectException(Exception):
+    pass
+
+
 class ObjectContainer:
     """Parent class containing general methods used by all "containers" """
 
@@ -131,7 +135,7 @@ class ObjectContainer:
                         for obj in data:
                             self[obj.name] = obj
                     else:
-                        raise Exception("Could not add data to ObjectContainer")
+                        raise InvalidObjectException("Could not add data to ObjectContainer")
         # Adding via ObjectInstance arguments
         else:
             obj = self._ObjectClass(*data)

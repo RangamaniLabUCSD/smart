@@ -5,39 +5,27 @@ import pytest
 import smart
 
 
-@pytest.fixture(name="A_kwargs")
-def example_species():
-    kwargs = dict(
-        concentration_units=smart.units.unit.uM,
-        diffusion_units=smart.units.unit.um**2 / smart.units.unit.sec,
-        initial_condition=0.01,
-        D=2.0,
-        name="A",
-        compartment_name="Cyto",
-        group="Some group",
-    )
+def test_Species_initialization(species_kwargs_A):
+    """Test that we can initialize a SpeciesContainer"""
+    A = smart.model_assembly.Species(**species_kwargs_A)
+    assert A.name == species_kwargs_A["name"]
+    assert A.latex_name == species_kwargs_A["name"]
+    assert str(A.sym) == species_kwargs_A["name"]
 
-    A = smart.model_assembly.Species(**kwargs)
-    return (A, kwargs)
-
-
-def test_Species_initialization(A_kwargs):
-    A, kwargs = A_kwargs
-    assert A.name == kwargs["name"]
-    assert A.latex_name == kwargs["name"]
-    assert str(A.sym) == kwargs["name"]
-
-    assert math.isclose(A.initial_condition, kwargs["initial_condition"])
+    assert math.isclose(A.initial_condition, species_kwargs_A["initial_condition"])
     assert (
-        A.initial_condition_quantity == kwargs["initial_condition"] * kwargs["concentration_units"]
+        A.initial_condition_quantity
+        == species_kwargs_A["initial_condition"] * species_kwargs_A["concentration_units"]
     )
-    assert A.concentration_units == smart.units.unit_to_quantity(kwargs["concentration_units"])
-    assert math.isclose(A.D, kwargs["D"])
-    assert A.diffusion_units == smart.units.unit_to_quantity(kwargs["diffusion_units"])
-    assert A.D_quantity == kwargs["D"] * kwargs["diffusion_units"]
+    assert A.concentration_units == smart.units.unit_to_quantity(
+        species_kwargs_A["concentration_units"]
+    )
+    assert math.isclose(A.D, species_kwargs_A["D"])
+    assert A.diffusion_units == smart.units.unit_to_quantity(species_kwargs_A["diffusion_units"])
+    assert A.D_quantity == species_kwargs_A["D"] * species_kwargs_A["diffusion_units"]
 
-    assert A.compartment_name == kwargs["compartment_name"]
-    assert A.group == kwargs["group"]
+    assert A.compartment_name == species_kwargs_A["compartment_name"]
+    assert A.group == species_kwargs_A["group"]
     assert A.dof_map is None
     assert A.ut is None
     assert A.v is None
@@ -47,14 +35,42 @@ def test_Species_initialization(A_kwargs):
 
 
 @pytest.mark.xfail
-def test_access_vscalar(A_kwargs):
-    A, kwargs = A_kwargs
+def test_access_vscalar(species_kwargs_A):
+    A = smart.model_assembly.Species(**species_kwargs_A)
     # We should have proper error handling here
     A.vscalar
 
 
 @pytest.mark.xfail
-def test_access_dolfin_quatity(A_kwargs):
-    A, kwargs = A_kwargs
+def test_access_dolfin_quatity(species_kwargs_A):
+    A = smart.model_assembly.Species(**species_kwargs_A)
     # We should have proper error handling here
     A.dolfin_quantity
+
+
+def test_SpeciesContainer(species_kwargs_A, species_kwargs_AER):
+    """Test that we can initialize a SpeciesContainer"""
+    A = smart.model_assembly.Species(**species_kwargs_A)
+    AER = smart.model_assembly.Species(**species_kwargs_AER)
+    sc = smart.model_assembly.SpeciesContainer()
+    assert sc.size == 0
+    sc.add([A])
+    assert sc.size == 1
+    sc["A"] == A
+    sc.add([A])
+    # Adding same species should not do anything
+    assert sc.size == 1
+    sc.add([AER])
+    assert sc.size == 2
+    assert set(sc.keys) == {"A", "AER"}
+
+
+def test_add_non_Species_to_SpeciesContainer_raises_InvalidObjectException(
+    compartment_kwargs_Cyto,
+):
+    """Test that if we try to add something different than a species
+    to a SpeciesContainer then an exception will be raised"""
+    sc = smart.model_assembly.SpeciesContainer()
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    with pytest.raises(smart.model_assembly.InvalidObjectException):
+        sc.add([Cyto])
