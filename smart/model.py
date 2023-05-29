@@ -34,7 +34,8 @@ from .model_assembly import (
     ReactionContainer,
     Species,
     SpeciesContainer,
-    empty_sbmodel, ParameterType
+    empty_sbmodel,
+    ParameterType,
 )
 from .solvers import smartSNESProblem
 from .units import unit
