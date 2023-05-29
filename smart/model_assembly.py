@@ -7,6 +7,7 @@ import numbers
 import sys
 from collections import OrderedDict as odict
 from dataclasses import dataclass
+from enum import Enum
 from pprint import pformat
 from textwrap import wrap
 from typing import Any, List, Optional, Union
@@ -34,6 +35,7 @@ __all__ = [
     "Reaction",
     "Species",
     "sbmodel_from_locals",
+    "ParameterType",
 ]
 
 comm = d.MPI.comm_world
@@ -49,6 +51,14 @@ logger = logging.getLogger(__name__)
 # Base Classes
 # ====================================================
 # ====================================================
+
+class ParameterType(Enum):
+    """
+    The different types of parameter input
+    """
+    from_file = 1
+    constant = 2
+    expression = 3
 
 
 class InvalidObjectException(Exception):
@@ -543,7 +553,7 @@ class Parameter(ObjectInstance):
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
         parameter.is_space_dependent = False  # not supported yet
-        parameter.type = "from_file"
+        parameter.type = ParameterType.from_file
         parameter.__post_init__()
         logger.info(
             f"Time-dependent parameter {name} loaded from file.",
@@ -610,7 +620,7 @@ class Parameter(ObjectInstance):
         parameter.is_space_dependent = is_space_dependent
 
         # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
-        parameter.type = "expression"
+        parameter.type = ParameterType.expression
         parameter.__post_init__()
         logger.debug(
             f"Time-dependent parameter {name} evaluated from expression.",
@@ -645,7 +655,7 @@ class Parameter(ObjectInstance):
                 setattr(self, attribute, None)
 
         if not hasattr(self, "type"):
-            self.type = "constant"
+            self.type = ParameterType.constant
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
