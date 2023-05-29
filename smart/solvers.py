@@ -271,7 +271,9 @@ class smartSNESProblem:
                         extra=dict(format_type="log"),
                     )
 
-                    d.assemble_mixed(Jforms[ij][k], tensor=self.tensors[ij][k])
+                    d.assemble_mixed(
+                        Jforms[ij][k], tensor=self.tensors[ij][k]
+                    )  # causes issues when running multiple meshes in parallel
 
                 if non_empty_forms == 0:
                     # If all forms are empty, we don't need to assemble. Initialize to zero matrix
@@ -337,7 +339,7 @@ class smartSNESProblem:
                         )
                     continue
 
-                tensor = d.PETScVector()
+                tensor = d.PETScVector(self.comm)
 
                 if Fsum is None:
                     Fsum = d.assemble_mixed(self.Fforms[j][k], tensor=tensor)
@@ -362,18 +364,19 @@ class smartSNESProblem:
             # We can't use a nest vector
             self.Fpetsc_nest = d.PETScVector(Fpetsc[0]).vec()
         else:
-            self.Fpetsc_nest = p.Vec().createNest(Fpetsc)
+            self.Fpetsc_nest = p.Vec().createNest(Fpetsc, comm=self.comm)
         self.Fpetsc_nest.assemble()
 
     def assemble_Jnest(self, Jnest):
-        """Assemble Jacobian nest matrix
+        """Assemble Jacobian nest matrix.
+        Jmats are created using :code:`assemble_mixed(Jform)` and are
+        :code:`dolfin.PETScMatrix types`
 
-        Parameters
-        ----------
-        Jnest : petsc4py.Mat
-            PETSc nest matrix representing the Jacobian
+        Args:
+            Jnest : petsc4py.Mat
+                PETSc nest matrix representing the Jacobian
 
-        Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
+
         """
         if self.verbose:
             logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
@@ -496,11 +499,10 @@ class smartSNESProblem:
     def init_petsc_matrix(self, i, j, nnz_guess=None, set_lgmap=False, assemble=False):
         """Initialize a PETSc matrix with appropriate structure
 
-        Parameters
-        ----------
-        i,j : indices of the block
-        nnz_guess : number of non-zeros (per row) to guess for the matrix
-        assemble : whether to assemble the matrix or not
+        Args:
+            i,j : indices of the block
+            nnz_guess : number of non-zeros (per row) to guess for the matrix
+            assemble : whether to assemble the matrix or not
         """
         self.stopwatches["snes initialize zero matrices"].start()
 
@@ -536,10 +538,9 @@ class smartSNESProblem:
     def init_petsc_vector(self, j, assemble=False):
         """Initialize a dolfin wrapped PETSc vector with appropriate structure
 
-        Parameters
-        ----------
-        j : index
-        assemble : whether to assemble the vector or not
+        Args:
+            j : index
+            assemble : whether to assemble the vector or not
         """
         V = p.Vec().create(comm=self.comm)
         V.setSizes((self.local_sizes[j], self.global_sizes[j]))
@@ -551,14 +552,13 @@ class smartSNESProblem:
         return V
 
     def Jijk_name(self, i: int, j: int, k: Optional[int] = None):
-        """
-        Get a string representation of an entry of the Jacobian.
+        """Get a string representation of an entry of the Jacobian.
 
         Args:
             i: Row index
             j: Column index
             k: If the Jacobian entry is a sum of forms, get the name
-                of the domain in the `k`th entry.
+                of the domain in the k'th entry.
         """
         if k is None:
             return (
@@ -582,8 +582,8 @@ class smartSNESProblem:
 
         Args:
             j: Block index
-            k: If the residual entry is a sum of forms, get the name
-                of the domain in the `k`th entry.
+            k: If the residual entry is a sum of forms, get the
+                name of the domain in the k'th entry.
         """
 
         if k is None:
@@ -625,7 +625,8 @@ class smartSNESProblem:
             )
 
     def get_csr_matrix(self, i, j):
-        "This is a matrix that can be used to visualize the sparsity pattern using plt.spy()"
+        """This is a matrix that can be used to visualize
+        the sparsity pattern using :code:`plt.spy()`"""
         if self.is_single_domain:
             M = self.Jpetsc_nest
         else:
