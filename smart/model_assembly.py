@@ -52,10 +52,12 @@ logger = logging.getLogger(__name__)
 # ====================================================
 # ====================================================
 
+
 class ParameterType(Enum):
     """
     The different types of parameter input
     """
+
     from_file = 1
     constant = 2
     expression = 3
