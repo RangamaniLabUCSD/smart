@@ -1,18 +1,24 @@
 import pytest
 import math
 
-import stubs
-from stubs.model_assembly import Parameter, Species, Compartment, Reaction, empty_sbmodel
+import smart
+from smart.model_assembly import (
+    Parameter,
+    Species,
+    Compartment,
+    Reaction,
+    empty_sbmodel,
+)
 
 # Fixtures
 
 
 @pytest.fixture(name="model")
-def stubs_model(stubs_mesh):
+def smart_model(smart_mesh):
     # initialize
     pc, sc, cc, rc = empty_sbmodel()
     # units
-    unit = stubs.unit  # unit registry
+    unit = smart.unit  # unit registry
     uM = unit.uM
     meter = unit.m
     um = unit.um
@@ -81,12 +87,12 @@ def stubs_model(stubs_mesh):
     )
 
     # config (FFC logger breaks older versions of pytest)
-    stubs_config = stubs.config.Config()
-    stubs_config.loglevel.FFC = "ERROR"
-    stubs_config.loglevel.UFL = "ERROR"
-    stubs_config.loglevel.dolfin = "ERROR"
+    smart_config = smart.config.Config()
+    smart_config.loglevel.FFC = "ERROR"
+    smart_config.loglevel.UFL = "ERROR"
+    smart_config.loglevel.dolfin = "ERROR"
 
-    stubs_config.solver.update(
+    smart_config.solver.update(
         {
             "final_t": 1,
             "initial_dt": 0.01,
@@ -98,20 +104,20 @@ def stubs_model(stubs_mesh):
 
     # Define solvers
     # FIXME: None of these solvers are defined
-    # mps = stubs.solvers.MultiphysicsSolver()
-    # nls = stubs.solvers.NonlinearNewtonSolver()
-    # ls = stubs.solvers.DolfinKrylovSolver()
-    # solver_system = stubs.solvers.SolverSystem(final_t=0.1, initial_dt=0.01)
+    # mps = smart.solvers.MultiphysicsSolver()
+    # nls = smart.solvers.NonlinearNewtonSolver()
+    # ls = smart.solvers.DolfinKrylovSolver()
+    # solver_system = smart.solvers.SolverSystem(final_t=0.1, initial_dt=0.01)
 
-    model = stubs.model.Model(pc, sc, cc, rc, stubs_config, stubs_mesh)
+    model = smart.model.Model(pc, sc, cc, rc, smart_config, smart_mesh)
 
     return model
 
 
 # Tests
 @pytest.mark.xfail
-@pytest.mark.stubs_model_init
-def test_stubs_model_init(model):
+@pytest.mark.smart_model_init
+def test_smart_model_init(model):
     "Test the different parts of model initialization"
     # initialize
     model.initialize(initialize_solver=False)
@@ -132,17 +138,13 @@ def test_stubs_model_init(model):
         pidx = pm_mesh.map_cell_to_parent_entity[idx]
         b = parent_mesh.facets[pidx]
         assert (a == b).all()
-        assert (
-            pm_mesh.cell_coordinates[idx] == parent_mesh.facet_coordinates[pidx]
-        ).all()
+        assert (pm_mesh.cell_coordinates[idx] == parent_mesh.facet_coordinates[pidx]).all()
 
     cyto_mesh = model.child_meshes["cytosol"]
     for idx in test_indices:
         # test child facet -> parent entity mapping
         pidx = cyto_mesh.map_facet_to_parent_entity[idx]
-        assert all(
-            cyto_mesh.map_facet_to_parent_vertex[idx, :] == parent_mesh.facets[pidx, :]
-        )
+        assert all(cyto_mesh.map_facet_to_parent_vertex[idx, :] == parent_mesh.facets[pidx, :])
 
     # check volumes and surfaces
     assert math.isclose(parent_mesh.get_nvolume("dx"), 16.0)

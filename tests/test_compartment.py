@@ -1,11 +1,11 @@
 import pytest
 
-import stubs
+import smart
 
 
 def test_Compartment_initialization(compartment_kwargs_Cyto):
     """Test that we can initialize a Compartment"""
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
 
     assert Cyto.V is None
     assert Cyto.cell_marker == compartment_kwargs_Cyto["cell_marker"]
@@ -20,45 +20,45 @@ def test_Compartment_initialization(compartment_kwargs_Cyto):
 
 @pytest.mark.xfail
 def test_Compartment_access_dolfin_mesh(compartment_kwargs_Cyto):
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.dolfin_mesh
 
 
 @pytest.mark.xfail
 def test_Compartment_access_mesh_id(compartment_kwargs_Cyto):
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.mesh_id
 
 
 @pytest.mark.xfail
 def test_Compartment_access_num_cells(compartment_kwargs_Cyto):
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.num_cells
 
 
 @pytest.mark.xfail
 def test_Compartment_access_num_facets(compartment_kwargs_Cyto):
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.num_facets
 
 
 @pytest.mark.xfail
 def test_Compartment_access_num_vertices(compartment_kwargs_Cyto):
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.num_vertices
 
 
 @pytest.mark.xfail
 def test_Compartment_access_nvolume(compartment_kwargs_Cyto):
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
     Cyto.nvolume
 
 
 def test_CompartmentContainer(compartment_kwargs_Cyto, compartment_kwargs_PM):
     """Test that we can initialize a CompartmentContainer"""
-    Cyto = stubs.model_assembly.Compartment(**compartment_kwargs_Cyto)
-    PM = stubs.model_assembly.Compartment(**compartment_kwargs_PM)
-    cc = stubs.model_assembly.CompartmentContainer()
+    Cyto = smart.model_assembly.Compartment(**compartment_kwargs_Cyto)
+    PM = smart.model_assembly.Compartment(**compartment_kwargs_PM)
+    cc = smart.model_assembly.CompartmentContainer()
     assert cc.size == 0
     cc.add([Cyto])
     assert cc.size == 1

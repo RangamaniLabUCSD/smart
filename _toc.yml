@@ -5,11 +5,16 @@ parts:
   - caption: Getting started
     chapters:
     - file: docs/install
-    - file: docs/math
     - file: docs/faq
+  - caption: Mathematics
+    chapters:
+    - file: docs/math
+    - file: docs/numerics
+    - file: docs/implementation
   - caption: Demo
     chapters:
     - file: examples/example1/example1
   - caption: API documentation
     chapters:
-    - file: "docs/pystubs_verbose.rst"
+    - file: CONTRIBUTING
+    - file: "docs/api.rst"

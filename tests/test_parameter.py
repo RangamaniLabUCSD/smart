@@ -3,12 +3,12 @@ import numpy as np
 import pytest
 import sympy as sym
 
-import stubs
+import smart
 
 
 def test_Parameter_initialization(parameter_kwargs_k3f):
     """Test that we can initialize k3f SpeciesContainer"""
-    k3f = stubs.model_assembly.Parameter(**parameter_kwargs_k3f)
+    k3f = smart.model_assembly.Parameter(**parameter_kwargs_k3f)
 
     assert k3f.name == parameter_kwargs_k3f["name"]
     assert math.isclose(k3f.value, parameter_kwargs_k3f["value"])
@@ -39,8 +39,8 @@ def test_Parameter_from_expression(use_preintegration):
     pulse = sym.diff(pulseI, t)
     value = Vmax * m / (1 + (m * (0.0 - t0)) ** 2)
 
-    flux_unit = stubs.unit.molecule / (stubs.unit.um**2 * stubs.unit.sec)
-    j1pulse = stubs.model_assembly.Parameter.from_expression(
+    flux_unit = smart.units.unit.molecule / (smart.units.unit.um**2 * smart.units.unit.sec)
+    j1pulse = smart.model_assembly.Parameter.from_expression(
         "j1pulse",
         pulse,
         flux_unit,
@@ -51,7 +51,7 @@ def test_Parameter_from_expression(use_preintegration):
     assert math.isclose(j1pulse.value, value)
     assert np.allclose(j1pulse.value_vector, [0.0, value])
 
-    assert j1pulse.unit == stubs.common.pint_unit_to_quantity(flux_unit)
+    assert j1pulse.unit == smart.units.unit_to_quantity(flux_unit)
     assert np.isclose(j1pulse.quantity, value * flux_unit)
 
     assert j1pulse.type == "expression"
@@ -62,16 +62,16 @@ def test_Parameter_from_expression(use_preintegration):
 
 @pytest.mark.xfail
 def test_access_dolfin_quatity(parameter_kwargs_k3f):
-    k3f = stubs.model_assembly.Parameter(**parameter_kwargs_k3f)
+    k3f = smart.model_assembly.Parameter(**parameter_kwargs_k3f)
     # We should have proper error handling here
     k3f.dolfin_quantity
 
 
 def test_ParameterContainer(parameter_kwargs_k3f):
     """Test that we can initialize k3f SpeciesContainer"""
-    k3f = stubs.model_assembly.Parameter(**parameter_kwargs_k3f)
-    k3r = stubs.model_assembly.Parameter("k3r", 100, 1 / stubs.unit.sec)
-    pc = stubs.model_assembly.ParameterContainer()
+    k3f = smart.model_assembly.Parameter(**parameter_kwargs_k3f)
+    k3r = smart.model_assembly.Parameter("k3r", 100, 1 / smart.units.unit.sec)
+    pc = smart.model_assembly.ParameterContainer()
     assert pc.size == 0
     pc.add([k3f])
     assert pc.size == 1
