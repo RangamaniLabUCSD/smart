@@ -17,7 +17,7 @@ def test_Parameter_initialization(parameter_kwargs_k3f):
     assert k3f.unit == parameter_kwargs_k3f["unit"]
     assert k3f.quantity == parameter_kwargs_k3f["value"] * parameter_kwargs_k3f["unit"]
 
-    assert k3f.type == smart.model_assembly.ParameterType.constant
+    assert k3f.type == "constant"
     assert k3f.group == parameter_kwargs_k3f["group"]
     assert k3f.use_preintegration is parameter_kwargs_k3f["use_preintegration"]
     assert k3f.is_space_dependent is False
@@ -54,7 +54,7 @@ def test_Parameter_from_expression(use_preintegration):
     assert j1pulse.unit == smart.units.unit_to_quantity(flux_unit)
     assert np.isclose(j1pulse.quantity, value * flux_unit)
 
-    assert j1pulse.type == smart.model_assembly.ParameterType.expression
+    assert j1pulse.type == "expression"
     assert j1pulse.use_preintegration is use_preintegration
     assert j1pulse.is_space_dependent is False
     assert j1pulse.is_time_dependent is True
