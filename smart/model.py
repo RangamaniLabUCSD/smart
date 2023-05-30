@@ -35,6 +35,7 @@ from .model_assembly import (
     Species,
     SpeciesContainer,
     empty_sbmodel,
+    ParameterType,
 )
 from .solvers import smartSNESProblem
 from .units import unit
@@ -708,15 +709,15 @@ class Model:
         """
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:
-            if parameter.type == "constant":
+            if parameter.type == ParameterType.constant:
                 parameter.dolfin_constant = d.Constant(parameter.value)
-            elif parameter.type == "expression" and not parameter.use_preintegration:
+            elif parameter.type == ParameterType.expression and not parameter.use_preintegration:
                 parameter.dolfin_expression = d.Expression(
                     sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1
                 )
-            elif parameter.type == "expression" and parameter.use_preintegration:
+            elif parameter.type == ParameterType.expression and parameter.use_preintegration:
                 parameter.dolfin_constant = d.Constant(parameter.value)
-            elif parameter.type == "from_file":
+            elif parameter.type == ParameterType.from_file:
                 parameter.dolfin_constant = d.Constant(parameter.value)
 
     def _init_4_1_get_active_compartments(self):
@@ -1830,14 +1831,14 @@ class Model:
             if not parameter.use_preintegration:
                 # Parameters that are defined as dolfin expressions will
                 # automatically be updated by model.T.assign(t)
-                if parameter.type == "expression":
+                if parameter.type == ParameterType.expression:
                     parameter.value = parameter.sym_expr.subs({"t": t}).evalf()
                     parameter.value_vector = np.vstack(
                         (parameter.value_vector, [t, parameter.value])
                     )
                     continue
                 # Parameters from a data file need to have their dolfin constant updated
-                if parameter.type == "from_file":
+                if parameter.type == ParameterType.from_file:
                     t_data = parameter.sampling_data[:, 0]
                     p_data = parameter.sampling_data[:, 1]
                     # We never want time to extrapolate beyond the provided data.
@@ -1852,7 +1853,7 @@ class Model:
                     )
 
             if parameter.use_preintegration:
-                if parameter.type == "expression":
+                if parameter.type == ParameterType.expression:
                     a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
                     b = parameter.preint_sym_expr.subs({"t": t}).evalf()
                     new_value = float((b - a) / dt)
@@ -1861,7 +1862,7 @@ class Model:
                         "pre-integrated expression. New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
-                if parameter.type == "from_file":
+                if parameter.type == ParameterType.from_file:
                     int_data = parameter.preint_sampling_data
                     a = np.interp(tn, int_data[:, 0], int_data[:, 1], left=np.nan, right=np.nan)
                     b = np.interp(t, int_data[:, 0], int_data[:, 1], left=np.nan, right=np.nan)
