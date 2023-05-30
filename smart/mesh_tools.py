@@ -112,8 +112,9 @@ def DemoSpheresMesh(
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Calls DemoEllipsoidsMesh() to make spherical mesh
-    * outerRad: radius of the outer sphere
-    * innerRad: radius of the inner sphere
+    Args:
+        outerRad: radius of the outer sphere
+        innerRad: radius of the inner sphere
     All other arguments are the same as described for DemoEllipsoidsMesh()
     """
     dmesh, mf2, mf3 = DemoEllipsoidsMesh(
@@ -150,19 +151,19 @@ def DemoEllipsoidsMesh(
     single ellipsoid.
 
     Args:
-    * outerRad: The radius of the outer ellipsoid
-    * innerRad: The radius of the inner ellipsoid
-    * hEdge: maximum mesh size at the outer edge
-    * hInnerEdge: maximum mesh size at the edge
-        of the inner ellipsoid interface_marker: The
-        value to mark facets on the interface
-    * outer_marker: The value to mark facets on the outer ellipsoid
-    * inner_vol_tag: The value to mark the inner spherical volume
-    * outer_vol_tag: The value to mark the outer spherical volume
-    * comm: MPI communicator to use when creating the mesh
-    * verbose: If true print gmsh output, else skip
+        outerRad: The radius of the outer ellipsoid
+        innerRad: The radius of the inner ellipsoid
+        hEdge: maximum mesh size at the outer edge
+        hInnerEdge: maximum mesh size at the edge
+            of the inner ellipsoid interface_marker: The
+            value to mark facets on the interface
+        outer_marker: The value to mark facets on the outer ellipsoid
+        inner_vol_tag: The value to mark the inner spherical volume
+        outer_vol_tag: The value to mark the outer spherical volume
+        comm: MPI communicator to use when creating the mesh
+        verbose: If true print gmsh output, else skip
     Returns:
-    * A triplet (mesh, facet_marker, cell_marker)
+        Tuple (mesh, facet_marker, cell_marker)
     """
     import gmsh
 
@@ -294,14 +295,14 @@ def DemoEllipseMesh(
     """
     Creates a mesh for an ellipse surface
     Args:
-    * xrad: radius assoc with x axis
-    * yrad: radius assoc with y axis
-    * h_ellipse: mesh resolution
-    * inside_tag: mesh marker value for triangles in the ellipse
-    * edge_tag: mesh marker value for edge 1D elements
-    * comm: MPI communicator to create the mesh with
+        xrad: radius assoc with x axis
+        yrad: radius assoc with y axis
+        h_ellipse: mesh resolution
+        inside_tag: mesh marker value for triangles in the ellipse
+        edge_tag: mesh marker value for edge 1D elements
+        comm: MPI communicator to create the mesh with
     Returns:
-    * A triplet (mesh, facet_marker (mf1), cell_marker(mf2))
+        Tuple (mesh, facet_marker (mf1), cell_marker(mf2))
     """
     import gmsh
 
@@ -354,14 +355,15 @@ def gmsh_to_dolfin(
     and associated marker files (using meshio).
     Markers are assigned from gmsh mesh, any unassigned
     marker values are given value 0.
-    Inputs:
-    * gmsh_file_name: .msh file (string)
-    * tmp_folder_name: folder name to store temporary mesh files
-    * dimension: dimension of parent mesh (int - either 2 or 3)
-    Output tuple (dMesh, mf_facet, mf_cell)
-    * dMesh: Dolfin-style parent mesh
-    * mf_facet: markers for facets
-    * mf_cell: markers for cells
+    Args:
+        gmsh_file_name: .msh file (string)
+        tmp_folder_name: folder name to store temporary mesh files
+        dimension: dimension of parent mesh (int - either 2 or 3)
+    Returns:
+        Tuple containing:
+            dMesh: Dolfin-style parent mesh
+            mf_facet: markers for facets
+            mf_cell: markers for cells
     """
     import meshio
 
