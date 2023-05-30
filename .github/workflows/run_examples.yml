@@ -15,10 +15,6 @@ on:
     - cron: "0 8 * * *"
 jobs:
   run-examples:
-    strategy:
-      fail-fast: false
-      matrix:
-        example: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-22.04
     # Runs against FEniCS main branch built the 16-01-2023
     container: ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
@@ -36,14 +32,7 @@ jobs:
         run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 
       - name: "Install code"
-        run: python3 -m pip install ".[dev,examples]" jupytext
-
-      - name: Run example ${{ matrix.example }}
-        run: |
-          python3 -c "from pyvista import start_xvfb; start_xvfb(0.1)"
-          cd examples/example${{ matrix.example }}/
-          jupytext example${{ matrix.example }}.ipynb --to py
-          python3 example${{ matrix.example }}.py
+        run: python3 -m pip install ".[dev,examples]"
 
       - name: Run MPI example
         run: mpirun -n 2 python3 examples/example3/example3_multimeshMPI.py

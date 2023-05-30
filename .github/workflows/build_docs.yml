@@ -29,6 +29,7 @@ jobs:
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
+      DISPLAY: ":99.0"
 
     steps:
       - name: Checkout
@@ -36,6 +37,13 @@ jobs:
 
       - name: Install dependencies
         run: python3 -m pip install ".[docs,dev,examples]"
+
+      - name: Cache notebooks
+        id: cache-notebooks
+        uses: actions/cache@v3
+        with:
+          path: _build/jupyter_execute
+          key: cache_key_1  # Bump nuber manually when you want to clear the cache
 
       - name: Build docs
         run: jupyter book build .
