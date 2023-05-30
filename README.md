@@ -75,7 +75,6 @@ Detailed contributing guidelines are given here.
 * SMART uses [PETSc4py] to solve the resultant linear algebra systems.
 * SMART uses [pandas](https://pandas.pydata.org/) as an intermediate data structure to help organize and process models.
 * SMART uses [Pint](https://pint.readthedocs.io/en/stable/) for unit tracking and conversions.
-* SMART uses [matplotlib](https://matplotlib.org/) to automatically generate plots of min/mean/max (integrated over space) concentrations over time, as well as plots showing solver convergence.
 * SMART uses [sympy](https://www.sympy.org/) to allow users to input custom reactions and also to determine the appopriate solution techniques (e.g. testing for non-linearities).
 * SMART uses [numpy](https://numpy.org/) and [scipy](https://www.scipy.org/) for general array manipulations and basic calculations.
 * SMART uses [tabulate](https://pypi.org/project/tabulate/) to make pretty ASCII tables.

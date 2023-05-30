@@ -10,7 +10,6 @@ license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "matplotlib",
     "numpy>=1.16.0",
     "pandas",
     "Pint",
@@ -43,7 +42,8 @@ docs = [
 ]
 examples = [
     "meshio",
-    "gmsh"
+    "gmsh",
+    "matplotlib",
 ]
 all = [
    "smart[examples]",
