@@ -1,5 +1,4 @@
-"""
-Classes for parameters, species, compartments, reactions, fluxes, and forms.
+"""Classes for parameters, species, compartments, reactions, fluxes, and forms.
 Model class contains functions to efficiently solve a system.
 """
 import dataclasses
@@ -52,10 +51,12 @@ logger = logging.getLogger(__name__)
 # ====================================================
 
 
+class InvalidObjectException(Exception):
+    pass
+
+
 class ObjectContainer:
-    """
-    Parent class containing general methods used by all "containers"
-    """
+    """Parent class containing general methods used by all "containers" """
 
     def __init__(self, ObjectClass):  # df=None, Dict=None):
         self.Dict = odict()
@@ -71,26 +72,26 @@ class ObjectContainer:
 
     @property
     def size(self):
-        "Size of ObjectContainer"
+        """Size of ObjectContainer"""
         return len(self.Dict)
 
     @property
     def items(self):
-        "Return all items in container"
+        """Return all items in container"""
         return self.Dict.items()
 
     @property
     def values(self):
-        "Return all Dict values"
+        """Return all Dict values"""
         return self.Dict.values()
 
     def __iter__(self):
-        "Iteratively return Dict values"
+        """Iteratively return Dict values"""
         return iter(self.Dict.values())
 
     @property
     def keys(self):
-        "Return all Dict keys"
+        """Return all Dict keys"""
         return self.Dict.keys()
 
     @property
@@ -98,19 +99,19 @@ class ObjectContainer:
         return enumerate(self.keys)
 
     def to_dicts(self):
-        "Returns a list of dicts that can be used to recreate the ObjectContainer"
+        """Returns a list of dicts that can be used to recreate the ObjectContainer"""
         return [obj.to_dict() for obj in self.values]
 
     def __getitem__(self, key):
-        "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
+        """syntactic sugar to allow: :code:`objcontainer[key] = objcontainer[key]`"""
         return self.Dict[key]
 
     def __setitem__(self, key, newvalue):
-        "syntactic sugar to allow: objcontainer[key] = objcontainer[key]"
+        """syntactic sugar to allow: :code:`objcontainer[key] = objcontainer[key]`"""
         self.Dict[key] = newvalue
 
     def add(self, *data):
-        "Add data to object container"
+        """Add data to object container"""
         if len(data) == 1:
             data = data[0]
             # Adding in the ObjectInstance directly
@@ -134,26 +135,20 @@ class ObjectContainer:
                         for obj in data:
                             self[obj.name] = obj
                     else:
-                        raise Exception("Could not add data to ObjectContainer")
+                        raise InvalidObjectException("Could not add data to ObjectContainer")
         # Adding via ObjectInstance arguments
         else:
             obj = self._ObjectClass(*data)
             self[obj.name] = obj
 
     def remove(self, name):
-        "Remove data from object container"
+        """Remove data from object container"""
         if type(name) != str:
             raise TypeError("Argument must be the name of an object [str] to remove.")
         self.Dict.pop(name)
 
-    # def add_property_to_all(self, property_name, item):
-    #     for obj in self.values:
-    #         setattr(obj, property_name, item)
-
     def get_index(self, idx):
-        """
-        Get an element of the object container ordered dict by referencing its index
-        """
+        """Get an element of the object container ordered dict by referencing its index"""
         return list(self.values)[idx]
 
     # ==============================================================================
@@ -166,7 +161,7 @@ class ObjectContainer:
         """
         Create a `pandas.DataFrame` of all items in the class (defined through `self.items`)
 
-        Params:
+        Args:
             properties_to_print: If set only the listed properties (by attribute name)
               is added to the series
             include_index: If true, add index as the first column in the data-frame.
@@ -206,7 +201,7 @@ class ObjectContainer:
     ):
         """
         Print object properties in latex format.
-        Requires latex packages \siunitx and \longtable
+        Requires latex packages :code:`\siunitx` and :code:`\longtable`
         """
 
         df = self.get_pandas_dataframe_formatted(
@@ -237,7 +232,7 @@ class ObjectContainer:
         max_col_width=50,
         sig_figs=2,
     ):
-        "Get formatted pandas dataframe for printing object properties."
+        """Get formatted pandas dataframe for printing object properties."""
         # Get the pandas dataframe with the properties we want to print
         if properties_to_print is not None:
             if not isinstance(properties_to_print, list):
@@ -270,7 +265,7 @@ class ObjectContainer:
         max_col_width=50,
         sig_figs=2,
     ):
-        "Print object properties to file and/or terminal."
+        """Print object properties to file and/or terminal."""
 
         df = self.get_pandas_dataframe_formatted(
             properties_to_print=properties_to_print,
@@ -305,8 +300,7 @@ class ObjectContainer:
 
 
 class ObjectInstance:
-    """
-    Parent class containing general methods used by all smart
+    """Parent class containing general methods used by all smart
     "objects": i.e. parameters, species, compartments, reactions, fluxes, forms
     """
 
@@ -327,18 +321,16 @@ class ObjectInstance:
                     )
 
     def _convert_pint_quantity_to_unit(self):
-        """
-        Convert all attributes of the class that is a `pint.Quantity` into a `pint.Unit`.
-        """
+        """Convert all attributes of the class that is a :code:`pint.Quantity`
+        into a :code:`pint.Unit`."""
         # strip the magnitude and keep the units. Warn if magnitude!=1
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Quantity):
                 setattr(self, name, quantity_to_unit(attr))
 
     def _convert_pint_unit_to_quantity(self):
-        """
-        Convert all attributes of the class that is a `pint.Unit` into a `pint.Quantity`.
-        """
+        """Convert all attributes of the class that is a :code:`pint.Unit`
+        into a :code:`pint.Quantity`."""
         for name, attr in vars(self).items():
             if isinstance(attr, pint.Unit):
                 setattr(self, name, unit_to_quantity(attr))
@@ -347,9 +339,9 @@ class ObjectInstance:
         self, properties_to_print: Optional[List[str]] = None, idx: Optional[int] = None
     ):
         """
-        Convert attributes of the class into a `pandas.Series`.
+        Convert attributes of the class into a :code:`pandas.Series`.
 
-        Params:
+        Args:
             properties_to_print: If set only the listed properties (by attribute name)
                 is added to the series
             index: If set add to series
@@ -370,7 +362,7 @@ class ObjectInstance:
         return pandas.Series(dict_to_convert, name=self.name)
 
     def print(self, properties_to_print=None):
-        "Print properties in current object instance."
+        """Print properties in current object instance."""
         if rank == root:
             logger.info("Name: " + self.name)
             # if a custom list of properties to print is provided, only use those
@@ -424,38 +416,61 @@ class Parameter(ObjectInstance):
     Parameter objects contain information for the various parameters involved in reactions,
     such as binding rates and dissociation constants.
     A Parameter object that is constant over time and space is initialized by calling
-    param_var = Parameter(name, value, unit, group (opt), notes (opt), use_preintegration (opt))
-    where
-    * name: string naming the parameter
-    * value: value of the given parameter
-    * unit: units associated with given value
-    * group (optional): string placing this parameter in a designated group;
+
+    .. code:: python
+
+    param_var = Parameter(
+        name, value, unit, group (opt), notes (opt),
+        use_preintegration (opt)
+        )
+
+    Args:
+        name: string naming the parameter
+        value: value of the given parameter
+        unit: units associated with given value
+        group (optional): string placing this parameter in a designated group;
              for organizational purposes when there are multiple reaction modules
-    * notes (optional): string related to this parameter
-    * use_preintegration (optional): not applicable for constant parameter
+        notes (optional): string related to this parameter
+        use_preintegration (optional): not applicable for constant parameter
 
     To initialize a parameter object that varies over time, you can either
     specify a string that gives the parameter as a function of time (t)
     or load data from a .txt file.
 
     To load from a string expression, call:
-    param_var = Parameter.from_expression(name, sym_expr, unit, preint_sym_expr (opt), group (opt),
-                                          notes (opt), use_preintegration (opt))
+
+    .. code:: python
+
+        param_var = Parameter.from_expression(
+            name, sym_expr, unit, preint_sym_expr (opt), group (opt),
+            notes (opt), use_preintegration (opt)
+        )
+
     Inputs are the same as described above, except:
-    * sym_expr: string specifying an expression, "t" should be the only free variable
-    * preint_sym_expr (optional): string giving the integral of the expression; if not given
+
+    Args:
+        sym_expr: string specifying an expression, "t" should be the only free variable
+        preint_sym_expr (optional): string giving the integral of the expression; if not given
                                   and use_preintegration is true, then sympy tries to integrate
                                   using sympy.integrate()
-    * use_preintegration (optional):  use preintegration in solution process if
+        use_preintegration (optional):  use preintegration in solution process if
                                      "use_preintegration" is true (defaults to false)
 
     To load parameter over time from a .txt file, call:
-    param_var = Parameter.from_file(name, sampling_file, unit, group (opt),
-                                          notes (opt), use_preintegration (opt))
+
+    .. code:: python
+
+        param_var = Parameter.from_file(
+            name, sampling_file, unit, group (opt),
+            notes (opt), use_preintegration (opt)
+        )
+
     Inputs are the same as described above, except:
-    * sampling_file: name of text file giving parameter data in two columns (comma-separated) -
+
+    Args:
+        sampling_file: name of text file giving parameter data in two columns (comma-separated) -
                      first column is time (starting with t=0.0) and second is parameter values
-    * use_preintegration (optional):  use preintegration in solution process if
+        use_preintegration (optional):  use preintegration in solution process if
                                      "use_preintegration" is true (defaults to false),
                                      uses sci.integrate.cumtrapz for numerical integration
     """
@@ -468,7 +483,7 @@ class Parameter(ObjectInstance):
     use_preintegration: bool = False
 
     def to_dict(self):
-        "Convert to a dict that can be used to recreate the object."
+        """Convert to a dict that can be used to recreate the object."""
         keys_to_keep = [
             "name",
             "value",
@@ -489,7 +504,7 @@ class Parameter(ObjectInstance):
 
     @classmethod
     def from_dict(cls, input_dict):
-        "Read parameter object from Dict"
+        """Read parameter object from Dict"""
         parameter = cls(input_dict["name"], input_dict["value"], input_dict["unit"])
         for key, val in input_dict.items():
             setattr(parameter, key, val)
@@ -533,13 +548,15 @@ class Parameter(ObjectInstance):
             parameter.preint_sampling_data = preint_sampling_data
 
         # initialize instance
+        parameter.sampling_file = sampling_file
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
         parameter.is_space_dependent = False  # not supported yet
         parameter.type = "from_file"
         parameter.__post_init__()
         logger.info(
-            f"Time-dependent parameter {name} loaded from file.", extra=dict(format_type="log")
+            f"Time-dependent parameter {name} loaded from file.",
+            extra=dict(format_type="log"),
         )
 
         return parameter
@@ -555,7 +572,7 @@ class Parameter(ObjectInstance):
         notes="",
         use_preintegration=False,
     ):
-        "Use sympy to parse time-dependent expression for parameter"
+        """Use sympy to parse time-dependent expression for parameter"""
         # Parse the given string to create a sympy expression
         if isinstance(sym_expr, str):
             sym_expr = parse_expr(sym_expr)
@@ -658,7 +675,7 @@ class Parameter(ObjectInstance):
         return self._quantity
 
     def check_validity(self):
-        "Confirm that time-dependent parameter is defined in terms of time"
+        """Confirm that time-dependent parameter is defined in terms of time"""
         if self.is_time_dependent:
             if all(
                 [x in ("", None) for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]
@@ -717,20 +734,27 @@ class Species(ObjectInstance):
     """
     Each Species object contains information for one state variable in the model
     (can be a molecule, receptor open probability, membrane voltage, etc.)
+
+    Args:
+        name: string naming the species
+        conc_init: initial concentration for this species
+            (can be an expression given by a string to be parsed by sympy
+            - the only unknowns in the expression should be x, y, and z)
+        conc_units: concentration units for this species
+        D: diffusion coefficient value
+        diffusion_units: units for diffusion coefficient
+        compartment_name: each species should be assigned to a single compartment
+        group (optional): for larger models, specifies a group of species this belongs to;
+            for organizational purposes when there are multiple reaction modules
+
     Species object is initialized by calling:
-    species_var = Species(name, initial_condition, concentration_units,
-                          D, diffusion_units, compartment_name, group (opt))
-    where
-    * name: string naming the species
-    * conc_init: initial concentration for this species
-                  (can be an expression given by a string to be parsed by sympy -
-                  the only unknowns in the expression should be x, y, and z)
-    * conc_units: concentration units for this species
-    * D: diffusion coefficient value
-    * diffusion_units: units for diffusion coefficient
-    * compartment_name: each species should be assigned to a single compartment
-    * group (optional): for larger models, specifies a group of species this belongs to;
-                        for organizational purposes when there are multiple reaction modules
+
+    .. code:: python
+
+        species_var = Species(
+            name, initial_condition, concentration_units,
+            D, diffusion_units, compartment_name, group (opt)
+        )
     """
 
     name: str
@@ -756,7 +780,7 @@ class Species(ObjectInstance):
 
     @classmethod
     def from_dict(cls, input_dict):
-        "Load Species object from Dict"
+        """Load Species object from Dict"""
         return cls(**input_dict)
 
     def __post_init__(self):
@@ -797,8 +821,8 @@ class Species(ObjectInstance):
         self.check_validity()
 
     def check_validity(self):
-        """
-        Species validity checks:
+        """Species validity checks:
+
         * Initial condition is greater than or equal to 0
         * Diffusion coefficient is greater than or equal to 0
         * Diffusion coefficient has units of length^2/time
@@ -885,16 +909,18 @@ class CompartmentContainer(ObjectContainer):
 
 @dataclass
 class Compartment(ObjectInstance):
-    """
-    Each Compartment object contains information describing a surface, volume, or edge
-    within the geometry of interest.
-    The object is initialized by calling:
-    compartment_var = Compartment(name, dimensionality, compartment_units, cell_marker)
-    where
-    * name: string naming the compartment
-    * dimensionality: topological dimensionality (e.g. 3 for volume, 2 for surface)
-    * compartment_units: length units for the compartment
-    * cell_marker: marker value identifying the compartment in the parent mesh
+    """Each Compartment object contains information describing a surface, volume, or edge
+    within the geometry of interest. The object is initialized by calling:
+
+        .. code:: python
+
+            compartment_var = Compartment(name, dimensionality, compartment_units, cell_marker)
+
+    Args:
+        name: string naming the compartment
+        dimensionality: topological dimensionality (e.g. 3 for volume, 2 for surface)
+        compartment_units: length units for the compartment
+        cell_marker: marker value identifying the compartment in the parent mesh
     """
 
     name: str
@@ -934,6 +960,7 @@ class Compartment(ObjectInstance):
     def check_validity(self):
         """
         Compartment validity checks:
+
         * Compartment dimensionality is 1,2, or 3
         * Compartment units are of type "length"
         """
@@ -950,8 +977,7 @@ class Compartment(ObjectInstance):
             )
 
     def specify_nonadjacency(self, nonadjacent_compartment_list=None):
-        """
-        Specify if this compartment is NOT adjacent to another compartment.
+        """Specify if this compartment is NOT adjacent to another compartment.
         Not necessary, but will speed-up initialization of very large problems.
         Only needs to be specified for surface meshes as those are the
         ones that MeshViews are built on.
@@ -975,7 +1001,7 @@ class Compartment(ObjectInstance):
 
     @property
     def nvolume(self):
-        "nvolume with proper units"
+        """nvolume with proper units"""
         self._nvolume = self.mesh.nvolume * self.compartment_units**self.dimensionality
         return self._nvolume
 
@@ -996,7 +1022,7 @@ class Compartment(ObjectInstance):
 
     @property
     def num_dofs(self):
-        "Number of degrees of freedom for this compartment"
+        """Number of degrees of freedom for this compartment"""
         # self._num_dofs = self.num_species * self.num_vertices
         # return self._num_dofs
         if self.V is None:
@@ -1007,7 +1033,7 @@ class Compartment(ObjectInstance):
 
     @property
     def num_dofs_local(self):
-        "Number of degrees of freedom for this compartment, local to this process"
+        """Number of degrees of freedom for this compartment, local to this process"""
         if self.V is None:
             self._num_dofs_local = 0
         else:
@@ -1037,48 +1063,55 @@ class Reaction(ObjectInstance):
     """
     A Reaction object contains information on a single biochemical interaction
     between species in a single compartment or across multiple compartments.
-    The Reaction object is initialized by calling:
-    reaction_name = Reaction(name, lhs, rhs, param_map
-                         eqn_f_str (opt), eqn_r_str (opt), reaction_type (opt), species_map (opt),
-                         explicit_restriction_to_domain (opt), group (opt), flux_scaling (opt))
-    required arguments:
-    * name: string naming the parameter (should match variable name "param_name")
-    * lhs: list of strings specifying the reactants for this reaction
-    * rhs: list of strings specifying the products for this reaction
-         ***NOTE: the lists "lhs" and "rhs" determine the stoichiometry of the reaction;
-           for instance, if two A's react to give one B, the reactants list would be ["A","A"],
-           and the products list would be ["B"]
-    * param_map: relationship between the parameters specified in the reaction string
-      and those given in the parameter container. By default, the reaction parameters are
-      "kon" and "koff" when a system obeys simple mass action.
-      If the forward rate is given by a parameter "k1" and the reverse rate is given by "k2",
-      then param_map = {"kon":"k1", "koff":"k2"}
 
-    optional arguments:
-    * eqn_f_str: For systems not obeying simple mass action,
-      this string specifies the forward reaction rate By default,
-      this string is "kon*{all reactants multiplied together}"
-    * eqn_r_str: For systems not obeying simple mass action,
-      this string specifies the reverse reaction rate
-      By default, this string is "koff*{all products multiplied together}"
-    * reaction_type: either "custom" or "mass_action" (default is "mass_action")
-      [never a required argument]
-    * species_map: same format as param_map;
-      only required if the species name in the reaction string
-      do not match the species names given in the species container
-    * explicit_restriction_to_domain: string specifying where the reaction occurs;
-      required if the reaction is not constrained by the reaction string
-      (e.g., if production occurs only at the boundary,
-      but the species being produced exists through the entire volume)
-    * group: string placing this reaction in a reaction group;
-      for organizational purposes when there are multiple reaction modules
-    * flux_scaling: in certain cases, a given reactant or product
-      may experience a scaled flux (for instance, if we assume that
-      some of the molecules are immediately sequestered after the reaction);
-      in this case, to signify that this flux should be rescaled, we specify
-      "flux_scaling = {scaled_species: scale_factor}",
-      where scaled_species is a string specifying the species to be scaled and
-      scale_factor is a number specifying the rescaling factor
+    Args:
+        name: string naming the parameter (should match variable name "param_name")
+        lhs: list of strings specifying the reactants for this reaction
+        rhs: list of strings specifying the products for this reaction
+            NOTE: the lists "lhs" and "rhs" determine the stoichiometry of the reaction;
+            for instance, if two A's react to give one B, the reactants list would be
+            :code:`["A","A"]`, and the products list would be :code:`["B"]`
+        param_map: relationship between the parameters specified in the reaction string
+            and those given in the parameter container. By default, the reaction parameters are
+            "kon" and "koff" when a system obeys simple mass action.
+            If the forward rate is given by a parameter :code:`k1` and the reverse
+            rate is given by :code:`k2`, then :code:`param_map = {"kon":"k1", "koff":"k2"}`
+        eqn_f_str: For systems not obeying simple mass action,
+            this string specifies the forward reaction rate By default,
+            this string is "kon*{all reactants multiplied together}"
+        eqn_r_str: For systems not obeying simple mass action,
+            this string specifies the reverse reaction rate
+            By default, this string is :code:`koff*{all products multiplied together}`
+            reaction_type: either "custom" or "mass_action" (default is "mass_action")
+            [never a required argument]
+        species_map: same format as param_map;
+            only required if the species name in the reaction string
+            do not match the species names given in the species container
+        explicit_restriction_to_domain: string specifying where the reaction occurs;
+            required if the reaction is not constrained by the reaction string
+            (e.g., if production occurs only at the boundary,
+            but the species being produced exists through the entire volume)
+        group: string placing this reaction in a reaction group;
+            for organizational purposes when there are multiple reaction modules
+            flux_scaling: in certain cases, a given reactant or product
+            may experience a scaled flux (for instance, if we assume that
+            some of the molecules are immediately sequestered after the reaction);
+            in this case, to signify that this flux should be rescaled, we specify
+            :code:`flux_scaling = {scaled_species: scale_factor}`,
+            where scaled_species is a string specifying the species to be scaled and
+            scale_factor is a number specifying the rescaling factor
+
+    .. note::
+
+        The Reaction object is initialized by calling:
+
+        .. code:: python
+
+            reaction_name = Reaction(
+                name, lhs, rhs, param_map,
+                eqn_f_str (opt), eqn_r_str (opt), reaction_type (opt), species_map (opt),
+                explicit_restriction_to_domain (opt), group (opt), flux_scaling (opt)
+            )
     """
 
     name: str
@@ -1137,6 +1170,7 @@ class Reaction(ObjectInstance):
     def check_validity(self):
         """
         Reaction validity checks:
+
         * LHS (reactants) and RHS (products) are specified as lists of strings
         * param_map must be specified as a dict of "str:str"
         * If given, species_map must be specified as a dict of "str:str"
@@ -1181,8 +1215,8 @@ class Reaction(ObjectInstance):
         """
         Convert reactions to fluxes -
         in general, for each product and each reactant there are two fluxes,
-        one forward flux (dictated by self.eqn_f_str)
-        and one reverse flux (dictated by self.eqn_r_str),
+        one forward flux (dictated by :code:`self.eqn_f_str`)
+        and one reverse flux (dictated by :code:`self.eqn_r_str`),
         stoichiometry is dictated by the number of times a given species occurs on the lhs or rhs
         """
         logger.debug(f"Getting fluxes for reaction {self.name}", extra=dict(format_type="log"))
@@ -1243,10 +1277,10 @@ class FluxContainer(ObjectContainer):
 
 @dataclass
 class Flux(ObjectInstance):
-    """
-    Flux objects are created from reaction objects and should not be
+    """Flux objects are created from reaction objects and should not be
     explicitly initialized by the user.
     Each flux object contains:
+
     * name: string (created as reaction name + species name + (f) or (r))
     * destination_species: flux increases or decreases this species
     * equation: directionality * stoichiometry * reaction string
@@ -1489,8 +1523,7 @@ class Flux(ObjectInstance):
         return variables
 
     def equation_lambda_eval(self, input_type="quantity"):
-        """
-        Evaluates the equation lambda function using either the quantity
+        """Evaluates the equation lambda function using either the quantity
         (value * units), the value, or the units.
         The values and units are evaluated separately and then combined
         because some expressions don't work well
@@ -1512,7 +1545,7 @@ class Flux(ObjectInstance):
     @property
     def form(self):
         """-1 factor because terms are defined as if they were on the
-        lhs of the equation F(u;v)=0"""
+        lhs of the equation :math:`F(u;v)=0`"""
         return (
             d.Constant(-1)
             * self.equation_lambda_eval(input_type="value")
@@ -1536,9 +1569,7 @@ class Flux(ObjectInstance):
 
     @property
     def assembled_flux(self):
-        """
-        Attempt to convert flux units to molecules_per_second for printing.
-        """
+        """Attempt to convert flux units to molecules_per_second for printing."""
         try:
             self._assembled_flux = -1 * (
                 d.assemble(self.scalar_form).sum() * self.equation_units * self.measure_units
@@ -1551,8 +1582,9 @@ class Flux(ObjectInstance):
 
     def _post_init_get_is_linear_comp(self):
         """
-        If the flux is linear in terms of a compartment vector (e.g. dj/du['pm']),
-        then sets self.is_lienar_wrt_comp[comp_name] to True
+        If the flux is linear in terms of a compartment vector (e.g.
+        :code:`dj/du['pm']`),
+        then sets :code:`self.is_lienar_wrt_comp[comp_name]` to True
         """
         umap = {}
 
@@ -1648,7 +1680,7 @@ class Form(ObjectInstance):
 
 
 def empty_sbmodel():
-    "Initialize empty containers (pc, sc, cc, and rc)"
+    """Initialize empty containers (pc, sc, cc, and rc)"""
     pc = ParameterContainer()
     sc = SpeciesContainer()
     cc = CompartmentContainer()
@@ -1657,9 +1689,7 @@ def empty_sbmodel():
 
 
 def sbmodel_from_locals(local_values):
-    """
-    Assemble containers from local variables
-    """
+    """Assemble containers from local variables"""
     # FIXME: Add typing
     # Initialize containers
     pc, sc, cc, rc = empty_sbmodel()

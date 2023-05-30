@@ -25,21 +25,21 @@ class smartSNESProblem:
     Interface to PETSc SNES solver, defining problem to be solved.
 
     Args:
-    * u: The function containing the unknown dofs (is a function from a
+        u: The function containing the unknown dofs (is a function from a
             `dolfin.MixedFunctionSpace`)
-    * Fforms: Nested list of forms for the residual ``F``. Number of
+        Fforms: Nested list of forms for the residual ``F``. Number of
             block rows in the rhs vector is given by the number of items in the outermost list.
-    * Jforms_all: Nested list of forms for the Jacobian.
+        Jforms_all: Nested list of forms for the Jacobian.
             Number of entries in the outermost list should be ``len(Fforms)**2``
             flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``,
             ``i,j=0,..,len(Fforms)-1``.
             The k-th entry of ``Jforms_all`` is a list of forms that are summed up in a given block.
-    * active_compartments: List of compartments used in the variational form.
-    * all_compartments: List of all compartments in model.
-    * stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
+        active_compartments: List of compartments used in the variational form.
+        all_compartments: List of all compartments in model.
+        stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
             Must include at least `snes jacobian assemble`, `snes residual assemble`
             and `snes initialize zero matrices`
-    * verbose: If True, output logger info.
+        verbose: If True, output logger info.
     """
 
     def __init__(
@@ -268,14 +268,13 @@ class smartSNESProblem:
         self.Fpetsc_nest.assemble()
 
     def assemble_Jnest(self, Jnest):
-        """
-        Assemble Jacobian nest matrix
+        """Assemble Jacobian nest matrix.
 
-        Arguments:
-        * Jnest : petsc4py.Mat
-            PETSc nest matrix representing the Jacobian
+        Args:
+            Jnest : petsc4py.Mat
+                PETSc nest matrix representing the Jacobian
 
-        Jmats are created using assemble_mixed(Jform) and are dolfin.PETScMatrix types
+
         """
         if self.verbose:
             logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
@@ -356,8 +355,8 @@ class smartSNESProblem:
         Assemble residual nest vector
 
         Arguments:
-        * Fnest : petsc4py.Vec
-            PETSc nest vector representing the residual
+            Fnest : petsc4py.Vec
+                PETSc nest vector representing the residual
         """
         dim = self.dim
         if self.verbose:
@@ -406,10 +405,10 @@ class smartSNESProblem:
         """
         Initialize a PETSc matrix with appropriate structure
 
-        Arguments:
-        * i,j : indices of the block
-        * nnz_guess : number of non-zeros (per row) to guess for the matrix
-        * assemble : whether to assemble the matrix or not (Boolean)
+        Args:
+            i,j : indices of the block
+            nnz_guess : number of non-zeros (per row) to guess for the matrix
+            assemble : whether to assemble the matrix or not (Boolean)
         """
         self.stopwatches["snes initialize zero matrices"].start()
 
@@ -445,9 +444,9 @@ class smartSNESProblem:
     def init_petsc_vector(self, j, assemble=False):
         """Initialize a dolfin wrapped PETSc vector with appropriate structure
 
-        Arguments:
-        * j : index
-        * assemble : whether to assemble the vector or not (Boolean)
+        Args:
+            j : index
+            assemble : whether to assemble the vector or not (Boolean)
         """
         V = p.Vec().create(comm=self.comm)
         V.setSizes((self.local_sizes[j], self.global_sizes[j]))
@@ -459,14 +458,13 @@ class smartSNESProblem:
         return V
 
     def Jijk_name(self, i: int, j: int, k: Optional[int] = None):
-        """
-        Get a string representation of an entry of the Jacobian.
+        """Get a string representation of an entry of the Jacobian.
 
         Args:
-        * i: Row index
-        * j: Column index
-        * k: If the Jacobian entry is a sum of forms, get the name
-                of the domain in the `k`th entry.
+            i: Row index
+            j: Column index
+            k: If the Jacobian entry is a sum of forms, get the name
+                of the domain in the k'th entry.
         """
         if k is None:
             return (
@@ -489,9 +487,9 @@ class smartSNESProblem:
         Get a string representation of an entry of the residual.
 
         Args:
-        * j: Block index
-        * k: If the residual entry is a sum of forms, get the name
-                of the domain in the `k`th entry.
+            j: Block index
+            k: If the residual entry is a sum of forms, get the
+                name of the domain in the k'th entry.
         """
 
         if k is None:
@@ -534,7 +532,8 @@ class smartSNESProblem:
             )
 
     def get_csr_matrix(self, i, j):
-        "This is a matrix that can be used to visualize the sparsity pattern using plt.spy()"
+        """This is a matrix that can be used to visualize
+        the sparsity pattern using :code:`plt.spy()`"""
         if self.is_single_domain:
             M = self.Jpetsc_nest
         else:
