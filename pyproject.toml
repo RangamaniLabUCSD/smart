@@ -43,7 +43,9 @@ docs = [
 ]
 examples = [
     "meshio",
-    "gmsh"
+    "gmsh",
+    "pyvista==0.38.4",
+    "panel"
 ]
 all = [
    "smart[examples]",
