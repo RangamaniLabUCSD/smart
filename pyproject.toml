@@ -43,7 +43,8 @@ docs = [
 examples = [
     "meshio",
     "gmsh",
-    "pyvista[jupyter]>=0.38.1",
+    "pyvista==0.38.4",
+    "panel",
     "matplotlib"
 ]
 all = [
