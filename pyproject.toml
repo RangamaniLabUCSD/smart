@@ -43,7 +43,9 @@ docs = [
 examples = [
     "meshio",
     "gmsh",
-    "matplotlib",
+    "pyvista==0.38.4",
+    "panel",
+    "matplotlib"
 ]
 all = [
    "smart[examples]",

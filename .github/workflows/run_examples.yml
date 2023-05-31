@@ -15,25 +15,24 @@ on:
     - cron: "0 8 * * *"
 jobs:
   run-examples:
-    strategy:
-      fail-fast: false
-      matrix:
-        example: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-22.04
     # Runs against FEniCS main branch built the 16-01-2023
     container: ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
+
+    env:
+      PYVISTA_OFF_SCREEN: true
+      DISPLAY: ":99.0"
+      PYVISTA_JUPYTER_BACKEND: panel
+
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v3
 
-      - name: "Install code"
-        run: python3 -m pip install ".[dev,examples]" jupytext
+      - name: "Install pyvista dependencies"
+        run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 
-      - name: Run example ${{ matrix.example }}
-        run: |
-          cd examples/example${{ matrix.example }}/
-          jupytext example${{ matrix.example }}.ipynb --to py
-          python3 example${{ matrix.example }}.py
+      - name: "Install code"
+        run: python3 -m pip install ".[dev,examples]"
 
       - name: Run MPI example
         run: mpirun -n 2 python3 examples/example3/example3_multimeshMPI.py

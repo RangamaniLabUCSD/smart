@@ -29,13 +29,28 @@ jobs:
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
+      DISPLAY: ":99.0"
+      PYVISTA_TRAME_SERVER_PROXY_PREFIX: '/proxy/'
+      PYVISTA_TRAME_SERVER_PROXY_ENABLED: "True"
+      PYVISTA_OFF_SCREEN: false
+      PYVISTA_JUPYTER_BACKEND: "panel"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: "Install pyvista dependencies"
+        run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
+
       - name: Install dependencies
-        run: python3 -m pip install ".[docs,dev]"
+        run: python3 -m pip install ".[docs,dev,examples]"
+
+      - name: Cache notebooks
+        id: cache-notebooks
+        uses: actions/cache@v3
+        with:
+          path: _build
+          key: cache_key_2  # Bump nuber manually when you want to clear the cache
 
       - name: Build docs
         run: jupyter book build .
