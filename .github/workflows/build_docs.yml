@@ -49,8 +49,8 @@ jobs:
         id: cache-notebooks
         uses: actions/cache@v3
         with:
-          path: _build/jupyter_execute
-          key: cache_key_1  # Bump nuber manually when you want to clear the cache
+          path: _build
+          key: cache_key_2  # Bump nuber manually when you want to clear the cache
 
       - name: Build docs
         run: jupyter book build .
