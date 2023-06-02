@@ -9,8 +9,8 @@ only_build_toc_files: true
 # Force re-execution of notebooks on each build.
 # See https://jupyterbook.org/content/execute.html
 execute:
-  execute_notebooks: 'off'
-  timeout: 3000
+  execute_notebooks: 'cache'
+  timeout: 30000
 
 # Information about where the book exists on the web
 repository:
@@ -34,7 +34,7 @@ sphinx:
     autoapi_dirs: ['smart']
     bibtex_bibfiles: ["docs/refs.bib"]
     # Ref: https://github.com/executablebooks/sphinx-external-toc/issues/36
-    suppress_warnings: ["etoc.toctree"]
+    suppress_warnings: ["etoc.toctree", "mystnb.unknown_mime_type"]
 
   extra_extensions:
   - 'sphinx.ext.autodoc'
