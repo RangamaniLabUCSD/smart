@@ -25,12 +25,6 @@ def test_Parameter_initialization(parameter_kwargs_k3f):
     assert k3f.notes == parameter_kwargs_k3f["notes"]
 
 
-@pytest.mark.xfail
-def test_Parameter_from_file():
-    # Need to figure out how the file should look like
-    raise NotImplementedError
-
-
 @pytest.mark.parametrize("use_preintegration", [True, False])
 def test_Parameter_from_expression(use_preintegration):
     Vmax, t0, m = 500, 0.1, 200
@@ -58,13 +52,6 @@ def test_Parameter_from_expression(use_preintegration):
     assert j1pulse.use_preintegration is use_preintegration
     assert j1pulse.is_space_dependent is False
     assert j1pulse.is_time_dependent is True
-
-
-@pytest.mark.xfail
-def test_access_dolfin_quatity(parameter_kwargs_k3f):
-    k3f = smart.model_assembly.Parameter(**parameter_kwargs_k3f)
-    # We should have proper error handling here
-    k3f.dolfin_quantity
 
 
 def test_ParameterContainer(parameter_kwargs_k3f):
