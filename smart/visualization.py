@@ -212,8 +212,11 @@ def plot_dolfin_mesh(
         plotter.add_mesh(p1_grid, style="wireframe")
     else:
         if msh.topology().dim() == 3:
-            plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
-            # plotter.add_volume(grid, opacity="linear")  # , show_edges=show_edges)
+            # plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
+            # plotter.add_volume(grid, opacity=0.2)  # , show_edges=show_edges)
+            crinkled = grid.clip(normal=(1, 0, 0), crinkle=True)
+            plotter.add_mesh(crinkled, show_edges=show_edges)
+            plotter.add_mesh
         elif msh.topology().dim() == 2:
             plotter.add_mesh(grid, show_edges=show_edges)
 
