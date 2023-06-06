@@ -8,7 +8,7 @@ tags:
   - biophysics
   - cellular processes
 authors:
-  - name: Justin Laughlin
+  - name: Justin G. Laughlin
     orcid: 0000-0001-8229-9760
     equal-contrib: false
     affiliation: 1 # (Multiple affiliations must be quoted)
@@ -21,7 +21,7 @@ authors:
   - name: Emmet Francis
     orcid:
     affiliation: 1
-  - name: Christopher Lee
+  - name: Christopher T. Lee
     orcid: 0000-0002-0670-2308
     affiliation: 1
   - name: Marie E. Rognes
