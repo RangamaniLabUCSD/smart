@@ -25,7 +25,7 @@ authors:
     orcid:
     affiliation: 1
   - name: Marie E. Rognes
-    orcid:
+    orcid: 0000-0002-6872-3710
     affiliation: 2
   - name: Padmini Rangamani
     orcid:
@@ -141,6 +141,6 @@ spatial gradients of calcium near regions of calcium release (\autoref{fig:fig2}
 
 The authors would like to acknowledge contributions from Yuan Gao and William Xu during the early development of SMART.
 
-This material is based upon work supported by the National Science Foundation under Grant #EEC-2127509 to the American Society for Engineering Education.
+This material is based upon work supported by the National Science Foundation under Grant #EEC-2127509 to the American Society for Engineering Education. MER acknowledges support and funding from the Research Council of Norway (RCN) via FRIPRO grant agreement #324239 (EMIx), and the U.S.-Norway Fulbright Foundation for Educational Exchange.
 
 # References
