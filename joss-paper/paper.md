@@ -16,7 +16,7 @@ authors:
     orcid:
     affiliation: 2
   - name: Henrik N.T. Finsberg
-    orcid:
+    orcid: 0000-0003-3766-2393
     affiliation: 3
   - name: Emmet Francis
     orcid:
