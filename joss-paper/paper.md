@@ -141,6 +141,9 @@ spatial gradients of calcium near regions of calcium release (\autoref{fig:fig2}
 
 The authors would like to acknowledge contributions from Yuan Gao and William Xu during the early development of SMART.
 
-This material is based upon work supported by the National Science Foundation under Grant #EEC-2127509 to the American Society for Engineering Education. MER acknowledges support and funding from the Research Council of Norway (RCN) via FRIPRO grant agreement #324239 (EMIx), and the U.S.-Norway Fulbright Foundation for Educational Exchange.
+This material is based upon work supported by the National Science Foundation under Grant #EEC-2127509 to the American Society for Engineering Education. 
+MER acknowledges support and funding from the Research Council of Norway (RCN) via FRIPRO grant agreement #324239 (EMIx), and the U.S.-Norway Fulbright Foundation for Educational Exchange.
+CTL is supported by a Kavli Institute for Brain and Mind Postdoctoral Award.
+JGL, CTL, EF, and PR further acknowledge support from AFOSR MURI FA9550-18-1-0051 to PR.
 
 # References
