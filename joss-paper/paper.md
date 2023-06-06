@@ -54,8 +54,8 @@ through chains of chemical reactions generally referred to as *cell signaling pa
 The propagation and reaction of chemical substances in cell signaling pathways can be represented by coupled nonlinear
 systems of reaction-transport equations.
 These reaction pathways include numerous chemical species that react across boundaries or interfaces
-(*e.g.* the cell membrane and membranes of organelles within the cell) and domains
-(*e.g.* the bulk cell volume and the interior of organelles).
+(e.g., the cell membrane and membranes of organelles within the cell) and domains
+(e.g., the bulk cell volume and the interior of organelles).
 Such systems of multi-dimensional partial differential equations (PDEs) are notoriously difficult to solve
 because of their high dimensionality, non-linearities, strong coupling, stiffness, and potential instabilities.
 In this work, we describe *Spatial Modeling Algorithms for Reactions and Transport* (SMART),
@@ -87,7 +87,7 @@ which is compatible with a variety of meshing software such as Gmsh [@Geuzaine:2
 or the newly developed GAMer 2 [@Lee:2020], allowing users to solve
 highly nonlinear systems of PDEs within complex cellular geometries.
 Moreover, the design of SMART as a FEniCS-based package allows for ease of extension and integration
-with additional physics, enabling *e.g.* coupled simulations of cell signaling and mechanics or electrophysiology.
+with additional physics, enabling e.g., coupled simulations of cell signaling and mechanics or electrophysiology.
 SMART complements several existing software tools that are used to assemble and solve equations
 describing cell signaling networks such as VCell [@Cowan:2012; @Schaff:1997], COPASI [@Hoops:2006], and MCell [@Kerr:2008].
 
