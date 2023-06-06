@@ -4,7 +4,7 @@ name: Build docs
 on:
   pull_request:
     branches:
-      - "main"
+      - "development"
 
   # This workflow can be executed inside another workfow file
   workflow_call:
