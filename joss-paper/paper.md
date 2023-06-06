@@ -9,7 +9,7 @@ tags:
   - cellular processes
 authors:
   - name: Justin Laughlin
-    orcid:
+    orcid: 0000-0001-8229-9760
     equal-contrib: false
     affiliation: 1 # (Multiple affiliations must be quoted)
   - name: Jørgen S. Dokken
@@ -22,13 +22,13 @@ authors:
     orcid:
     affiliation: 1
   - name: Christopher Lee
-    orcid:
+    orcid: 0000-0002-0670-2308
     affiliation: 1
   - name: Marie E. Rognes
     orcid: 0000-0002-6872-3710
     affiliation: 2
   - name: Padmini Rangamani
-    orcid:
+    orcid: 0000-0001-5953-4347
     affiliation: 1
     corresponding: true # (This is how to denote the corresponding author)
 affiliations:
