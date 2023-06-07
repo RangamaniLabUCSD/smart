@@ -51,6 +51,7 @@ def create_vtk_structures(
             np.zeros((0, 3), dtype=np.float64),
         )
     d_cell = mesh.ufl_cell()
+    # need this extra statement for case of triangles in 3d
     if d_cell._cellname == "triangle":
         d_cell = dolfin.triangle
 
@@ -242,7 +243,8 @@ def plot_dolfin_mesh(
                 plotter.add_mesh(crinkled_facet, show_edges=show_edges)
         elif msh.topology().dim() == 2:
             plotter.add_mesh(grid, show_edges=show_edges)
-            plotter.add_mesh(grid_facet, show_edges=show_edges)
+            if facets_loaded:
+                plotter.add_mesh(grid_facet, show_edges=show_edges)
 
     if msh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
