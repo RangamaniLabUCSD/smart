@@ -7,11 +7,12 @@ from mpi4py import MPI
 __all__ = [
     "facet_topology",
     "cube_condition",
-    "DemoCuboidsMesh",
-    "DemoSpheresMesh",
-    "DemoEllipsoidsMesh",
-    "DemoEllipseMesh",
-    "DemoCylindersMesh",
+    "create_cubes",
+    "create_spheres",
+    "create_ellipsoids",
+    "create_cylinders",
+    "create_ellipses",
+    "gmsh_to_dolfin",
     "write_mesh",
 ]
 
@@ -40,10 +41,10 @@ def cube_condition(cell, xmin=0.3, xmax=0.7):
     )
 
 
-def DemoCuboidsMesh(N=16, condition=cube_condition):
+def create_cubes(N=16, condition=cube_condition):
     """
     Creates a mesh for use in examples that contains
-    two distinct cuboid subvolumes with a shared interface surface.
+    two distinct cube subvolumes with a shared interface surface.
     Cell markers:
     1 - Default subvolume
     2 - Subvolume specified by condition function
@@ -76,7 +77,7 @@ def DemoCuboidsMesh(N=16, condition=cube_condition):
     return (mesh, mf2, mf3)
 
 
-def DemoSpheresMesh(
+def create_spheres(
     outerRad: float = 0.5,
     innerRad: float = 0.25,
     hEdge: float = 0,
@@ -89,9 +90,9 @@ def DemoSpheresMesh(
     verbose: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
-    Calls DemoEllipsoidsMesh() to make spherical mesh
+    Calls create_ellipsoids() to make spherical mesh
     """
-    dmesh, mf2, mf3 = DemoEllipsoidsMesh(
+    dmesh, mf2, mf3 = create_ellipsoids(
         (outerRad, outerRad, outerRad),
         (innerRad, innerRad, innerRad),
         hEdge,
@@ -106,7 +107,7 @@ def DemoSpheresMesh(
     return (dmesh, mf2, mf3)
 
 
-def DemoEllipsoidsMesh(
+def create_ellipsoids(
     outerRad: Tuple[float, float, float],
     innerRad: Tuple[float, float, float],
     hEdge: float = 0,
@@ -258,7 +259,148 @@ def DemoEllipsoidsMesh(
     return (dmesh, mf2, mf3)
 
 
-def DemoEllipseMesh(
+def create_cylinders(
+    outerRad: float = 1.0,
+    innerRad: float = 0.0,
+    outerLength: float = 10.0,
+    innerLength: float = 8.0,
+    hEdge: float = 0,
+    hInnerEdge: float = 0,
+    interface_marker: int = 12,
+    outer_marker: int = 10,
+    inner_vol_tag: int = 2,
+    outer_vol_tag: int = 1,
+    comm: MPI.Comm = d.MPI.comm_world,
+    verbose: bool = False,
+) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+    """
+    Creates a mesh for use in examples that contains
+    two distinct ellipsoid subvolumes with a shared interface
+    surface. If the radius of the inner ellipsoid is 0, mesh a
+    single ellipsoid.
+
+    Args:
+        outerRad: The radius of the outer cylinder
+        innerRad: The radius of the inner cylinder
+        outerLength: length of the outer cylinder
+        innerLength: length of the inner cylinder
+        hEdge: maximum mesh size at the outer edge
+        hInnerEdge: maximum mesh size at the edge
+            of the inner cylinder
+        interface_marker: The value to mark facets on the interface with
+        outer_marker: The value to mark facets on the outer ellipsoid with
+        inner_vol_tag: The value to mark the inner spherical volume with
+        outer_vol_tag: The value to mark the outer spherical volume with
+        comm: MPI communicator to create the mesh with
+        verbose: If true print gmsh output, else skip
+    Returns:
+        A triplet (mesh, facet_marker, cell_marker)
+    """
+    import gmsh
+
+    if np.isclose(outerRad, 0):
+        ValueError("Outer radius is equal to zero")
+    if np.isclose(hEdge, 0):
+        hEdge = 0.1 * max(outerRad)
+    if np.isclose(hInnerEdge, 0):
+        hInnerEdge = 0.2 * outerRad if np.isclose(innerRad, 0) else 0.2 * innerRad
+    if innerRad > outerRad or innerLength >= outerLength:
+        ValueError("Inner cylinder does not fit inside outer cylinder")
+    # Create the two cylinder mesh using gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+
+    gmsh.model.add("twocylinders")
+    # first add cylinder 1 of radius outerRad and center (0,0,0)
+    outer_cylinder = gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, outerLength, outerRad)
+    if np.isclose(innerRad, 0):
+        # Use outer_cylinder only
+        gmsh.model.occ.synchronize()
+        gmsh.model.add_physical_group(3, [outer_cylinder], tag=outer_vol_tag)
+        facets = gmsh.model.getBoundary([(3, outer_cylinder)])
+        gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
+    else:
+        # Add inner_cylinder (radius innerRad,
+        # center (0,0,(outerLength-innerLength)/2))
+        inner_cylinder = gmsh.model.occ.addCylinder(
+            0, 0, (outerLength - innerLength) / 2, 0, 0, innerLength, innerRad
+        )
+        # Create interface between cylinders
+        two_cylinders, (outer_cylinder_map, inner_cylinder_map) = gmsh.model.occ.fragment(
+            [(3, outer_cylinder)], [(3, inner_cylinder)]
+        )
+        gmsh.model.occ.synchronize()
+
+        # Get the outer boundary
+        outer_shell = gmsh.model.getBoundary(two_cylinders, oriented=False)
+        # Get the inner boundary
+        inner_shell = gmsh.model.getBoundary(inner_cylinder_map, oriented=False)
+        # Add physical markers for facets
+        gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
+        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
+
+        # Physical markers for
+        all_volumes = [tag[1] for tag in outer_cylinder_map]
+        inner_volume = [tag[1] for tag in inner_cylinder_map]
+        outer_volume = []
+        for vol in all_volumes:
+            if vol not in inner_volume:
+                outer_volume.append(vol)
+        gmsh.model.add_physical_group(3, outer_volume, tag=outer_vol_tag)
+        gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
+
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
+        # or set when calling function) and hInnerEdge at the ERM
+        # (defaults to 0.2*innerRad, or set when calling function)
+        # between these, the value is interpolated based on r (polar coord),
+        # and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*outerRad in the center
+        # for one cylinder (innerRad = 0), if hEdge > 0.2*outerRad,
+        # then lc = 0.2*outerRad in the whole volume
+        # for two cylinders, if hEdge or hInnerEdge > 0.2*innerRad,
+        # they are set to lc = 0.2*innerRad
+        r_cur = np.sqrt(x**2 + y**2)
+        if np.isclose(innerRad, 0):
+            lc3 = 0.2 * outerRad
+        else:
+            lc3 = 0.2 * innerRad
+        lc1 = hEdge
+        lc2 = hInnerEdge
+        if r_cur > innerRad:
+            lcTest = lc1 + (lc2 - lc1) * (outerRad - r_cur) / (outerRad - innerRad)
+        else:
+            lcTest = lc2 + (lc3 - lc2) * (innerRad - r_cur) / innerRad
+        return min(lc3, lcTest)
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+    gmsh.model.mesh.generate(3)
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_cylinder_{outerRad}_{innerRad}_{rank}")
+    tmp_folder.mkdir(exist_ok=True)
+    gmsh_file = tmp_folder / "cylinders.msh"
+    gmsh.write(str(gmsh_file))
+    gmsh.finalize()
+
+    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
+    # remove tmp mesh and tmp folder
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir()
+    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    return (dmesh, mf2, mf3)
+
+
+def create_ellipses(
     xrad_outer: float = 3.0,
     yrad_outer: float = 1.0,
     xrad_inner: float = 0.0,
@@ -402,150 +544,6 @@ def DemoEllipseMesh(
     return (dmesh, mf1, mf2)
 
 
-def DemoCylindersMesh(
-    outerRad: float = 1.0,
-    innerRad: float = 0.0,
-    outerLength: float = 10.0,
-    innerLength: float = 8.0,
-    hEdge: float = 0,
-    hInnerEdge: float = 0,
-    interface_marker: int = 12,
-    outer_marker: int = 10,
-    inner_vol_tag: int = 2,
-    outer_vol_tag: int = 1,
-    comm: MPI.Comm = d.MPI.comm_world,
-    verbose: bool = False,
-) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
-    """
-    Creates a mesh for use in examples that contains
-    two distinct ellipsoid subvolumes with a shared interface
-    surface. If the radius of the inner ellipsoid is 0, mesh a
-    single ellipsoid.
-
-    Args:
-        outerRad: The radius of the outer cylinder
-        innerRad: The radius of the inner cylinder
-        outerLength: length of the outer cylinder
-        innerLength: length of the inner cylinder
-        hEdge: maximum mesh size at the outer edge
-        hInnerEdge: maximum mesh size at the edge
-            of the inner cylinder
-        interface_marker: The value to mark facets on the interface with
-        outer_marker: The value to mark facets on the outer ellipsoid with
-        inner_vol_tag: The value to mark the inner spherical volume with
-        outer_vol_tag: The value to mark the outer spherical volume with
-        comm: MPI communicator to create the mesh with
-        verbose: If true print gmsh output, else skip
-    Returns:
-        A triplet (mesh, facet_marker, cell_marker)
-    """
-    import gmsh
-
-    if np.isclose(outerRad, 0):
-        ValueError("Outer radius is equal to zero")
-    if np.isclose(hEdge, 0):
-        hEdge = 0.1 * max(outerRad)
-    if np.isclose(hInnerEdge, 0):
-        hInnerEdge = 0.2 * outerRad if np.isclose(innerRad, 0) else 0.2 * innerRad
-    if innerRad > outerRad or innerLength >= outerLength:
-        ValueError("Inner cylinder does not fit inside outer cylinder")
-    # Create the two cylinder mesh using gmsh
-    gmsh.initialize()
-    gmsh.option.setNumber("General.Terminal", int(verbose))
-
-    gmsh.model.add("twocylinders")
-    # first add cylinder 1 of radius outerRad and center (0,0,0)
-    outer_cylinder = gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, outerLength, outerRad)
-    if np.isclose(innerRad, 0):
-        # Use outer_cylinder only
-        gmsh.model.occ.synchronize()
-        gmsh.model.add_physical_group(3, [outer_cylinder], tag=outer_vol_tag)
-        facets = gmsh.model.getBoundary([(3, outer_cylinder)])
-        # assert len(facets) == 1
-        gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
-    else:
-        # Add inner_cylinder (radius innerRad,
-        # center (0,0,(outerLength-innerLength)/2))
-        inner_cylinder = gmsh.model.occ.addCylinder(
-            0, 0, (outerLength - innerLength) / 2, 0, 0, innerLength, innerRad
-        )
-        # Create interface between cylinders
-        two_cylinders, (outer_cylinder_map, inner_cylinder_map) = gmsh.model.occ.fragment(
-            [(3, outer_cylinder)], [(3, inner_cylinder)]
-        )
-        gmsh.model.occ.synchronize()
-
-        # Get the outer boundary
-        outer_shell = gmsh.model.getBoundary(two_cylinders, oriented=False)
-        # assert len(outer_shell) == 1
-        # Get the inner boundary
-        inner_shell = gmsh.model.getBoundary(inner_cylinder_map, oriented=False)
-        # assert len(inner_shell) == 1
-        # Add physical markers for facets
-        gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
-        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
-
-        # Physical markers for
-        all_volumes = [tag[1] for tag in outer_cylinder_map]
-        inner_volume = [tag[1] for tag in inner_cylinder_map]
-        outer_volume = []
-        for vol in all_volumes:
-            if vol not in inner_volume:
-                outer_volume.append(vol)
-        gmsh.model.add_physical_group(3, outer_volume, tag=outer_vol_tag)
-        gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
-
-    def meshSizeCallback(dim, tag, x, y, z, lc):
-        # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
-        # or set when calling function) and hInnerEdge at the ERM
-        # (defaults to 0.2*innerRad, or set when calling function)
-        # between these, the value is interpolated based on r (polar coord),
-        # and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
-        # if innerRad=0, then the mesh length is interpolated between
-        # hEdge at the PM and 0.2*outerRad in the center
-        # for one cylinder (innerRad = 0), if hEdge > 0.2*outerRad,
-        # then lc = 0.2*outerRad in the whole volume
-        # for two cylinders, if hEdge or hInnerEdge > 0.2*innerRad,
-        # they are set to lc = 0.2*innerRad
-        r_cur = np.sqrt(x**2 + y**2)
-        if np.isclose(innerRad, 0):
-            lc3 = 0.2 * outerRad
-        else:
-            lc3 = 0.2 * innerRad
-        lc1 = hEdge
-        lc2 = hInnerEdge
-        if r_cur > innerRad:
-            lcTest = lc1 + (lc2 - lc1) * (outerRad - r_cur) / (outerRad - innerRad)
-        else:
-            lcTest = lc2 + (lc3 - lc2) * (innerRad - r_cur) / innerRad
-        return min(lc3, lcTest)
-
-    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
-    # set off the other options for mesh size determination
-    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-    # this changes the algorithm from Frontal-Delaunay to Delaunay,
-    # which may provide better results when there are larger gradients in mesh size
-    gmsh.option.setNumber("Mesh.Algorithm", 5)
-
-    gmsh.model.mesh.generate(3)
-    rank = MPI.COMM_WORLD.rank
-    tmp_folder = pathlib.Path(f"tmp_cylinder_{outerRad}_{innerRad}_{rank}")
-    tmp_folder.mkdir(exist_ok=True)
-    gmsh_file = tmp_folder / "cylinders.msh"
-    gmsh.write(str(gmsh_file))
-    gmsh.finalize()
-
-    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
-    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
-    # remove tmp mesh and tmp folder
-    gmsh_file.unlink(missing_ok=False)
-    tmp_folder.rmdir()
-    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
-    return (dmesh, mf2, mf3)
-
-
 def gmsh_to_dolfin(
     gmsh_file_name: str,
     tmp_folder: pathlib.Path = pathlib.Path("tmp_folder"),
@@ -600,7 +598,6 @@ def gmsh_to_dolfin(
     meshio.write(tmp_file_facet, out_mesh_facet)
 
     # convert xdmf mesh to dolfin-style mesh
-
     dmesh = d.Mesh(comm)
     mvc_cell = d.MeshValueCollection("size_t", dmesh, dimension)
     with d.XDMFFile(comm, str(tmp_file_cell)) as infile:
@@ -628,22 +625,31 @@ def gmsh_to_dolfin(
 
 def write_mesh(
     mesh: d.Mesh,
-    mf2: d.MeshFunction,
-    mf3: d.MeshFunction,
-    filename: pathlib.Path = pathlib.Path("DemoCuboidMesh.h5"),
+    mf_facet: d.MeshFunction,
+    mf_cell: d.MeshFunction,
+    filename: pathlib.Path = pathlib.Path("DemoMesh.h5"),
 ):
     comm = mesh.mpi_comm()
+    # extract dimensionality for meshfunctions
+    cell_dim = mf_cell.dim()
+    facet_dim = mf_facet.dim()
     # Write mesh and meshfunctions to file
     hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")
     hdf5.write(mesh, "/mesh")
-    hdf5.write(mf3, "/mf3")
-    hdf5.write(mf2, "/mf2")
+    hdf5.write(mf_cell, f"/mf{cell_dim}")
+    hdf5.write(mf_facet, f"/mf{facet_dim}")
     # For visualization of domains
     (
-        d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf3").with_suffix(".pvd")))
-        << mf3
+        d.File(
+            mesh.mpi_comm(),
+            str(filename.with_stem(filename.stem + f"_mf{cell_dim}").with_suffix(".pvd")),
+        )
+        << mf_cell
     )
     (
-        d.File(mesh.mpi_comm(), str(filename.with_stem(filename.stem + "_mf2").with_suffix(".pvd")))
-        << mf2
+        d.File(
+            mesh.mpi_comm(),
+            str(filename.with_stem(filename.stem + f"_mf{facet_dim}").with_suffix(".pvd")),
+        )
+        << mf_facet
     )
