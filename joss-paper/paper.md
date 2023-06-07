@@ -13,13 +13,13 @@ authors:
     equal-contrib: false
     affiliation: 1 # (Multiple affiliations must be quoted)
   - name: Jørgen S. Dokken
-    orcid:
+    orcid: 0000-0001-6489-8858
     affiliation: 2
   - name: Henrik N.T. Finsberg
     orcid: 0000-0003-3766-2393
     affiliation: 3
-  - name: Emmet Francis
-    orcid:
+  - name: Emmet A. Francis
+    orcid: 0000-0001-6070-805X
     affiliation: 1
   - name: Christopher T. Lee
     orcid: 0000-0002-0670-2308
@@ -49,11 +49,10 @@ bibliography:
 
 Recent advances in microscopy and 3D reconstruction methods allow for characterizing biological cell morphology at unprecedented detail;
 this includes the observation of the irregular geometries of intracellular subcompartments such as membrane-bound organelles.
-Just as the shape of a car influences its aerodynamics and function, the intricate geometry of the cell also influences its function and behaviors.
-The question of how structure relates to function is thus central to biology.
-With respect to cellular ultrastructure, owing to the difficulty, costs, and limitations of wet experiments with cells we must consider alternative approaches such as predictive physical modeling to address these structure--function questions.
-Biological cells respond to stimuli
-through sequences of chemical reactions generally referred to as *cell signaling pathways*.
+Such geometries are now compatible with predictive modeling of cellular function.
+<!-- Just as the shape of a car influences its aerodynamics and function, the intricate geometry of the cell also influences its function and behaviors. -->
+The question of how structure relates to function is central to cell biology and one that can readily be addressed via computational modeling.
+Biological cells respond to stimuli through sequences of chemical reactions generally referred to as *cell signaling pathways*.
 The propagation and reaction of chemical substances in cell signaling pathways can be represented by coupled nonlinear
 systems of reaction-transport equations.
 These reaction pathways include numerous chemical species that react across boundaries or interfaces
@@ -64,7 +63,8 @@ because of their high dimensionality, non-linearities, strong coupling, stiffnes
 In this work, we describe *Spatial Modeling Algorithms for Reactions and Transport* (SMART),
 a high-performance finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes.
 SMART is based on the FEniCS finite element library, provides a symbolic representation
-framework for specifying reaction pathways, and supports geometries in 2D and 3D including large and irregular cell geometries obtained from modern ultrastructural characterization methods.
+framework for specifying reaction pathways, and supports geometries in 2D and 3D including
+large and irregular cell geometries obtained from modern ultrastructural characterization methods.
 
 # Statement of need
 
@@ -77,7 +77,7 @@ This framework uses a similar convention to Systems Biology Markup Language (SBM
 making the software approachable to a wider user base.
 SMART provides features for converting the model representation into appropriate coupled systems
 of ordinary differential equations (ODEs) and PDEs,
-and for solving these using efficient finite element and finite difference discretizations.
+and for solving these efficiently using finite element and finite difference discretizations.
 
 <!-- * Describe in 1-2 sentences which frameworks that exist in addition to SMART
 * State in 1-2 sentences why these are insufficient
@@ -141,9 +141,9 @@ spatial gradients of calcium near regions of calcium release (\autoref{fig:fig2}
 
 The authors would like to acknowledge contributions from Yuan Gao and William Xu during the early development of SMART.
 
-This material is based upon work supported by the National Science Foundation under Grant #EEC-2127509 to the American Society for Engineering Education.
 MER acknowledges support and funding from the Research Council of Norway (RCN) via FRIPRO grant agreement #324239 (EMIx), and the U.S.-Norway Fulbright Foundation for Educational Exchange.
+EAF is supported by the National Science Foundation under Grant #EEC-2127509 to the American Society for Engineering Education.
 CTL is supported by a Kavli Institute for Brain and Mind Postdoctoral Award.
-JGL, CTL, EF, and PR further acknowledge support from AFOSR MURI FA9550-18-1-0051 to PR.
+JGL, CTL, EAF, and PR further acknowledge support from AFOSR MURI FA9550-18-1-0051 to PR.
 
 # References
