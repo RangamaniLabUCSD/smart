@@ -152,7 +152,7 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     # Create/load in mesh
     # =============================================================================================
     # Base mesh
-    domain, facet_markers, cell_markers = mesh_tools.DemoSpheresMesh(
+    domain, facet_markers, cell_markers = mesh_tools.create_spheres(
         curRadius, 0, hEdge=0.2, comm=d.MPI.comm_self, verbose=False
     )  # 0 in second argument corresponds to no inner sphere
     # Write mesh and meshfunctions to file
