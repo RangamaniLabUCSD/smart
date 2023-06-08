@@ -1,10 +1,11 @@
 """
 Functions to create meshes for demos.
 
-:func:`DemoCuboidsMesh` defines a 'cube-in-a-cube' mesh using the
+:func:`create_cubes` defines a 'cube-in-a-cube' mesh using the
 built in :class:`dolfin.UnitCubeMesh()`, with subdomains defined and
 marked by :func:`facet_topology` and :func:`cube_condition`
-:func:`DemoSpheresMesh`, :func:`DemoEllipsoidsMesh`, and :func:`DemoEllipseMesh`
+:func:`create_spheres`, :func:`create_ellipsoids`,
+:func:`create_cylinders`, and :func:`create_ellipses`
 define meshes using gmsh, which are then converted to
 dolfin meshes using :func:`gmsh_to_dolfin`
 :func:`write_mesh` writes 3d meshes with cell markers ``mf3`` and

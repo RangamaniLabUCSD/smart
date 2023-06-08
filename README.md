@@ -41,13 +41,13 @@ python3 -m pip install fenics-smart
 However this requires FEniCS version 2019.2.0 or later to already be installed. Currently, FEniCS version 2019.2.0 needs to be built [from source](https://bitbucket.org/fenics-project/dolfin/src/master/) or use some of the [pre-built docker images](https://github.com/orgs/scientificcomputing/packages?repo_name=packages)
 
 ## Example usage
-The SMART repository contains a number of examples in the `examples` directory:
-* Example 1: Formation of Turing patterns in 2D reaction-diffusion (rectangular domain)
-* Example 2: Simple cell signaling model in 2D (ellipse)
-* Example 3: Model of protein phosphorylation and diffusion in 3D (sphere)
-* Example 4: Model of second messenger reaction-diffusion in 3D (ellipsoid-in-an-ellipsoid)
-* Example 5: Simple cell signaling model in 3D (cube-in-a-cube)
-* Example 6: Model of calcium dynamics in a neuron (sphere-in-a-sphere)
+The SMART repository contains a number of examples in the `examples` directory which also run as continuous integration tests (see "Automated Tests" below):
+* [Example 1](https://rangamanilabucsd.github.io/smart/examples/example1/example1.html): Formation of Turing patterns in 2D reaction-diffusion (rectangular domain)
+* [Example 2](https://rangamanilabucsd.github.io/smart/examples/example2/example2.html): Simple cell signaling model in 2D (ellipse)
+* [Example 3](https://rangamanilabucsd.github.io/smart/examples/example3/example3.html): Model of protein phosphorylation and diffusion in 3D (sphere)
+* [Example 4](https://rangamanilabucsd.github.io/smart/examples/example4/example4.html): Model of second messenger reaction-diffusion in 3D (ellipsoid-in-an-ellipsoid)
+* [Example 5](https://rangamanilabucsd.github.io/smart/examples/example5/example5.html): Simple cell signaling model in 3D (cube-in-a-cube)
+* [Example 6](https://rangamanilabucsd.github.io/smart/examples/example6/example6.html): Model of calcium dynamics in a neuron (sphere-in-a-sphere)
 
 ## Functionality documentation
 SMART is equipped to handle:
