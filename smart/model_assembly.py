@@ -301,7 +301,10 @@ class ObjectContainer:
 
         # print to file
         if filename is None:
-            logger.info(tabulate(df, headers="keys", tablefmt=tablefmt))
+            logger.info(
+                tabulate(df, headers="keys", tablefmt=tablefmt),
+                extra=dict(format_type="table"),
+            )
         else:
             original_stdout = sys.stdout  # Save a reference to the original standard output
             with open(filename, "w") as f:  # TODO: Add this to logging
