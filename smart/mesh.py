@@ -1,5 +1,5 @@
 """
-Wrapper around dolfin mesh class (originally for submesh implementation - possibly unneeded now)
+Wrapper around dolfin mesh class to define parent and child meshes for SMART simulations.
 """
 from typing import Dict, FrozenSet
 import logging
@@ -139,13 +139,13 @@ class _Mesh:
 class ParentMesh(_Mesh):
     """
     Mesh loaded in from data. Submeshes are extracted from the ParentMesh based
-    on marker values from the .xml file.
+    on marker values from the .hdf5 or .xml file.
 
     Args:
-        mesh_filename (str): Name of mesh file
-        mesh_filetype (str): Extension of mesh, either 'xml' or 'hdf5'
-        name (str): Name of mesh
-        use_partition (bool): If `hdf5` mesh file is loaded,
+    * mesh_filename (str): Name of mesh file
+    * mesh_filetype (str): Extension of mesh, either 'xml' or 'hdf5'
+    * parent_mesh (str): Name of mesh
+    * use_partition (bool): If `hdf5` mesh file is loaded,
             choose if mesh should be read in with its current partition
     """
 
@@ -177,6 +177,7 @@ class ParentMesh(_Mesh):
         self.parent_mesh = self
 
     def get_mesh_from_id(self, id):
+        "Find the mesh that has the matching id."
         # find the mesh in that has the matching id
         for mesh in self.all_meshes.values():
             if mesh.id == id:
@@ -187,6 +188,7 @@ class ParentMesh(_Mesh):
         return dict(list(self.child_meshes.items()) + list({self.name: self}.items()))
 
     def load_mesh_from_xml(self, mesh_filename):
+        "Load parent mesh from xml file `mesh_filename`"
         self.dolfin_mesh = d.Mesh(mesh_filename)
 
         self.dimensionality = self.dolfin_mesh.topology().dim()
@@ -197,6 +199,10 @@ class ParentMesh(_Mesh):
         logger.info(f'XML mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
 
     def load_mesh_from_hdf5(self, mesh_filename, use_partition=False):
+        """
+        Load parent mesh from hdf5 file `mesh_filename`
+        Parallelize mesh if `use_partition` is True
+        """
         comm = self.mpi_comm
         # mesh, mfs = common.read_hdf5(hdf5_filename)
         self.dolfin_mesh = d.Mesh(comm)
@@ -294,11 +300,11 @@ class ParentMesh(_Mesh):
 
 class ChildMesh(_Mesh):
     """
-    Sub mesh of a parent mesh.
+    Sub-mesh of a parent mesh, defined by mesh markers.
 
     Params:
-        parent_mesh: The mesh owning the entities in the compartment
-        compartment: The compartment
+    * parent_mesh: The mesh owning the entities in the compartment
+    * compartment: The compartment object
     """
 
     intersection_map: Dict[FrozenSet[int], d.MeshFunction]
@@ -444,11 +450,3 @@ class ChildMesh(_Mesh):
     def extract_submesh(self):
         mf_type = "cells" if self.is_volume else "facets"
         self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
-
-    def init_marker_list_mesh_function(self):
-        "Child mesh functions require transfering data from parent mesh functions"
-        assert hasattr(self.parent_mesh, "mf")
-        assert self.marker_list is not None
-
-        # initialize
-        raise NotImplementedError("Need to check this")

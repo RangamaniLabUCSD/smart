@@ -146,7 +146,6 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     pc["VolSA"].value = curRadius / 3
     # log_file = f"resultsSphere_{curRadius:03f}/output.log"
     configCur = config.Config()
-    configCur.flags.update({"multi_mesh_MPI": True})
 
     # =============================================================================================
     # Create/load in mesh

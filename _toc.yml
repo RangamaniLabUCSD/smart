@@ -2,10 +2,6 @@ format: jb-book
 root: README
 
 parts:
-  - caption: Getting started
-    chapters:
-    - file: docs/install
-    - file: docs/faq
   - caption: Mathematics
     chapters:
     - file: docs/math

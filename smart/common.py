@@ -40,7 +40,7 @@ def smart_expressions(
     `smart`-Expressions, i.e. functions with a unit.
 
     Args:
-        dolfin_expressions: Dictonary of strings mapping
+        dolfin_expressions: Dictionary of strings mapping
           to smart expressions
 
     Example:
