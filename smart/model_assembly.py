@@ -228,7 +228,7 @@ class ObjectContainer:
             sig_figs=sig_figs,
         )
 
-        # Change certain df entries to best format for
+        # Change certain df entries to best format for display
         for col in df.columns:
             # Convert quantity objects to unit
             if isinstance(df[col][0], pint.Quantity):

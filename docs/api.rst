@@ -37,3 +37,13 @@ SMART modules
    :recursive:
 
    smart.units
+
+.. autosummary::
+   :recursive:
+
+   smart.mesh_tools
+
+.. autosummary::
+   :recursive:
+
+   smart.visualization

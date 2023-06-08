@@ -336,16 +336,19 @@ class SolverConfig(BaseConfig):
     """
     Parameters for solver.
 
-    :param final_t: End time of simulation
-    :param use_snes: Use PETScSNES solver if true, else use DOLFINs NewtonSolver
-    :param snes_preassemble_linear_system: If True separate linear components during assembly
-        (in development, untested)
-    :param initial_dt: Initial time-stepping
-    :param adjust_dt: A tuple (t, dt) of floats indicating when to next adjust the
-        time-stepping and to what value
-    :param dt: Number of digits for rounding `dt`
-    :param print_assembly: Print information during assembly process
-    :param attempt_timestep_restart_on_divergence: Restart snes solver if it diverges
+    Args:
+        final_t: End time of simulation
+        use_snes: Use PETScSNES solver if true, else use DOLFINs NewtonSolver
+        snes_preassemble_linear_system: If True separate linear components during assembly
+        initial_dt: Initial time-stepping
+        adjust_dt: A tuple (t, dt) of floats indicating when to next adjust the
+            time-stepping and to what value
+        dt: Number of digits for rounding `dt`
+        print_assembly: Print information during assembly process
+        dt_decrease_factor:
+        dt_increase_factor:
+        attempt_timestep_restart_on_divergence: Restart snes solver if it diverges
+        reset_timestep_for_negative_solution: Reduce solver timestep is solution is negative
     """
 
     final_t: Optional[float] = None
@@ -364,10 +367,10 @@ class FlagsConfig(BaseConfig):
     """
     Various flags
 
-    :param allow_unused_components: Allow parameters not defined in any reaction to be
-        defined in any model.
-    :param print_verbose_info: Print detailed information about a model
-
+    Args:
+        allow_unused_components: Allow parameters not defined in any reaction to be
+            defined in any model.
+        print_verbose_info: Print detailed information about a model
     """
 
     allow_unused_components: bool = False
@@ -379,8 +382,9 @@ class Config:
     """
     Configuration settings.
 
-    :param solver: Options for the solvers
-    :param flags: Various options
+    Args:
+        solver: Options for the solvers
+        flags: Various options
     """
 
     solver: SolverConfig = field(default_factory=SolverConfig)

@@ -37,8 +37,10 @@ def create_vtk_structures(
     """Given a (discontinuous) Lagrange space, create pyvista compatible structures based on the
     dof coordinates
 
-    :param Vh: the function space
-    :return: Mesh topology, cell types and mesh geometry arrays
+    Args:
+        Vh: the function space
+    Returns:
+        Tuple: Mesh topology, cell types and mesh geometry arrays
     """
     family = Vh.ufl_element().family()
     mesh = Vh.mesh()
@@ -51,6 +53,7 @@ def create_vtk_structures(
             np.zeros((0, 3), dtype=np.float64),
         )
     d_cell = mesh.ufl_cell()
+    # need this extra statement for case of triangles in 3d
     if d_cell._cellname == "triangle":
         d_cell = dolfin.triangle
 
@@ -102,13 +105,14 @@ def plot(
     """
     Plot a (discontinuous) Lagrange function with Pyvista
 
-    :param uh: The function
-    :param filename: If set, writes the plot to file instead of displaying it interactively
-    :param show_edges: Show mesh edges if ``True``
-    :param glyph_factor: Scaling of glyphs if input function is a function from a
-      ``dolfin.VectorFunctionSpace``.
-    :param off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
-    :param view_xy: If ``True``, view xy plane
+    Args:
+        uh: The function
+        filename: If set, writes the plot to file instead of displaying it interactively
+        show_edges: Show mesh edges if ``True``
+        glyph_factor: Scaling of glyphs if input function is a function from a
+            ``dolfin.VectorFunctionSpace``.
+        off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
+        view_xy: If ``True``, view xy plane
     """
     Vh = uh.function_space()
 
@@ -151,8 +155,8 @@ def plot(
         if uh.geometric_dimension() == 2 or view_xy:
             plotter.add_mesh(grid, show_edges=show_edges)
         else:
-            plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
-            plotter.add_volume(grid, opacity="linear")  # , show_edges=show_edges)
+            crinkled = grid.clip(normal=(1, 0, 0), crinkle=True)
+            plotter.add_mesh(crinkled, show_edges=show_edges)
 
     if uh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
@@ -169,7 +173,9 @@ def plot(
 
 def plot_dolfin_mesh(
     msh: dolfin.mesh,
-    mf: dolfin.MeshFunction,
+    mf_cell: dolfin.MeshFunction,
+    mf_facet: dolfin.MeshFunction = None,
+    outer_marker: int = 10,
     filename: Optional[pathlib.Path] = None,
     show_edges: bool = True,
     off_screen: bool = True,
@@ -180,21 +186,39 @@ def plot_dolfin_mesh(
     convert function space to vtk structures,
     and then plot mesh markers in mf (a dolfin MeshFunction)
 
-    :param msh: dolfin mesh object
-    :param mf: marker values given as a dolfin MeshFunction
-    :param filename: If set, writes the plot to file instead of displaying it interactively
-    :param show_edges: Show mesh edges if ``True``
-    :param glyph_factor: Scaling of glyphs if input function is a function from a
-      ``dolfin.VectorFunctionSpace``.
-    :param off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
-    :param view_xy: If ``True``, view xy plane
+    Args:
+        msh: dolfin mesh object
+        mf_cell: marker values for cells in domain, given as a dolfin MeshFunction
+        mf_facet (optional): marker values for facets at domain boundary,
+            given as a dolfin MeshFunction defined over all facets in the mesh
+        outer_marker (optional): value marking the boundary facets in mf_facet.
+            Number of nodes with this marker
+            should match the number of nodes in dolfin.BoundaryMesh(msh, "exterior")
+        filename: If set, writes the plot to file instead of displaying it interactively
+        show_edges: Show mesh edges if ``True``
+        off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
+        view_xy: If ``True``, view xy plane
     """
     Vh = dolfin.FunctionSpace(msh, "P", 1)
-    u_out = mf.array()
+    u_out = mf_cell.array()
     topology, cell_types, x = create_vtk_structures(Vh)
-
     grid = pyvista.UnstructuredGrid(topology, cell_types, x)
     grid["mf"] = u_out
+
+    facets_loaded = False
+    if mf_facet is not None:
+        msh_facet = dolfin.BoundaryMesh(msh, "exterior")
+        Vh_facet = dolfin.FunctionSpace(msh_facet, "P", 1)
+        u_facet = mf_facet.array()[
+            mf_facet.array() == outer_marker
+        ]  # outer_marker labels outer surface
+        topology, cell_types, x = create_vtk_structures(Vh_facet)
+        grid_facet = pyvista.UnstructuredGrid(topology, cell_types, x)
+        try:
+            grid_facet["mf"] = u_facet
+            facets_loaded = True
+        except ValueError:
+            facets_loaded = False
 
     pyvista.OFF_SCREEN = off_screen
     pyvista.start_xvfb()
@@ -212,13 +236,15 @@ def plot_dolfin_mesh(
         plotter.add_mesh(p1_grid, style="wireframe")
     else:
         if msh.topology().dim() == 3:
-            # plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
-            # plotter.add_volume(grid, opacity=0.2)  # , show_edges=show_edges)
             crinkled = grid.clip(normal=(1, 0, 0), crinkle=True)
             plotter.add_mesh(crinkled, show_edges=show_edges)
-            plotter.add_mesh
+            if facets_loaded:
+                crinkled_facet = grid_facet.clip(normal=(1, 0, 0), crinkle=True)
+                plotter.add_mesh(crinkled_facet, show_edges=show_edges)
         elif msh.topology().dim() == 2:
             plotter.add_mesh(grid, show_edges=show_edges)
+            if facets_loaded:
+                plotter.add_mesh(grid_facet, show_edges=show_edges)
 
     if msh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
