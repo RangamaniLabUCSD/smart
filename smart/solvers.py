@@ -1,6 +1,5 @@
 """SMART module interfacing with PETSc SNES solver"""
 import logging
-import os
 from typing import Dict, List, Optional
 
 import dolfin as d
@@ -84,18 +83,13 @@ class smartSNESProblem:
             p.LGMap().create(lgmap, bsize=bsize, comm=self.comm)
             for bsize, lgmap in zip(self.block_sizes, self.lgmaps)
         ]
-        # self.blgmaps_petsc = [p.LGMap().create(blgmap, bsize=bsize, comm=self.comm)
-        # for bsize, blgmap in zip(self.block_sizes, self.block_indices)] # block version
 
         self.local_ownership_ranges = [V.dofmap().ownership_range() for V in self.W]
         self.local_sizes = [x[1] - x[0] for x in self.local_ownership_ranges]
         self.global_sizes = [V.dim() for V in self.W]
 
         # Need sizes because some forms may be empty
-        # self.local_sizes = [c._num_dofs_local for c in active_compartments]
-        # self.global_sizes = [c._num_dofs for c in active_compartments]
         self.is_single_domain = len(self.global_sizes) == 1
-
         self.active_compartment_names = [c.name for c in active_compartments]
         self.mesh_id_to_name = {c.mesh_id: c.name for c in all_compartments}
 
@@ -107,19 +101,6 @@ class smartSNESProblem:
             if key not in stopwatches.keys():
                 raise ValueError(f"Stopwatch dictionary missing stopwatch {key}")
         self.stopwatches = stopwatches
-        # Our custom assembler (something about dolfin's init_global_tensor was not
-        # correct so we manually initialize the petsc matrix and then wrap with dolfin)
-        # This assembly routine is the exact same as d.assemble_mixed() except
-        # init_global_tensor() is commented out
-        # Thanks to Prof. Kamensky and his student for the idea
-        # https://github.com/hanzhao2020/PENGoLINS/blob/main/PENGoLINS/cpp/transfer_matrix.cpp
-        os.path.dirname(os.path.realpath(__file__))
-        # cpp_file = open(path_to_script_dir+"/cpp/MixedAssemblerTemp.cpp","r")
-        # cpp_code = cpp_file.read()
-        # cpp_file.close()
-        # self.module = d.compile_cpp_code(cpp_code,include_dirs=[path_to_script_dir+"/cpp",])
-        # self.assembler = d.compile_cpp_code(cpp_code,include_dirs=[path_to_script_dir+"/cpp",]).
-        # MixedAssemblerTemp()
 
         # Check for empty forms
         self.empty_forms = []

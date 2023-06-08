@@ -1,25 +1,15 @@
 # Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+name: Build docs
 
 on:
-  # Runs on pushes targeting the default branch
-  push:
+  pull_request:
     branches:
-    - "**"
+      - "development"
 
+  # This workflow can be executed inside another workfow file
+  workflow_call:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Allow one concurrent deployment
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
 
@@ -29,40 +19,35 @@ jobs:
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
+      DISPLAY: ":99.0"
+      PYVISTA_TRAME_SERVER_PROXY_PREFIX: '/proxy/'
+      PYVISTA_TRAME_SERVER_PROXY_ENABLED: "True"
+      PYVISTA_OFF_SCREEN: false
+      PYVISTA_JUPYTER_BACKEND: "panel"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: "Install pyvista dependencies"
+        run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
+
       - name: Install dependencies
-        run: python3 -m pip install ".[docs,dev]"
+        run: python3 -m pip install ".[docs,dev,examples]"
+
+      - name: Cache notebooks
+        id: cache-notebooks
+        uses: actions/cache@v3
+        with:
+          path: _build
+          key: cache_key_2  # Bump nuber manually when you want to clear the cache
 
       - name: Build docs
         run: jupyter book build .
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+      - name: Upload documentation as artifact
+        uses: actions/upload-artifact@v3
         with:
+          name: documentation
           path: ${{ env.PUBLISH_DIR }}
-
-  # Single deploy job since we're just deploying
-  deploy:
-    if: github.ref == 'refs/heads/development'
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v2
-
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v1
+          if-no-files-found: error

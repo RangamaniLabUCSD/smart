@@ -7,9 +7,11 @@ import numbers
 import sys
 from collections import OrderedDict as odict
 from dataclasses import dataclass
+from enum import Enum
 from pprint import pformat
 from textwrap import wrap
 from typing import Any, List, Optional, Union
+import warnings
 
 import dolfin as d
 import numpy as np
@@ -34,6 +36,7 @@ __all__ = [
     "Reaction",
     "Species",
     "sbmodel_from_locals",
+    "ParameterType",
 ]
 
 comm = d.MPI.comm_world
@@ -49,6 +52,12 @@ logger = logging.getLogger(__name__)
 # Base Classes
 # ====================================================
 # ====================================================
+
+
+class ParameterType(str, Enum):
+    from_file = "from_file"
+    constant = "constant"
+    expression = "expression"
 
 
 class InvalidObjectException(Exception):
@@ -172,24 +181,33 @@ class ObjectContainer:
             if properties_to_print is not None and "idx" not in properties_to_print:
                 properties_to_print.insert(0, "idx")
             for idx, (_, instance) in enumerate(self.items):
-                df = pandas.concat(
-                    [
-                        df,
-                        instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx)
-                        .to_frame()
-                        .T,
-                    ]
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # See https://github.com/hgrecco/pint-pandas/issues/128
+                    df = pandas.concat(
+                        [
+                            df,
+                            instance.get_pandas_series(
+                                properties_to_print=properties_to_print, idx=idx
+                            )
+                            .to_frame()
+                            .T,
+                        ]
+                    )
         else:
             for idx, (_, instance) in enumerate(self.items):
-                df = pandas.concat(
-                    [
-                        df,
-                        instance.get_pandas_series(properties_to_print=properties_to_print)
-                        .to_frame()
-                        .T,
-                    ]
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # See https://github.com/hgrecco/pint-pandas/issues/128
+                    df = pandas.concat(
+                        [
+                            df,
+                            instance.get_pandas_series(properties_to_print=properties_to_print)
+                            .to_frame()
+                            .T,
+                        ]
+                    )
+
         return df
 
     def print_to_latex(
@@ -240,6 +258,7 @@ class ObjectContainer:
         elif hasattr(self, "properties_to_print"):
             properties_to_print = self.properties_to_print
         df = self.get_pandas_dataframe(properties_to_print=properties_to_print, include_idx=False)
+
         if properties_to_print:
             df = df[properties_to_print]
 
@@ -282,7 +301,10 @@ class ObjectContainer:
 
         # print to file
         if filename is None:
-            logger.info(tabulate(df, headers="keys", tablefmt=tablefmt))
+            logger.info(
+                tabulate(df, headers="keys", tablefmt=tablefmt),
+                extra=dict(format_type="table"),
+            )
         else:
             original_stdout = sys.stdout  # Save a reference to the original standard output
             with open(filename, "w") as f:  # TODO: Add this to logging
@@ -552,7 +574,7 @@ class Parameter(ObjectInstance):
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
         parameter.is_space_dependent = False  # not supported yet
-        parameter.type = "from_file"
+        parameter.type = ParameterType.from_file
         parameter.__post_init__()
         logger.info(
             f"Time-dependent parameter {name} loaded from file.",
@@ -619,7 +641,7 @@ class Parameter(ObjectInstance):
         parameter.is_space_dependent = is_space_dependent
 
         # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
-        parameter.type = "expression"
+        parameter.type = ParameterType.expression
         parameter.__post_init__()
         logger.debug(
             f"Time-dependent parameter {name} evaluated from expression.",
@@ -654,7 +676,7 @@ class Parameter(ObjectInstance):
                 setattr(self, attribute, None)
 
         if not hasattr(self, "type"):
-            self.type = "constant"
+            self.type = ParameterType.constant
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
