@@ -63,9 +63,9 @@ Our API documentation can be accessed [here](https://rangamanilabucsd.github.io/
 
 ## Automated tests
 Upon pushing new code to the SMART repository, a number of tests run:
-* pre-commit tests
-* unit tests
-* Examples
+* pre-commit tests: Tests to ensure best practices in code writing.
+* unit tests (can be found in `tests` folder): test initialization of compartment, species, and parameter objects
+* Examples 1-6: All 6 examples are run when building the docs. These serve as Contiuous Integration (CI) tests; within each run, there is a regression test comparing the output values from the simulation with values obtained from a previous build of SMART. Outputs from examples 2 and 3 are also compared to analytical solutions or approximations to demonstrate the accuracy of SMART simulations.
 
 ## Contributing guidelines
 
@@ -79,8 +79,8 @@ Detailed contributing guidelines are given [here](https://rangamanilabucsd.githu
 * SMART uses [matplotlib](https://matplotlib.org/) to generate plots in examples
 * SMART uses [sympy](https://www.sympy.org/) to allow users to input custom reactions and also to determine the appopriate solution techniques (e.g. testing for non-linearities).
 * SMART uses [numpy](https://numpy.org/) and [scipy](https://www.scipy.org/) for general array manipulations and basic calculations.
-* SMART uses [tabulate](https://pypi.org/project/tabulate/) to make pretty ASCII tables.
-* SMART uses [termcolor](https://pypi.org/project/termcolor/) for pretty terminal output so that simulations are more satisfying to watch.
+* SMART uses [tabulate](https://pypi.org/project/tabulate/) to make ASCII tables.
+* SMART uses [termcolor](https://pypi.org/project/termcolor/) for colored terminal output.
 
 ## License
 LGPL-3.0
