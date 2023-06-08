@@ -37,8 +37,10 @@ def create_vtk_structures(
     """Given a (discontinuous) Lagrange space, create pyvista compatible structures based on the
     dof coordinates
 
-    :param Vh: the function space
-    :return: Mesh topology, cell types and mesh geometry arrays
+    Args:
+        Vh: the function space
+    Returns:
+        Tuple: Mesh topology, cell types and mesh geometry arrays
     """
     family = Vh.ufl_element().family()
     mesh = Vh.mesh()
@@ -103,13 +105,14 @@ def plot(
     """
     Plot a (discontinuous) Lagrange function with Pyvista
 
-    :param uh: The function
-    :param filename: If set, writes the plot to file instead of displaying it interactively
-    :param show_edges: Show mesh edges if ``True``
-    :param glyph_factor: Scaling of glyphs if input function is a function from a
-      ``dolfin.VectorFunctionSpace``.
-    :param off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
-    :param view_xy: If ``True``, view xy plane
+    Args:
+        uh: The function
+        filename: If set, writes the plot to file instead of displaying it interactively
+        show_edges: Show mesh edges if ``True``
+        glyph_factor: Scaling of glyphs if input function is a function from a
+            ``dolfin.VectorFunctionSpace``.
+        off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
+        view_xy: If ``True``, view xy plane
     """
     Vh = uh.function_space()
 
@@ -183,19 +186,18 @@ def plot_dolfin_mesh(
     convert function space to vtk structures,
     and then plot mesh markers in mf (a dolfin MeshFunction)
 
-    :param msh: dolfin mesh object
-    :param mf_cell: marker values for cells in domain, given as a dolfin MeshFunction
-    :param mf_facet (optional): marker values for facets at domain boundary,
-        given as a dolfin MeshFunction defined over all facets in the mesh
-    :param outer_marker (optional): value marking the boundary facets in mf_facet.
-        Number of nodes with this marker
-        should match the number of nodes in dolfin.BoundaryMesh(msh, "exterior")
-    :param filename: If set, writes the plot to file instead of displaying it interactively
-    :param show_edges: Show mesh edges if ``True``
-    :param glyph_factor: Scaling of glyphs if input function is a function from a
-      ``dolfin.VectorFunctionSpace``.
-    :param off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
-    :param view_xy: If ``True``, view xy plane
+    Args:
+        msh: dolfin mesh object
+        mf_cell: marker values for cells in domain, given as a dolfin MeshFunction
+        mf_facet (optional): marker values for facets at domain boundary,
+            given as a dolfin MeshFunction defined over all facets in the mesh
+        outer_marker (optional): value marking the boundary facets in mf_facet.
+            Number of nodes with this marker
+            should match the number of nodes in dolfin.BoundaryMesh(msh, "exterior")
+        filename: If set, writes the plot to file instead of displaying it interactively
+        show_edges: Show mesh edges if ``True``
+        off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
+        view_xy: If ``True``, view xy plane
     """
     Vh = dolfin.FunctionSpace(msh, "P", 1)
     u_out = mf_cell.array()
