@@ -11,6 +11,7 @@ from enum import Enum
 from pprint import pformat
 from textwrap import wrap
 from typing import Any, List, Optional, Union
+import warnings
 
 import dolfin as d
 import numpy as np
@@ -180,24 +181,33 @@ class ObjectContainer:
             if properties_to_print is not None and "idx" not in properties_to_print:
                 properties_to_print.insert(0, "idx")
             for idx, (_, instance) in enumerate(self.items):
-                df = pandas.concat(
-                    [
-                        df,
-                        instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx)
-                        .to_frame()
-                        .T,
-                    ]
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # See https://github.com/hgrecco/pint-pandas/issues/128
+                    df = pandas.concat(
+                        [
+                            df,
+                            instance.get_pandas_series(
+                                properties_to_print=properties_to_print, idx=idx
+                            )
+                            .to_frame()
+                            .T,
+                        ]
+                    )
         else:
             for idx, (_, instance) in enumerate(self.items):
-                df = pandas.concat(
-                    [
-                        df,
-                        instance.get_pandas_series(properties_to_print=properties_to_print)
-                        .to_frame()
-                        .T,
-                    ]
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # See https://github.com/hgrecco/pint-pandas/issues/128
+                    df = pandas.concat(
+                        [
+                            df,
+                            instance.get_pandas_series(properties_to_print=properties_to_print)
+                            .to_frame()
+                            .T,
+                        ]
+                    )
+
         return df
 
     def print_to_latex(
@@ -248,6 +258,7 @@ class ObjectContainer:
         elif hasattr(self, "properties_to_print"):
             properties_to_print = self.properties_to_print
         df = self.get_pandas_dataframe(properties_to_print=properties_to_print, include_idx=False)
+
         if properties_to_print:
             df = df[properties_to_print]
 
