@@ -10,6 +10,8 @@ import numpy as np
 import pathlib
 from typing import Optional
 
+# pyvista.global_theme.trame.server_proxy_enabled = True
+
 __all__ = ["create_vtk_structures", "plot"]
 
 _vtk_perm = {
@@ -49,6 +51,8 @@ def create_vtk_structures(
             np.zeros((0, 3), dtype=np.float64),
         )
     d_cell = mesh.ufl_cell()
+    if d_cell._cellname == "triangle":
+        d_cell = dolfin.triangle
 
     if d_cell == vertex:
         cell_type = 1
@@ -93,6 +97,7 @@ def plot(
     show_edges: bool = True,
     glyph_factor: float = 1,
     off_screen: bool = True,
+    view_xy: bool = False,
 ):
     """
     Plot a (discontinuous) Lagrange function with Pyvista
@@ -103,6 +108,7 @@ def plot(
     :param glyph_factor: Scaling of glyphs if input function is a function from a
       ``dolfin.VectorFunctionSpace``.
     :param off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
+    :param view_xy: If ``True``, view xy plane
     """
     Vh = uh.function_space()
 
@@ -142,9 +148,13 @@ def plot(
             plotter.add_mesh(grid)
             plotter.add_mesh(p1_grid, style="wireframe")
     else:
-        plotter.add_mesh(grid, show_edges=show_edges)
+        if uh.geometric_dimension() == 2 or view_xy:
+            plotter.add_mesh(grid, show_edges=show_edges)
+        else:
+            plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
+            plotter.add_volume(grid, opacity="linear")  # , show_edges=show_edges)
 
-    if uh.geometric_dimension() == 2:
+    if uh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
 
     if bs > 1:
@@ -163,12 +173,21 @@ def plot_dolfin_mesh(
     filename: Optional[pathlib.Path] = None,
     show_edges: bool = True,
     off_screen: bool = True,
+    view_xy: bool = False,
 ):
     """
     Construct P1 function space on current mesh,
     convert function space to vtk structures,
     and then plot mesh markers in mf (a dolfin MeshFunction)
 
+    :param msh: dolfin mesh object
+    :param mf: marker values given as a dolfin MeshFunction
+    :param filename: If set, writes the plot to file instead of displaying it interactively
+    :param show_edges: Show mesh edges if ``True``
+    :param glyph_factor: Scaling of glyphs if input function is a function from a
+      ``dolfin.VectorFunctionSpace``.
+    :param off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
+    :param view_xy: If ``True``, view xy plane
     """
     Vh = dolfin.FunctionSpace(msh, "P", 1)
     u_out = mf.array()
@@ -192,13 +211,16 @@ def plot_dolfin_mesh(
         plotter.add_mesh(grid)
         plotter.add_mesh(p1_grid, style="wireframe")
     else:
-        if msh.geometric_dimension() == 3:
-            plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
-            plotter.add_volume(grid, opacity="linear")  # , show_edges=show_edges)
-        elif msh.geometric_dimension() == 2:
+        if msh.topology().dim() == 3:
+            # plotter.add_mesh(grid, opacity=0.1, show_edges=show_edges)
+            # plotter.add_volume(grid, opacity=0.2)  # , show_edges=show_edges)
+            crinkled = grid.clip(normal=(1, 0, 0), crinkle=True)
+            plotter.add_mesh(crinkled, show_edges=show_edges)
+            plotter.add_mesh
+        elif msh.topology().dim() == 2:
             plotter.add_mesh(grid, show_edges=show_edges)
 
-    if msh.geometric_dimension() == 2:
+    if msh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
 
     print(filename)
