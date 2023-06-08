@@ -34,20 +34,6 @@ def test_Species_initialization(species_kwargs_A):
     assert A.is_in_a_reaction is False
 
 
-@pytest.mark.xfail
-def test_access_vscalar(species_kwargs_A):
-    A = smart.model_assembly.Species(**species_kwargs_A)
-    # We should have proper error handling here
-    A.vscalar
-
-
-@pytest.mark.xfail
-def test_access_dolfin_quatity(species_kwargs_A):
-    A = smart.model_assembly.Species(**species_kwargs_A)
-    # We should have proper error handling here
-    A.dolfin_quantity
-
-
 def test_SpeciesContainer(species_kwargs_A, species_kwargs_AER):
     """Test that we can initialize a SpeciesContainer"""
     A = smart.model_assembly.Species(**species_kwargs_A)

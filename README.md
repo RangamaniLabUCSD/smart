@@ -2,14 +2,13 @@
 [![PyPI](https://img.shields.io/pypi/v/fenics-smart)](https://pypi.org/project/fenics-smart/)
 [![Deploy static content to Pages](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml)
 [![pre-commit](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml)
-# Spatial Modelling Algorithms for Reaction-Transport [systems|models|equations]
+# Spatial Modeling Algorithms for Reaction-Transport [systems|models|equations]
 
 ## Statement of Need
 
-SMART is a biophysical simulation library that provides a level of abstraction to models, making it easier for users to develop, share, and simulate their mathematical models.
-SMART is highly suited for building systems biology models and simulating them as deterministic partial differential equations (PDEs)` in realistic geometries using the Finite Element Method (FEM).
-Systems biology models are converted by SMART into the appropriate systems of reaction-diffusion PDEs with proper boundary conditions.
-[FEniCS](https://fenicsproject.org/) is a core dependency of SMART which handles the assembly of finite element matrices as well as solving the resultant linear algebra systems.
+*Spatial Modeling Algorithms for Reactions and Transport* (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation for spatially-varying reaction-transport processes.
+SMART is based on the [FEniCS finite element library](https://fenicsproject.org/), provides a symbolic representation
+framework for specifying reaction pathways, and supports large and irregular cell geometries in 2D and 3D.
 
 - Documentation: https://rangamanilabucsd.github.io/smart
 - Source code: https://github.com/RangamaniLabUCSD/smart
@@ -42,11 +41,13 @@ python3 -m pip install fenics-smart
 However this requires FEniCS version 2019.2.0 or later to already be installed. Currently, FEniCS version 2019.2.0 needs to be built [from source](https://bitbucket.org/fenics-project/dolfin/src/master/) or use some of the [pre-built docker images](https://github.com/orgs/scientificcomputing/packages?repo_name=packages)
 
 ## Example usage
-The SMART repository contains a number of examples in the `examples` directory:
-* Example 1: Single species reaction-diffusion in a sphere
-* Example 2: Single species reaction-diffusion with two volumetric compartments (sphere within a sphere) and two surface compartments
-* Example 3: Multispecies reaction-diffusion across two volumetric compartments and two surface compartments - cube in a cube
-* Example 4: Simplified model of calcium dynamics in a neuron - sphere in a sphere
+The SMART repository contains a number of examples in the `examples` directory which also run as continuous integration tests (see "Automated Tests" below):
+* [Example 1](https://rangamanilabucsd.github.io/smart/examples/example1/example1.html): Formation of Turing patterns in 2D reaction-diffusion (rectangular domain)
+* [Example 2](https://rangamanilabucsd.github.io/smart/examples/example2/example2.html): Simple cell signaling model in 2D (ellipse)
+* [Example 3](https://rangamanilabucsd.github.io/smart/examples/example3/example3.html): Model of protein phosphorylation and diffusion in 3D (sphere)
+* [Example 4](https://rangamanilabucsd.github.io/smart/examples/example4/example4.html): Model of second messenger reaction-diffusion in 3D (ellipsoid-in-an-ellipsoid)
+* [Example 5](https://rangamanilabucsd.github.io/smart/examples/example5/example5.html): Simple cell signaling model in 3D (cube-in-a-cube)
+* [Example 6](https://rangamanilabucsd.github.io/smart/examples/example6/example6.html): Model of calcium dynamics in a neuron (sphere-in-a-sphere)
 
 ## Functionality documentation
 SMART is equipped to handle:
@@ -56,29 +57,30 @@ SMART is equipped to handle:
 * Specification of a time-dependent function either algebraically or from data (SMART will numerically integrate the data points at each time-step).
 * Customized reaction equations (e.g. irreversible Hill equation).
 
-The general form of the mixed-dimensional partial differential equations (PDEs) solved by SMART, along with mathematical details of the numerical implementation, are documented here.
+The general form of the mixed-dimensional partial differential equations (PDEs) solved by SMART, along with mathematical details of the numerical implementation, are documented [here](https://rangamanilabucsd.github.io/smart/docs/math.html).
 
-Our API documentation can be accessed here.
+Our API documentation can be accessed [here](https://rangamanilabucsd.github.io/smart/docs/api.html).
 
 ## Automated tests
 Upon pushing new code to the SMART repository, a number of tests run:
 * pre-commit tests
-* unit tests
-* Examples
+* unit tests (can be found in `tests` folder): test initialization of compartment, species, and parameter objects
+* Examples 1-6: All 6 examples are run when building the docs. These serve as Contiuous Integration (CI) tests; within each run, there is a regression test comparing the output values from the simulation with values obtained from a previous build of SMART. Outputs from examples 2 and 3 are also compared to analytical solutions to demonstrate the accuracy of SMART simulations.
 
 ## Contributing guidelines
 
-Detailed contributing guidelines are given here.
+Detailed contributing guidelines are given [here](https://rangamanilabucsd.github.io/smart/CONTRIBUTING.html).
 
 ### Dependencies
 * SMART uses [FEniCS](https://fenicsproject.org/) to assemble finite element matrices from the variational form
 * SMART uses [PETSc4py] to solve the resultant linear algebra systems.
 * SMART uses [pandas](https://pandas.pydata.org/) as an intermediate data structure to help organize and process models.
 * SMART uses [Pint](https://pint.readthedocs.io/en/stable/) for unit tracking and conversions.
+* SMART uses [matplotlib](https://matplotlib.org/) to generate plots in examples
 * SMART uses [sympy](https://www.sympy.org/) to allow users to input custom reactions and also to determine the appopriate solution techniques (e.g. testing for non-linearities).
 * SMART uses [numpy](https://numpy.org/) and [scipy](https://www.scipy.org/) for general array manipulations and basic calculations.
-* SMART uses [tabulate](https://pypi.org/project/tabulate/) to make pretty ASCII tables.
-* SMART uses [termcolor](https://pypi.org/project/termcolor/) for pretty terminal output so that simulations are more satisfying to watch.
+* SMART uses [tabulate](https://pypi.org/project/tabulate/) to make ASCII tables.
+* SMART uses [termcolor](https://pypi.org/project/termcolor/) for colored terminal output.
 
 ## License
 LGPL-3.0

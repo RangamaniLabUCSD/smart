@@ -1,5 +1,5 @@
 """
-Configuration settings for simulation: plotting, reaction types, solution output, etc.
+Configuration settings for simulation: logger formatting, solver configuration, other flags
 """
 import logging
 from logging import config as logging_config
@@ -27,7 +27,8 @@ rank = comm.rank
 size = comm.size
 root = 0
 fancy_format = (
-    "%(asctime)s %(rank)s%(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+    "%(asctime)s %(rank)s%(name)s - %(levelname)s - "
+    "%(newline)s%(message)s%(newline)s (%(filename)s:%(lineno)d)"
 )
 base_format = "%(asctime)s %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
 root_format = "ROOT -" + base_format
@@ -48,6 +49,7 @@ class FormatType(str, Enum):
     solverstep = "solverstep"
     assembly = "assembly"
     assembly_sub = "assembly_sub"
+    table = "table"
 
 
 class FormatOption(NamedTuple):
@@ -57,6 +59,7 @@ class FormatOption(NamedTuple):
     num_banners: int = 0
     new_lines: Tuple[int, int] = (0, 0)
     left_justify: bool = False
+    is_table: bool = False
 
 
 def format_type_to_options(format_type: FormatType) -> FormatOption:
@@ -79,6 +82,8 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
     """
     if FormatType[format_type] == FormatType.default:
         return FormatOption()
+    if FormatType[format_type] == FormatType.table:
+        return FormatOption(is_table=True)
     elif FormatType[format_type] == FormatType.title:
         return FormatOption(
             text_color="magenta",
@@ -88,7 +93,7 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
     elif FormatType[format_type] == FormatType.subtitle:
         return FormatOption(
             text_color="green",
-            filler_char=".",
+            filler_char="",
             left_justify=True,
         )
     elif FormatType[format_type] == FormatType.data:
@@ -123,19 +128,19 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
         return FormatOption(
             buffer_color="white",
             text_color="magenta",
-            filler_char=".",
+            filler_char="",
         )
     elif FormatType[format_type] == FormatType.log_urgent:
         return FormatOption(
             buffer_color="white",
             text_color="red",
-            filler_char=".",
+            filler_char="",
         )
     elif FormatType[format_type] == FormatType.warning:
         return FormatOption(
             buffer_color="magenta",
             text_color="red",
-            filler_char="!",
+            filler_char="",
             num_banners=2,
             new_lines=(1, 1),
         )
@@ -143,21 +148,21 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
         return FormatOption(
             text_color="red",
             num_banners=2,
-            filler_char=".",
+            filler_char="",
             new_lines=(1, 1),
         )
     elif FormatType[format_type] == FormatType.solverstep:
         return FormatOption(
             text_color="red",
             num_banners=1,
-            filler_char=".",
+            filler_char="",
             new_lines=(1, 1),
         )
     elif FormatType[format_type] == FormatType.assembly:
         return FormatOption(
             text_color="magenta",
             num_banners=0,
-            filler_char=".",
+            filler_char="",
             new_lines=(1, 0),
         )
     elif FormatType[format_type] == FormatType.assembly_sub:
@@ -216,6 +221,8 @@ def format_message(title_text: str, format_option: FormatOption) -> Tuple[str, s
 
 
 class FancyFormatter(logging.Formatter):
+    "Custom Formatter for logging"
+
     def format(self, record: logging.LogRecord) -> str:
         # Set the rank attribute with is a parameter in the `fancy_format``
         record.rank = f"CPU {rank}: " if size > 1 else ""
@@ -223,7 +230,7 @@ class FancyFormatter(logging.Formatter):
         # Extract the format options. Here we expect that `format_type` is provided
         # as part of the `extra` dictionary passed to the logger
         format_option = format_type_to_options(getattr(record, "format_type", FormatType.default))
-
+        record.newline = "\n" if format_option.is_table else ""
         # Create the formatter
         formatter = logging.Formatter(fancy_format)
         # Format the record
@@ -351,9 +358,7 @@ class SolverConfig(BaseConfig):
     adjust_dt: Optional[Tuple[float, float]] = None
     time_precision: int = 6
     print_assembly: bool = True
-    dt_decrease_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    dt_increase_factor: float = 1.0  #: .. warning:: FIXME Currently unused parameter
-    attempt_timestep_restart_on_divergence: bool = False  # testing in progress
+    attempt_timestep_restart_on_divergence: bool = False
     reset_timestep_for_negative_solution: bool = False
 
 

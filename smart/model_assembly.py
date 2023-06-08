@@ -11,6 +11,7 @@ from enum import Enum
 from pprint import pformat
 from textwrap import wrap
 from typing import Any, List, Optional, Union
+import warnings
 
 import dolfin as d
 import numpy as np
@@ -180,24 +181,33 @@ class ObjectContainer:
             if properties_to_print is not None and "idx" not in properties_to_print:
                 properties_to_print.insert(0, "idx")
             for idx, (_, instance) in enumerate(self.items):
-                df = pandas.concat(
-                    [
-                        df,
-                        instance.get_pandas_series(properties_to_print=properties_to_print, idx=idx)
-                        .to_frame()
-                        .T,
-                    ]
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # See https://github.com/hgrecco/pint-pandas/issues/128
+                    df = pandas.concat(
+                        [
+                            df,
+                            instance.get_pandas_series(
+                                properties_to_print=properties_to_print, idx=idx
+                            )
+                            .to_frame()
+                            .T,
+                        ]
+                    )
         else:
             for idx, (_, instance) in enumerate(self.items):
-                df = pandas.concat(
-                    [
-                        df,
-                        instance.get_pandas_series(properties_to_print=properties_to_print)
-                        .to_frame()
-                        .T,
-                    ]
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # See https://github.com/hgrecco/pint-pandas/issues/128
+                    df = pandas.concat(
+                        [
+                            df,
+                            instance.get_pandas_series(properties_to_print=properties_to_print)
+                            .to_frame()
+                            .T,
+                        ]
+                    )
+
         return df
 
     def print_to_latex(
@@ -248,6 +258,7 @@ class ObjectContainer:
         elif hasattr(self, "properties_to_print"):
             properties_to_print = self.properties_to_print
         df = self.get_pandas_dataframe(properties_to_print=properties_to_print, include_idx=False)
+
         if properties_to_print:
             df = df[properties_to_print]
 
@@ -290,7 +301,10 @@ class ObjectContainer:
 
         # print to file
         if filename is None:
-            logger.info(tabulate(df, headers="keys", tablefmt=tablefmt))
+            logger.info(
+                tabulate(df, headers="keys", tablefmt=tablefmt),
+                extra=dict(format_type="table"),
+            )
         else:
             original_stdout = sys.stdout  # Save a reference to the original standard output
             with open(filename, "w") as f:  # TODO: Add this to logging
@@ -424,16 +438,22 @@ class Parameter(ObjectInstance):
     Parameter objects contain information for the various parameters involved in reactions,
     such as binding rates and dissociation constants.
     A Parameter object that is constant over time and space is initialized by calling
-    param_var = Parameter(name, value, unit, group (opt), notes (opt), use_preintegration (opt))
-    where
 
-    * name: string naming the parameter
-    * value: value of the given parameter
-    * unit: units associated with given value
-    * group (optional): string placing this parameter in a designated group;
+    .. code:: python
+
+    param_var = Parameter(
+        name, value, unit, group (opt), notes (opt),
+        use_preintegration (opt)
+        )
+
+    Args:
+        name: string naming the parameter
+        value: value of the given parameter
+        unit: units associated with given value
+        group (optional): string placing this parameter in a designated group;
              for organizational purposes when there are multiple reaction modules
-    * notes (optional): string related to this parameter
-    * use_preintegration (optional): not applicable for constant parameter
+        notes (optional): string related to this parameter
+        use_preintegration (optional): not applicable for constant parameter
 
     To initialize a parameter object that varies over time, you can either
     specify a string that gives the parameter as a function of time (t)
@@ -450,11 +470,12 @@ class Parameter(ObjectInstance):
 
     Inputs are the same as described above, except:
 
-    * sym_expr: string specifying an expression, "t" should be the only free variable
-    * preint_sym_expr (optional): string giving the integral of the expression; if not given
+    Args:
+        sym_expr: string specifying an expression, "t" should be the only free variable
+        preint_sym_expr (optional): string giving the integral of the expression; if not given
                                   and use_preintegration is true, then sympy tries to integrate
                                   using sympy.integrate()
-    * use_preintegration (optional):  use preintegration in solution process if
+        use_preintegration (optional):  use preintegration in solution process if
                                      "use_preintegration" is true (defaults to false)
 
     To load parameter over time from a .txt file, call:
@@ -468,9 +489,10 @@ class Parameter(ObjectInstance):
 
     Inputs are the same as described above, except:
 
-    * sampling_file: name of text file giving parameter data in two columns (comma-separated) -
+    Args:
+        sampling_file: name of text file giving parameter data in two columns (comma-separated) -
                      first column is time (starting with t=0.0) and second is parameter values
-    * use_preintegration (optional):  use preintegration in solution process if
+        use_preintegration (optional):  use preintegration in solution process if
                                      "use_preintegration" is true (defaults to false),
                                      uses sci.integrate.cumtrapz for numerical integration
     """
@@ -513,8 +535,9 @@ class Parameter(ObjectInstance):
 
     @classmethod
     def from_file(cls, name, sampling_file, unit, group="", notes="", use_preintegration=False):
-        """Load in a purely time-dependent scalar function from data
-        Data needs to be read in from a .txt file with two columns
+        """ "
+        Load in a purely time-dependent scalar function from data
+        Data needs to be read in from a text file with two columns
         where the first column is time (first entry must be 0.0)
         and the second column is the parameter values.
         Columns should be comma-separated.
@@ -1064,7 +1087,7 @@ class Reaction(ObjectInstance):
     between species in a single compartment or across multiple compartments.
 
     Args:
-        name: string naming the parameter (should match variable name "param_name")
+        name: string naming the reaction
         lhs: list of strings specifying the reactants for this reaction
         rhs: list of strings specifying the products for this reaction
             NOTE: the lists "lhs" and "rhs" determine the stoichiometry of the reaction;
@@ -1072,20 +1095,19 @@ class Reaction(ObjectInstance):
             :code:`["A","A"]`, and the products list would be :code:`["B"]`
         param_map: relationship between the parameters specified in the reaction string
             and those given in the parameter container. By default, the reaction parameters are
-            "kon" and "koff" when a system obeys simple mass action.
+            "on" and "off" when a system obeys simple mass action.
             If the forward rate is given by a parameter :code:`k1` and the reverse
-            rate is given by :code:`k2`, then :code:`param_map = {"kon":"k1", "koff":"k2"}`
+            rate is given by :code:`k2`, then :code:`param_map = {"on":"k1", "off":"k2"}`
         eqn_f_str: For systems not obeying simple mass action,
             this string specifies the forward reaction rate By default,
-            this string is "kon*{all reactants multiplied together}"
+            this string is "on*{all reactants multiplied together}"
         eqn_r_str: For systems not obeying simple mass action,
             this string specifies the reverse reaction rate
-            By default, this string is :code:`koff*{all products multiplied together}`
+            By default, this string is :code:`off*{all products multiplied together}`
             reaction_type: either "custom" or "mass_action" (default is "mass_action")
             [never a required argument]
         species_map: same format as param_map;
-            only required if the species name in the reaction string
-            do not match the species names given in the species container
+            required if the species does not appear in the lhs or rhs lists
         explicit_restriction_to_domain: string specifying where the reaction occurs;
             required if the reaction is not constrained by the reaction string
             (e.g., if production occurs only at the boundary,
@@ -1108,7 +1130,7 @@ class Reaction(ObjectInstance):
 
             reaction_name = Reaction(
                 name, lhs, rhs, param_map,
-                eqn_f_str (opt), eqn_r_str (opt), reaction_type (opt), species_map (opt),
+                eqn_f_str (opt), eqn_r_str (opt), reaction_type (opt), species_map,
                 explicit_restriction_to_domain (opt), group (opt), flux_scaling (opt)
             )
     """
@@ -1172,7 +1194,7 @@ class Reaction(ObjectInstance):
 
         * LHS (reactants) and RHS (products) are specified as lists of strings
         * param_map must be specified as a dict of "str:str"
-        * If given, species_map must be specified as a dict of "str:str"
+        * Species_map must be specified as a dict of "str:str"
         * If given, flux scaling must be specified as a dict of "species:scale_factor"
         """
         # Type checking

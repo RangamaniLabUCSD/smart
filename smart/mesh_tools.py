@@ -1,3 +1,17 @@
+"""
+Functions to create meshes for demos.
+
+:func:`create_cubes` defines a 'cube-in-a-cube' mesh using the
+built in :class:`dolfin.UnitCubeMesh()`, with subdomains defined and
+marked by :func:`facet_topology` and :func:`cube_condition`
+:func:`create_spheres`, :func:`create_ellipsoids`,
+:func:`create_cylinders`, and :func:`create_ellipses`
+define meshes using gmsh, which are then converted to
+dolfin meshes using :func:`gmsh_to_dolfin`
+:func:`write_mesh` writes 3d meshes with cell markers ``mf3`` and
+facet markers ``mf2`` to hdf5 and pvd files.
+"""
+
 from typing import Tuple
 import pathlib
 import numpy as np
@@ -18,8 +32,12 @@ __all__ = [
 
 
 def facet_topology(f: d.Facet, mf3: d.MeshFunction):
-    """Given a facet and cell mesh function,
-    return the topology of the face"""
+    """
+    Given a facet and cell mesh function,
+    return the topology of the face
+    as either 'boundary' (outer boundary),
+    'internal', or 'interface' (boundary of inner cube)
+    """
     # cells adjacent face
     localCells = [mf3.array()[c.index()] for c in d.cells(f)]
     if len(localCells) == 1:
@@ -34,6 +52,10 @@ def facet_topology(f: d.Facet, mf3: d.MeshFunction):
 
 
 def cube_condition(cell, xmin=0.3, xmax=0.7):
+    """
+    Returns true when inside an inner cube region defined as:
+    xmin <= x <= xmax, xmin <= y <= xmax, xmin <= z <= xmax
+    """
     return (
         (xmin - d.DOLFIN_EPS < cell.midpoint().x() < xmax + d.DOLFIN_EPS)
         and (xmin - d.DOLFIN_EPS < cell.midpoint().y() < xmax + d.DOLFIN_EPS)
@@ -46,13 +68,12 @@ def create_cubes(N=16, condition=cube_condition):
     Creates a mesh for use in examples that contains
     two distinct cube subvolumes with a shared interface surface.
     Cell markers:
-    1 - Default subvolume
+    1 - Default subvolume (volume outside the inner cube)
     2 - Subvolume specified by condition function
 
     Facet markers:
     12 - Interface between subvolumes
     10 - Boundary of subvolume 1
-    20 - Boundary of subvolume 2
     0  - Interior facets
     """
     # Create a mesh
@@ -91,6 +112,10 @@ def create_spheres(
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Calls create_ellipsoids() to make spherical mesh
+    Args:
+        outerRad: radius of the outer sphere
+        innerRad: radius of the inner sphere
+    All other arguments are the same as described for create_ellipsoids()
     """
     dmesh, mf2, mf3 = create_ellipsoids(
         (outerRad, outerRad, outerRad),
@@ -138,7 +163,7 @@ def create_ellipsoids(
         comm: MPI communicator to create the mesh with
         verbose: If true print gmsh output, else skip
     Returns:
-        A triplet (mesh, facet_marker, cell_marker)
+        Tuple (mesh, facet_marker, cell_marker)
     """
     import gmsh
 
@@ -431,7 +456,7 @@ def create_ellipses(
         comm: MPI communicator to create the mesh with
         verbose: If true print gmsh output, else skip
     Returns:
-        A triplet (mesh, facet_marker (mf1), cell_marker(mf2))
+        Tuple (mesh, facet_marker (mf1), cell_marker(mf2))
     """
     import gmsh
 
@@ -555,14 +580,15 @@ def gmsh_to_dolfin(
     and associated marker files (using meshio).
     Markers are assigned from gmsh mesh, any unassigned
     marker values are given value 0.
-    Inputs:
-    * gmsh_file_name: .msh file (string)
-    * tmp_folder_name: folder name to store temporary mesh files
-    * dimension: dimension of parent mesh (int - either 2 or 3)
-    Output tuple (dMesh, mf_facet, mf_cell)
-    * dMesh: Dolfin-style parent mesh
-    * mf_facet: markers for facets
-    * mf_cell: markers for cells
+    Args:
+        gmsh_file_name: .msh file (string)
+        tmp_folder_name: folder name to store temporary mesh files
+        dimension: dimension of parent mesh (int - either 2 or 3)
+    Returns:
+        Tuple containing:
+            dMesh: Dolfin-style parent mesh
+            mf_facet: markers for facets
+            mf_cell: markers for cells
     """
     import meshio
 
@@ -629,6 +655,10 @@ def write_mesh(
     mf_cell: d.MeshFunction,
     filename: pathlib.Path = pathlib.Path("DemoMesh.h5"),
 ):
+    """
+    Write 3D mesh, with cell markers (mf3)
+    and facet markers (mf2) to hdf5 file and pvd files.
+    """
     comm = mesh.mpi_comm()
     # extract dimensionality for meshfunctions
     cell_dim = mf_cell.dim()
