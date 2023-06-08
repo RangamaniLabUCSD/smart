@@ -66,6 +66,7 @@ Upon pushing new code to the SMART repository, a number of tests run:
 * pre-commit tests
 * unit tests (can be found in `tests` folder): test initialization of compartment, species, and parameter objects
 * Examples 1-6: All 6 examples are run when building the docs. These serve as Contiuous Integration (CI) tests; within each run, there is a regression test comparing the output values from the simulation with values obtained from a previous build of SMART. Outputs from examples 2 and 3 are also compared to analytical solutions to demonstrate the accuracy of SMART simulations.
+* Example 3 with MPI: Example 3 is run using MPI to run differently sized meshes in parallel (each process is assigned a single mesh).
 
 ## Contributing guidelines
 
