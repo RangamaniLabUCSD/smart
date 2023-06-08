@@ -93,7 +93,7 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
     elif FormatType[format_type] == FormatType.subtitle:
         return FormatOption(
             text_color="green",
-            filler_char=".",
+            filler_char="",
             left_justify=True,
         )
     elif FormatType[format_type] == FormatType.data:
@@ -128,19 +128,19 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
         return FormatOption(
             buffer_color="white",
             text_color="magenta",
-            filler_char=".",
+            filler_char="",
         )
     elif FormatType[format_type] == FormatType.log_urgent:
         return FormatOption(
             buffer_color="white",
             text_color="red",
-            filler_char=".",
+            filler_char="",
         )
     elif FormatType[format_type] == FormatType.warning:
         return FormatOption(
             buffer_color="magenta",
             text_color="red",
-            filler_char="!",
+            filler_char="",
             num_banners=2,
             new_lines=(1, 1),
         )
@@ -148,21 +148,21 @@ def format_type_to_options(format_type: FormatType) -> FormatOption:
         return FormatOption(
             text_color="red",
             num_banners=2,
-            filler_char=".",
+            filler_char="",
             new_lines=(1, 1),
         )
     elif FormatType[format_type] == FormatType.solverstep:
         return FormatOption(
             text_color="red",
             num_banners=1,
-            filler_char=".",
+            filler_char="",
             new_lines=(1, 1),
         )
     elif FormatType[format_type] == FormatType.assembly:
         return FormatOption(
             text_color="magenta",
             num_banners=0,
-            filler_char=".",
+            filler_char="",
             new_lines=(1, 0),
         )
     elif FormatType[format_type] == FormatType.assembly_sub:
