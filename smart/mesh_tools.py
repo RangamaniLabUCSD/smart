@@ -1,16 +1,14 @@
 """
 Functions to create meshes for demos.
 
-`DemoCuboidsMesh` defines a 'cube-in-a-cube' mesh using the
-built in dolfin.UnitCubeMesh(), with subdomains defined and
-marked by `facet_topology` and `cube_condition`
-
-`DemoSpheresMesh`, `DemoEllipsoidsMesh`, and `DemoEllipseMesh`
+:func:`DemoCuboidsMesh` defines a 'cube-in-a-cube' mesh using the
+built in :class:`dolfin.UnitCubeMesh()`, with subdomains defined and
+marked by :func:`facet_topology` and :func:`cube_condition`
+:func:`DemoSpheresMesh`, :func:`DemoEllipsoidsMesh`, and :func:`DemoEllipseMesh`
 define meshes using gmsh, which are then converted to
-dolfin meshes using `gmsh_to_dolfin`
-
-`write_mesh` writes 3d meshes with cell markers 'mf3' and
-facet markers 'mf2' to hdf5 and pvd files.
+dolfin meshes using :func:`gmsh_to_dolfin`
+:func:`write_mesh` writes 3d meshes with cell markers ``mf3`` and
+facet markers ``mf2`` to hdf5 and pvd files.
 """
 
 from typing import Tuple

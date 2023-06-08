@@ -2,11 +2,11 @@
 [![PyPI](https://img.shields.io/pypi/v/fenics-smart)](https://pypi.org/project/fenics-smart/)
 [![Deploy static content to Pages](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml)
 [![pre-commit](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml)
-# Spatial Modelling Algorithms for Reaction-Transport [systems|models|equations]
+# Spatial Modeling Algorithms for Reaction-Transport [systems|models|equations]
 
 ## Statement of Need
 
-*Spatial Modelling Algorithms for Reactions and Transport* (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation for spatially-varying reaction-transport processes.
+*Spatial Modeling Algorithms for Reactions and Transport* (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation for spatially-varying reaction-transport processes.
 SMART is based on the [FEniCS finite element library](https://fenicsproject.org/), provides a symbolic representation
 framework for specifying reaction pathways, and supports large and irregular cell geometries in 2D and 3D.
 
@@ -63,9 +63,9 @@ Our API documentation can be accessed [here](https://rangamanilabucsd.github.io/
 
 ## Automated tests
 Upon pushing new code to the SMART repository, a number of tests run:
-* pre-commit tests: Tests to ensure best practices in code writing.
+* pre-commit tests
 * unit tests (can be found in `tests` folder): test initialization of compartment, species, and parameter objects
-* Examples 1-6: All 6 examples are run when building the docs. These serve as Contiuous Integration (CI) tests; within each run, there is a regression test comparing the output values from the simulation with values obtained from a previous build of SMART. Outputs from examples 2 and 3 are also compared to analytical solutions or approximations to demonstrate the accuracy of SMART simulations.
+* Examples 1-6: All 6 examples are run when building the docs. These serve as Contiuous Integration (CI) tests; within each run, there is a regression test comparing the output values from the simulation with values obtained from a previous build of SMART. Outputs from examples 2 and 3 are also compared to analytical solutions to demonstrate the accuracy of SMART simulations.
 
 ## Contributing guidelines
 
