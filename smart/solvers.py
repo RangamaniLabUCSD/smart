@@ -1,4 +1,4 @@
-"""Interface to PETSc SNES solver"""
+"""SMART module interfacing with PETSc SNES solver"""
 import logging
 from typing import Dict, List, Optional
 
@@ -20,125 +20,25 @@ _stopwatch_keys = [
 
 
 class smartSNESProblem:
-    """Interface to PETSc SNES solver.
+    """
+    Interface to PETSc SNES solver, defining problem to be solved.
 
     Args:
         u: The function containing the unknown dofs (is a function from a
-            :class:`dolfin.MixedFunctionSpace`)
+            `dolfin.MixedFunctionSpace`)
         Fforms: Nested list of forms for the residual ``F``. Number of
             block rows in the rhs vector is given by the number of items in the outermost list.
         Jforms_all: Nested list of forms for the Jacobian.
-
-            .. note::
-                Number of entries in the outermost list should be ``len(Fforms)**2``
-
-            Flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``,
+            Number of entries in the outermost list should be ``len(Fforms)**2``
+            flattened such that ``J[i,j]=sum(Jforms_all[i*len(Fforms)+j])``,
             ``i,j=0,..,len(Fforms)-1``.
             The k-th entry of ``Jforms_all`` is a list of forms that are summed up in a given block.
         active_compartments: List of compartments used in the variational form.
-
-            .. note::
-                This input is only used to get the compartment names, should we change the
-                input to only be the names?
         all_compartments: List of all compartments in model.
-
-            .. note::
-                This is only used to get a map from mesh-id to name of compartment.
-                I think we should extract this information
-                from the active compartments.
         stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
-
-            .. note::
-                Assumes that one has the entries:
-
-                - ``'snes jacobian assemble'``
-                - ``'snes residual assemble'``
-                - ``'snes initialize zero matrices'``
-        verbose: If True output logger info
-
-    .. note::
-        High-level dolfin solver ``d.solve()`` when applied to Mixed Nonlinear problems:
-        F is the sum of all forms, in smart this is:
-
-        .. highlight:: python
-        .. code-block:: python
-
-            Fsum = sum([f.lhs for f in model.forms]) # single form F0+F1+...+Fn
-            d.solve(Fsum==0, u)
-
-        roughly executes the following:
-
-        .. highlight:: python
-        .. code-block:: python
-
-            d.solve(Fsum==0, u)  # [fem/solving.py]
-            _solve_varproblem()  # [fem/solving.py]
-            eq, ... = _extract_args()
-            # tuple of forms (F0, F1, ..., Fn)
-            F = extract_blocks(eq.lhs) [fem/formmanipulations -> ufl/algorithms/formsplitter]
-            for Fi in F:
-                for uj in u._functions:
-                    Js.append(expand_derivatives(formmanipulations.derivative(Fi, uj)))
-                    # [J00, J01, J02, etc...]
-            problem = MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)
-            solver  = MixedNonlinearVariationalSolver(problem)
-            solver.solve()
-
-        .. highlight:: python
-        .. code-block:: python
-
-            MixedNonlinearVariationalProblem(F, u._functions, bcs, Js)  # [fem/problem.py]
-            u_comps = [u[i]._cpp_object for i in range(len(u))]
-
-            # if len(F)!= len(u) -> Fill empty blocks of F with None
-            # Check that len(J)==len(u)**2 and len(F)==len(u)
-
-            # use F to create Flist. Separate forms by domain:
-            # Flist[i] is a list of Forms separated by domain. E.g. if F1 consists of
-            # integrals on \Omega_1, \Omega_2, and \Omega_3
-            # then Flist[i] is a list with 3 forms
-            If Fi is None -> Flist[i] = cpp.fem.Form(1,0)
-            else -> Flist[i] = [Fi[domain=0], Fi[domain=1], ...]
-
-            # Do the same for J -> Jlist
-            cpp.fem.MixedNonlinearVariationalProblem.__init__(self, Flist, u_comps, bcs, Jlist)
-
-    .. note::
-        .. highlight:: python
-        .. code-block:: python
-
-            # on extract_blocks(F)
-            F  = sum([f.lhs for f in model.forms]) # single form
-            Fb = extract_blocks(F) # tuple of forms
-            Fb0 = Fb[0]
-
-            F0 = sum([f.lhs for f in model.forms if f.compartment.name=='cytosol'])
-            F0.equals(Fb0) -> False
-
-            I0 = F0.integrals()[0].integrand()
-            Ib0 = Fb0.integrals()[0].integrand()
-            (ufl.Indexed(Argument))) vs ufl.Indexed(ListTensor(ufl.Indexed(Argument)))
-            I0.ufl_operands[0] == Ib0.ufl_operands[0] -> False
-            I0.ufl_operands[1] == Ib0.ufl_operands[1] -> True
-            I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
-
-        ``V.__repr__()`` shows the UFL coordinate element (finite element over coordinate
-        vector field) and finite element of the function space. We can access individually with:
-
-        .. highlight:: python
-        .. code-block:: python
-
-            V.ufl_domain().ufl_coordinate_element()
-            V.ufl_element()
-
-            # on assembler
-            d.fem.assembling.assemble_mixed(form, tensor)
-            assembler = cpp.fem.MixedAssembler()
-
-            fem.assemble.cpp/assemble_mixed(GenericTensor& A, const Form& a, bool add)
-            MixedAssembler assembler;
-            assembler.add_values = add;
-            assembler.assemble(A, a);
+            Must include at least `snes jacobian assemble`, `snes residual assemble`
+            and `snes initialize zero matrices`
+        verbose: If True, output logger info.
     """
 
     def __init__(
@@ -350,8 +250,6 @@ class smartSNESProblem:
 
     def assemble_Jnest(self, Jnest):
         """Assemble Jacobian nest matrix.
-        Jmats are created using :code:`assemble_mixed(Jform)` and are
-        :code:`dolfin.PETScMatrix types`
 
         Args:
             Jnest : petsc4py.Mat
@@ -434,6 +332,13 @@ class smartSNESProblem:
         self.stopwatches["snes jacobian assemble"].pause()
 
     def assemble_Fnest(self, Fnest):
+        """
+        Assemble residual nest vector
+
+        Arguments:
+            Fnest : petsc4py.Vec
+                PETSc nest vector representing the residual
+        """
         dim = self.dim
         if self.verbose:
             logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
@@ -478,12 +383,13 @@ class smartSNESProblem:
         self.assemble_Jnest(Jnest)
 
     def init_petsc_matrix(self, i, j, nnz_guess=None, set_lgmap=False, assemble=False):
-        """Initialize a PETSc matrix with appropriate structure
+        """
+        Initialize a PETSc matrix with appropriate structure
 
         Args:
             i,j : indices of the block
             nnz_guess : number of non-zeros (per row) to guess for the matrix
-            assemble : whether to assemble the matrix or not
+            assemble : whether to assemble the matrix or not (Boolean)
         """
         self.stopwatches["snes initialize zero matrices"].start()
 
@@ -521,7 +427,7 @@ class smartSNESProblem:
 
         Args:
             j : index
-            assemble : whether to assemble the vector or not
+            assemble : whether to assemble the vector or not (Boolean)
         """
         V = p.Vec().create(comm=self.comm)
         V.setSizes((self.local_sizes[j], self.global_sizes[j]))
@@ -576,6 +482,7 @@ class smartSNESProblem:
             return f"F{j} = F[{self.active_compartment_names[j]}] (domain={domain_name})"
 
     def print_Jijk_info(self, i, j, k=None, tensor=None):
+        "Print information on Jacobian nest matrix"
         if not self.verbose:
             return
         if tensor is None:
