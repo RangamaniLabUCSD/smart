@@ -56,9 +56,12 @@ def smart_expressions(
         function with a unit and returns
         :code:`ufl.sin(x.to(unit.dimensionless).magnitude)`
     """
-    return {
-        k: lambda x: v(x.to(unit.dimensionless).magnitude) for k, v in dolfin_expressions.items()
-    }
+    # must use a function here or else all functions are defined as the final "v"
+    # see e.g. https://stackoverflow.com/questions/36805071
+    def dict_entry(v):
+        return lambda x: v(x.to(unit.dimensionless).magnitude)
+
+    return {k: dict_entry(v) for k, v in dolfin_expressions.items()}
 
 
 def sub(
