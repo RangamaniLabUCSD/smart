@@ -14,17 +14,11 @@
 # is phosphorylated by a first-order reaction with rate $k_{kin}$, and in the cytosolic volume,
 # $A_{phos}$ is dephosphorylated by a first order reaction with rate $k_p$.
 #
-# Currently, this code includes a dummy variable, kinMem, which represents relative kinase activity
-# at the membrane, currently set as constant at 1 (dimensionless). Without this additional species,
-# the code currently does not solve the system
-# (it seems that there needs to be variables in at least
-# two compartments to solve the monolithic system).
+# For more details on this system, see the main example3 file: example3.ipynb.
 #
 # NOTE: In this modified example, we use MPI to run different cell sizes in parallel.
 # For example, to run with 4 processes, use "mpiexec -np 4 python3 example2_multimeshMPI.py"
 #
-
-# +
 
 import logging
 
