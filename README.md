@@ -6,7 +6,8 @@
 
 ## Statement of Need
 
-*Spatial Modeling Algorithms for Reactions and Transport* (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation for spatially-varying reaction-transport processes.
+*Spatial Modeling Algorithms for Reactions and Transport* (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes,
+especially tailored to modeling such systems within biological cells.
 SMART is based on the [FEniCS finite element library](https://fenicsproject.org/), provides a symbolic representation
 framework for specifying reaction pathways, and supports large and irregular cell geometries in 2D and 3D.
 
