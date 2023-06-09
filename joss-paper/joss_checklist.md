@@ -14,7 +14,7 @@
 
 ### Functionality
 
-- [ ]  **Installation:** Does installation proceed as outlined in the documentation?
+- [x]  **Installation:** Does installation proceed as outlined in the documentation?
 - [x]  **Functionality:** Have the functional claims of the software been confirmed?
 - [x]  **Performance:** If there are any performance claims of the software, have they been confirmed? (If there are no claims, please check off this item.)
 
