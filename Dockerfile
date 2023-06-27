@@ -9,6 +9,12 @@ COPY . /repo
 WORKDIR /repo
 
 RUN python3 -m pip install ".[test,examples]"
+RUN dpkgArch="$(dpkg --print-architecture)"; \
+    case "$dpkgArch" in amd64) \
+    python3 -m pip install ".[pyvista]" \
+    python3 -m pip cache purge ;; \
+    esac;
+
 RUN python3 -m pip install pre-commit
 
 # Jupyter-lab images for examples
