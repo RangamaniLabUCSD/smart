@@ -65,7 +65,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ env.LAB_NAME }}
-  
+
       - name: Build and push Docker lab image
         uses: docker/build-push-action@v4
         with:
