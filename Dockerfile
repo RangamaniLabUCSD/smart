@@ -9,10 +9,9 @@ COPY . /repo
 WORKDIR /repo
 
 RUN python3 -m pip install "."
+RUN python3 -m pip install --upgrade --no-cache-dir jupyter jupyterlab pyvista panel
 
 # Jupyter-lab images for examples
 FROM smart_base as smart_lab
-
-RUN python3 -m pip install --upgrade --no-cache-dir jupyter jupyterlab pyvista panel
 EXPOSE 8888/tcp
 ENTRYPOINT [ "jupyter", "lab", "--ip", "0.0.0.0", "--port", "8888", "--no-browser", "--allow-root"]

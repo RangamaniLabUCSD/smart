@@ -40,6 +40,14 @@ To run the example notebooks, one can use `ghcr.io/rangamanilabucsd/smart-lab`
 ```bash
 docker run -ti -p 8888:8888 --rm ghcr.io/rangamanilabucsd/smart-lab
 ```
+to run interactively with Jupyter lab in browser
+
+#### Converting notebooks to Python files
+Run the following command on any notebook using the `smart-lab` image
+```bash
+python3 -m nbconvert --to=python example1.ipynb
+python3 example1.py
+```
 
 ### Using pip
 `fenics-smart` is also available on [pypi](https://pypi.org/project/fenics-smart/) and can be installed with
