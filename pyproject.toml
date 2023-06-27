@@ -45,7 +45,9 @@ examples = [
     "gmsh",
     "pyvista==0.38.4",
     "panel",
-    "matplotlib"
+    "matplotlib",
+    "jupyter",
+    "jupyterlab"
 ]
 all = [
    "smart[examples]",

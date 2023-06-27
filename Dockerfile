@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 COPY . /repo
 WORKDIR /repo
 
-RUN python3 -m pip install "."
-RUN python3 -m pip install --upgrade --no-cache-dir jupyter jupyterlab pyvista panel
+RUN python3 -m pip install ".[test,examples]"
+RUN python3 -m pip install pre-commit
 
 # Jupyter-lab images for examples
 FROM smart_base as smart_lab
