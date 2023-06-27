@@ -8,9 +8,12 @@ name: Create and publish a Docker image
 on:
   push:
     branches:
-      - "!*"
+      - "development"
     tags:
       - "v*"
+  pull_request:
+    branches:
+      - "development"
 
 env:
   REGISTRY: ghcr.io
@@ -51,7 +54,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          push: true
+          push: ${{ github.event_name == 'push' }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta-base.outputs.tags }}
           labels: ${{ steps.meta-base.outputs.labels }}
@@ -67,7 +70,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          push: true
+          push: ${{ github.event_name == 'push' }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta-lab.outputs.tags }}
           labels: ${{ steps.meta-lab.outputs.labels }}
