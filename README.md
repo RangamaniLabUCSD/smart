@@ -33,6 +33,13 @@ In order to start a container you can use the [`docker run`](https://docs.docker
 docker run --rm -v $(pwd):/home/shared -w /home/shared -ti ghcr.io/rangamanilabucsd/smart:latest
 ```
 will run the latest version and share your current working directory with the container.
+The source code of smart is located at `/repo` in the docker container.
+
+#### Running the example notebooks
+To run the example notebooks, one can use `ghcr.io/rangamanilabucsd/smart-lab`
+```bash
+docker run -ti -p 8888:8888 --rm ghcr.io/rangamanilabucsd/smart-lab
+```
 
 ### Using pip
 `fenics-smart` is also available on [pypi](https://pypi.org/project/fenics-smart/) and can be installed with

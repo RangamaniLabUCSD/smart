@@ -1,4 +1,4 @@
-FROM ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
+FROM ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21 as smart_base
 
 ENV PYVISTA_JUPYTER_BACKEND="panel"
 
@@ -9,3 +9,10 @@ COPY . /repo
 WORKDIR /repo
 
 RUN python3 -m pip install "."
+
+# Jupyter-lab images for examples
+FROM smart_base as smart_lab
+
+RUN python3 -m pip install --upgrade --no-cache-dir jupyter jupyterlab pyvista panel
+EXPOSE 8888/tcp
+ENTRYPOINT [ "jupyter", "lab", "--ip", "0.0.0.0", "--port", "8888", "--no-browser", "--allow-root"]
