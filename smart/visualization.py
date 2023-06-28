@@ -34,7 +34,7 @@ def require_pyvista(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
-            import pyvista as _
+            import pyvista as _  # noqa: F401
 
             return func(*args, **kwargs)
         except ImportError:
@@ -101,9 +101,7 @@ def create_vtk_structures(
     try:
         perm = _vtk_perm[d_cell][degree]
     except KeyError:
-        raise RuntimeError(
-            f"Unsupported plotting of space {family} of {degree=} on {d_cell}"
-        )
+        raise RuntimeError(f"Unsupported plotting of space {family} of {degree=} on {d_cell}")
     topology[:, 1:] = topology[:, 1:][:, perm]
     return topology, cell_types, x
 
