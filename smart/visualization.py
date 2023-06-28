@@ -2,15 +2,14 @@
 Utility functions for visualizing SMART meshes using pyvista.
 """
 import dolfin
-import pyvista
 from ufl import vertex
 from typing import Tuple
 import numpy.typing as npt
 import numpy as np
+import functools
 import pathlib
 from typing import Optional
-
-# pyvista.global_theme.trame.server_proxy_enabled = True
+import warnings
 
 __all__ = ["create_vtk_structures", "plot"]
 
@@ -29,6 +28,19 @@ _vtk_perm = {
         3: [0, 1, 2, 3, 14, 15, 8, 9, 13, 12, 10, 11, 6, 7, 4, 5, 18, 16, 17, 19],
     },
 }
+
+
+def require_pyvista(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            import pyvista as _
+
+            return func(*args, **kwargs)
+        except ImportError:
+            warnings.warn("Pyvista is not installed, skipping function", ImportWarning)
+
+    return wrapper
 
 
 def create_vtk_structures(
@@ -89,11 +101,14 @@ def create_vtk_structures(
     try:
         perm = _vtk_perm[d_cell][degree]
     except KeyError:
-        raise RuntimeError(f"Unsupported plotting of space {family} of {degree=} on {d_cell}")
+        raise RuntimeError(
+            f"Unsupported plotting of space {family} of {degree=} on {d_cell}"
+        )
     topology[:, 1:] = topology[:, 1:][:, perm]
     return topology, cell_types, x
 
 
+@require_pyvista
 def plot(
     uh: dolfin.Function,
     filename: Optional[pathlib.Path] = None,
@@ -127,6 +142,7 @@ def plot(
     else:
         u_out = u_vec
     topology, cell_types, x = create_vtk_structures(Vh)
+    import pyvista
 
     grid = pyvista.UnstructuredGrid(topology, cell_types, x)
     grid[uh.name()] = u_out
@@ -171,6 +187,7 @@ def plot(
         plotter.screenshot(filename)
 
 
+@require_pyvista
 def plot_dolfin_mesh(
     msh: dolfin.mesh,
     mf_cell: dolfin.MeshFunction,
@@ -202,6 +219,9 @@ def plot_dolfin_mesh(
     Vh = dolfin.FunctionSpace(msh, "P", 1)
     u_out = mf_cell.array()
     topology, cell_types, x = create_vtk_structures(Vh)
+
+    import pyvista
+
     grid = pyvista.UnstructuredGrid(topology, cell_types, x)
     grid["mf"] = u_out
 
@@ -249,7 +269,6 @@ def plot_dolfin_mesh(
     if msh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
 
-    print(filename)
     if filename is None:
         plotter.show()
     else:
