@@ -16,6 +16,9 @@ RUN dpkgArch="$(dpkg --print-architecture)"; \
 
 RUN python3 -m pip install pre-commit
 
+# Convert all notebooks to python files
+RUN python3 examples/convert_notebooks_to_python.py
+
 # Jupyter-lab images for examples
 FROM smart_base as smart_lab
 EXPOSE 8888/tcp

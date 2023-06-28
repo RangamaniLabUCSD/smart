@@ -43,11 +43,13 @@ docker run -ti -p 8888:8888 --rm ghcr.io/rangamanilabucsd/smart-lab
 to run interactively with Jupyter lab in browser
 
 #### Converting notebooks to Python files
-Run the following command on any notebook using the `smart-lab` image
+In the `smart` and `smart-lab` images, these files exist under `/repo/examples/**/example*.py`.
+
+If you clone the git repository or make changes to the notebooks that should be reflected in the python files, you can run
 ```bash
-python3 -m nbconvert --to=python example1.ipynb
-python3 example1.py
+python3 examples/convert_notebooks_to_python.py
 ```
+to convert all notebooks to python files. **NOTE** this command overwrites existing files.
 
 ### Using pip
 `fenics-smart` is also available on [pypi](https://pypi.org/project/fenics-smart/) and can be installed with
