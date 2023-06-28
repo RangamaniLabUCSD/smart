@@ -12,7 +12,7 @@ RUN dpkgArch="$(dpkg --print-architecture)"; \
     case "$dpkgArch" in arm64) \
     python3 -m pip install "https://github.com/finsberg/vtk-aarch64/releases/download/vtk-9.2.6-cp310/vtk-9.2.6.dev0-cp310-cp310-linux_aarch64.whl" ;; \
     esac;
-RUN python3 -m pip install ".[test,examples]"
+RUN python3 -m pip install ".[test,examples,pyvista]"
 
 
 RUN python3 -m pip install pre-commit
