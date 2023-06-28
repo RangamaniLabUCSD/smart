@@ -43,15 +43,21 @@ docs = [
 examples = [
     "meshio",
     "gmsh",
-    "pyvista==0.38.4",
-    "panel",
-    "matplotlib"
+    "matplotlib",
+    "jupyter",
+    "jupyterlab"
 ]
+pyvista = [
+    "pyvista==0.38.4",
+    "panel"
+]
+
 all = [
    "smart[examples]",
    "smart[test]",
    "smart[docs]",
-   "smart[dev]"
+   "smart[dev]",
+   "smart[pyvista]"
 ]
 
 

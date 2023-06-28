@@ -8,13 +8,17 @@ name: Create and publish a Docker image
 on:
   push:
     branches:
-      - "!*"
+      - "development"
     tags:
       - "v*"
+  pull_request:
+    branches:
+      - "development"
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  LAB_NAME: lab
 
 jobs:
   build-and-push-image:
@@ -40,17 +44,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+      - name: Extract metadata (tags, labels) for base-image
+        id: meta-base
+        uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
           context: .
-          push: true
+          push: ${{ github.event_name == 'push' }}
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-base.outputs.tags }}
+          labels: ${{ steps.meta-base.outputs.labels }}
+          target: smart_base
+
+      - name: Extract metadata (tags, labels) for lab images
+        id: meta-lab
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ env.LAB_NAME }}
+
+      - name: Build and push Docker lab image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta-lab.outputs.tags }}
+          labels: ${{ steps.meta-lab.outputs.labels }}
+          target: smart_lab
