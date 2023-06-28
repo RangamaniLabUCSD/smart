@@ -8,11 +8,12 @@ RUN apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 COPY . /repo
 WORKDIR /repo
 
-RUN python3 -m pip install ".[test,examples]"
 RUN dpkgArch="$(dpkg --print-architecture)"; \
-    case "$dpkgArch" in amd64) \
-    python3 -m pip install ".[pyvista]" ;; \
+    case "$dpkgArch" in arm64) \
+    python3 -m pip install "https://github.com/finsberg/vtk-aarch64/releases/download/vtk-9.2.6-cp310/vtk-9.2.6.dev0-cp310-cp310-linux_aarch64.whl" ;; \
     esac;
+RUN python3 -m pip install ".[test,examples]"
+
 
 RUN python3 -m pip install pre-commit
 
