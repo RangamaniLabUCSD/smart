@@ -167,13 +167,11 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
             "final_t": 1,
             "initial_dt": 0.01,
             "time_precision": 6,
-            "use_snes": True,
             "print_assembly": False,
         }
     )
 
-    modelCur.initialize(initialize_solver=False)
-    modelCur.initialize_discrete_variational_problem_and_solver()
+    modelCur.initialize()
     # Write initial condition(s) to file
     results = dict()
     result_folder = pathlib.Path(f"resultsSphere_{curRadius:03f}")

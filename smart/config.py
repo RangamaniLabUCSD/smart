@@ -343,7 +343,7 @@ class SolverConfig(BaseConfig):
         initial_dt: Initial time-stepping
         adjust_dt: A tuple (t, dt) of floats indicating when to next adjust the
             time-stepping and to what value
-        dt: Number of digits for rounding `dt`
+        adjust_dt: Number of digits for rounding `dt`
         print_assembly: Print information during assembly process
         dt_decrease_factor:
         dt_increase_factor:

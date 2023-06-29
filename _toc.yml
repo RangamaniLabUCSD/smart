@@ -2,6 +2,9 @@ format: jb-book
 root: README
 
 parts:
+  - caption: Getting Started
+    chapters:
+    - file: docs/getting_started
   - caption: Mathematics
     chapters:
     - file: docs/math
