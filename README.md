@@ -33,6 +33,23 @@ In order to start a container you can use the [`docker run`](https://docs.docker
 docker run --rm -v $(pwd):/home/shared -w /home/shared -ti ghcr.io/rangamanilabucsd/smart:latest
 ```
 will run the latest version and share your current working directory with the container.
+The source code of smart is located at `/repo` in the docker container.
+
+#### Running the example notebooks
+To run the example notebooks, one can use `ghcr.io/rangamanilabucsd/smart-lab`
+```bash
+docker run -ti -p 8888:8888 --rm ghcr.io/rangamanilabucsd/smart-lab
+```
+to run interactively with Jupyter lab in browser
+
+#### Converting notebooks to Python files
+In the `smart` and `smart-lab` images, these files exist under `/repo/examples/**/example*.py`.
+
+If you clone the git repository or make changes to the notebooks that should be reflected in the python files, you can run
+```bash
+python3 examples/convert_notebooks_to_python.py
+```
+to convert all notebooks to python files. **NOTE** this command overwrites existing files.
 
 ### Using pip
 `fenics-smart` is also available on [pypi](https://pypi.org/project/fenics-smart/) and can be installed with
