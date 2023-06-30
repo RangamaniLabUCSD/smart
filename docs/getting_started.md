@@ -78,7 +78,7 @@ Following these preliminary steps, we begin the basic workflow of SMART:
         if model_cur.t >= model_cur.final_t:
             break
     ```
-7. **End simulation and visualize data**: We recommend writing data to XDMF files as shown in the previous step. These can then be readily visualized and postprocessed in Paraview. An example screenshot of this minimal example in Paraview is shown below.
+7. **End simulation and visualize data**: We recommend writing data to XDMF-files as shown in the previous step. These can then be readily visualized and post-processed in [Paraview](https://www.paraview.org/). An example screenshot of this minimal example in Paraview is shown below.
 
     ![Paraview screenshot](images/minimal_example_paraview_screenshot.png)
 
