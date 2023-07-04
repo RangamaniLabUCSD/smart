@@ -938,7 +938,6 @@ class Model:
                     self.dolfin_set_function_values(
                         species, ukey, species.initial_condition_expression
                     )
-            species.sol = species.u["u"]  # assign solution to species.sol for easy access
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""

@@ -895,6 +895,12 @@ class Species(ObjectInstance):
         self._latex_name = sym.latex(Symbol(name))
         return self._latex_name
 
+    @property
+    def sol(self):
+        if not hasattr(self, "u") or "u" not in self.u:
+            raise RuntimeError("Solution does not exist. Please run a simulation first")
+        return self.u["u"]
+
 
 class CompartmentContainer(ObjectContainer):
     def __init__(self):
