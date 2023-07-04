@@ -114,6 +114,8 @@ def plot(
     glyph_factor: float = 1,
     off_screen: bool = True,
     view_xy: bool = False,
+    clip_plane: Tuple[float, float, float] = (1, 0, 0),
+    clip_origin: Tuple[float, float, float] = (0, 0, 0),
 ):
     """
     Plot a (discontinuous) Lagrange function with Pyvista
@@ -169,7 +171,7 @@ def plot(
         if uh.geometric_dimension() == 2 or view_xy:
             plotter.add_mesh(grid, show_edges=show_edges)
         else:
-            crinkled = grid.clip(normal=(1, 0, 0), crinkle=True)
+            crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
             plotter.add_mesh(crinkled, show_edges=show_edges)
 
     if uh.geometric_dimension() == 2 or view_xy:
@@ -195,6 +197,8 @@ def plot_dolfin_mesh(
     show_edges: bool = True,
     off_screen: bool = True,
     view_xy: bool = False,
+    clip_plane: Tuple[float, float, float] = (1, 0, 0),
+    clip_origin: Tuple[float, float, float] = (0, 0, 0),
 ):
     """
     Construct P1 function space on current mesh,
@@ -254,10 +258,12 @@ def plot_dolfin_mesh(
         plotter.add_mesh(p1_grid, style="wireframe")
     else:
         if msh.topology().dim() == 3:
-            crinkled = grid.clip(normal=(1, 0, 0), crinkle=True)
+            crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
             plotter.add_mesh(crinkled, show_edges=show_edges)
             if facets_loaded:
-                crinkled_facet = grid_facet.clip(normal=(1, 0, 0), crinkle=True)
+                crinkled_facet = grid_facet.clip(
+                    normal=clip_plane, origin=clip_origin, crinkle=True
+                )
                 plotter.add_mesh(crinkled_facet, show_edges=show_edges)
         elif msh.topology().dim() == 2:
             plotter.add_mesh(grid, show_edges=show_edges)
