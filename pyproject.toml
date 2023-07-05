@@ -53,11 +53,10 @@ pyvista = [
 ]
 
 all = [
-   "smart[examples]",
-   "smart[test]",
-   "smart[docs]",
-   "smart[dev]",
-   "smart[pyvista]"
+   "fenics-smart[examples]",
+   "fenics-smart[test]",
+   "fenics-smart[docs]",
+   "fenics-smart[pyvista]"
 ]
 
 
