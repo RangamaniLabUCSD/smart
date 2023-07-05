@@ -180,7 +180,6 @@ def plot(
     if bs > 1:
         glyphs = grid.glyph(orient=uh.name(), factor=glyph_factor)
         plotter.add_mesh(glyphs)
-    print(filename)
     if filename is None:
         plotter.show()
     else:

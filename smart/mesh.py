@@ -142,11 +142,11 @@ class ParentMesh(_Mesh):
     on marker values from the .hdf5 or .xml file.
 
     Args:
-    * mesh_filename (str): Name of mesh file
-    * mesh_filetype (str): Extension of mesh, either 'xml' or 'hdf5'
-    * parent_mesh (str): Name of mesh
-    * use_partition (bool): If `hdf5` mesh file is loaded,
-            choose if mesh should be read in with its current partition
+        mesh_filename (str): Name of mesh file
+        mesh_filetype (str): Extension of mesh, either 'xml' or 'hdf5'
+        parent_mesh (str): Name of mesh
+        use_partition (bool): If `hdf5` mesh file is loaded,
+          choose if mesh should be read in with its current partition
     """
 
     mesh_filename: str

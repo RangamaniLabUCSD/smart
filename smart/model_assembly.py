@@ -441,10 +441,10 @@ class Parameter(ObjectInstance):
 
     .. code:: python
 
-    param_var = Parameter(
-        name, value, unit, group (opt), notes (opt),
-        use_preintegration (opt)
-        )
+        param_var = Parameter(
+            name, value, unit, group (opt), notes (opt),
+            use_preintegration (opt)
+            )
 
     Args:
         name: string naming the parameter
