@@ -656,9 +656,11 @@ def write_mesh(
     filename: pathlib.Path = pathlib.Path("DemoMesh.h5"),
 ):
     """
-    Write 3D mesh, with cell markers (mf3)
-    and facet markers (mf2) to hdf5 file and pvd files.
+    Write 3D mesh, with cell markers (mf_cell)
+    and facet markers (mf_facet) to hdf5 file and pvd files.
     """
+    if isinstance(filename, str):
+        filename = pathlib.Path(filename)
     comm = mesh.mpi_comm()
     # extract dimensionality for meshfunctions
     cell_dim = mf_cell.dim()
