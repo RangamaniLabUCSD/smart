@@ -8,7 +8,11 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
-        exclude: ^joss-paper/JOSS_Fig2.png
+        exclude: |
+          (?x)^(
+              joss-paper/JOSS_Fig2.png|
+              examples/example2-3d/spine_mesh.xml
+          )$
       - id: check-docstring-first
       - id: debug-statements
       - id: check-toml

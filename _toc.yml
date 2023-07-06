@@ -14,6 +14,7 @@ parts:
     chapters:
     - file: examples/example1/example1
     - file: examples/example2/example2
+    - file: examples/example2-3d/example2-3d
     - file: examples/example3/example3
     - file: examples/example4/example4
     - file: examples/example5/example5
