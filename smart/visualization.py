@@ -116,6 +116,8 @@ def plot(
     view_xy: bool = False,
     clip_plane: Tuple[float, float, float] = (1, 0, 0),
     clip_origin: Tuple[float, float, float] = (0, 0, 0),
+    clip_logic: bool = True,
+    clim: Tuple[float, float] = (0, 0),
 ):
     """
     Plot a (discontinuous) Lagrange function with Pyvista
@@ -128,6 +130,10 @@ def plot(
             ``dolfin.VectorFunctionSpace``.
         off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
         view_xy: If ``True``, view xy plane
+        clip_plane: plane for clipping 3D object, specified as the normal vector
+        clip_origin: origin for clipping 3D object
+        clip_logic: If ``True``, clip 3D object
+        clim: Tuple specifying (lower_lim, upper_lim) for display of uh
     """
     Vh = uh.function_space()
 
@@ -163,16 +169,36 @@ def plot(
         t1, c1, x1 = create_vtk_structures(P1)
         p1_grid = pyvista.UnstructuredGrid(t1, c1, x1)
         if bs > 1:
-            plotter.add_mesh(p1_grid, show_edges=show_edges)
+            if not clim == (0, 0, 0):
+                plotter.add_mesh(p1_grid, show_edges=show_edges, clim=clim)
+            else:
+                plotter.add_mesh(p1_grid, show_edges=show_edges)
         else:
-            plotter.add_mesh(grid)
-            plotter.add_mesh(p1_grid, style="wireframe")
+            if not clim == (0, 0, 0):
+                plotter.add_mesh(grid, clim=clim)
+                plotter.add_mesh(p1_grid, style="wireframe", clim=clim)
+            else:
+                plotter.add_mesh(grid)
+                plotter.add_mesh(p1_grid, style="wireframe")
     else:
-        if uh.geometric_dimension() == 2 or view_xy:
-            plotter.add_mesh(grid, show_edges=show_edges)
+        if uh.geometric_dimension() == 2 or view_xy or not clip_logic:
+            if not clim == (0, 0, 0):
+                plotter.add_mesh(grid, show_edges=show_edges, clim=clim)
+            else:
+                plotter.add_mesh(grid, show_edges=show_edges)
         else:
-            crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
-            plotter.add_mesh(crinkled, show_edges=show_edges)
+            try:
+                crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
+                if not clim == (0, 0, 0):
+                    plotter.add_mesh(crinkled, show_edges=show_edges, clim=clim)
+                else:
+                    plotter.add_mesh(crinkled, show_edges=show_edges)
+            except KeyError:
+                raise RuntimeError(
+                    "Pyvista clipping removed the entire mesh, "
+                    "either change clip_origin accordingly "
+                    "or set clip_logic to False"
+                )
 
     if uh.geometric_dimension() == 2 or view_xy:
         plotter.view_xy()
@@ -198,6 +224,7 @@ def plot_dolfin_mesh(
     view_xy: bool = False,
     clip_plane: Tuple[float, float, float] = (1, 0, 0),
     clip_origin: Tuple[float, float, float] = (0, 0, 0),
+    clip_logic: bool = True,
 ):
     """
     Construct P1 function space on current mesh,
@@ -216,6 +243,9 @@ def plot_dolfin_mesh(
         show_edges: Show mesh edges if ``True``
         off_screen: If ``True`` generate plots with virtual frame buffer using ``xvfb``.
         view_xy: If ``True``, view xy plane
+        clip_plane: plane for clipping 3D object, specified as the normal vector
+        clip_origin: origin for clipping 3D object
+        clip_logic: If ``True``, clip 3D object
     """
     Vh = dolfin.FunctionSpace(msh, "P", 1)
     u_out = mf_cell.array()
@@ -256,15 +286,22 @@ def plot_dolfin_mesh(
         plotter.add_mesh(grid)
         plotter.add_mesh(p1_grid, style="wireframe")
     else:
-        if msh.topology().dim() == 3:
-            crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
-            plotter.add_mesh(crinkled, show_edges=show_edges)
-            if facets_loaded:
-                crinkled_facet = grid_facet.clip(
-                    normal=clip_plane, origin=clip_origin, crinkle=True
+        if msh.topology().dim() == 3 and clip_logic:
+            try:
+                crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
+                plotter.add_mesh(crinkled, show_edges=show_edges)
+                if facets_loaded:
+                    crinkled_facet = grid_facet.clip(
+                        normal=clip_plane, origin=clip_origin, crinkle=True
+                    )
+                    plotter.add_mesh(crinkled_facet, show_edges=show_edges)
+            except KeyError:
+                raise RuntimeError(
+                    "Pyvista clipping removed the entire mesh, "
+                    "either change clip_origin accordingly "
+                    "or set clip_logic to False"
                 )
-                plotter.add_mesh(crinkled_facet, show_edges=show_edges)
-        elif msh.topology().dim() == 2:
+        else:
             plotter.add_mesh(grid, show_edges=show_edges)
             if facets_loaded:
                 plotter.add_mesh(grid_facet, show_edges=show_edges)
