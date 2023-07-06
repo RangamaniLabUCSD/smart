@@ -28,3 +28,16 @@ jobs:
       - name: Run tests
         run: |
          python3 -m pytest
+
+      - name: Extract Coverage
+        run: |
+          python3 -m coverage report | sed 's/^/    /' >> $GITHUB_STEP_SUMMARY
+          python3 -m coverage json
+          export TOTAL=$(python3 -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "total=$TOTAL" >> $GITHUB_ENV
+
+      - name: Upload HTML report.
+        uses: actions/upload-artifact@v3
+        with:
+          name: html-report
+          path: htmlcov

@@ -169,12 +169,12 @@ def plot(
         t1, c1, x1 = create_vtk_structures(P1)
         p1_grid = pyvista.UnstructuredGrid(t1, c1, x1)
         if bs > 1:
-            if not clim == (0, 0, 0):
+            if not clim == (0, 0):
                 plotter.add_mesh(p1_grid, show_edges=show_edges, clim=clim)
             else:
                 plotter.add_mesh(p1_grid, show_edges=show_edges)
         else:
-            if not clim == (0, 0, 0):
+            if not clim == (0, 0):
                 plotter.add_mesh(grid, clim=clim)
                 plotter.add_mesh(p1_grid, style="wireframe", clim=clim)
             else:
@@ -182,14 +182,14 @@ def plot(
                 plotter.add_mesh(p1_grid, style="wireframe")
     else:
         if uh.geometric_dimension() == 2 or view_xy or not clip_logic:
-            if not clim == (0, 0, 0):
+            if not clim == (0, 0):
                 plotter.add_mesh(grid, show_edges=show_edges, clim=clim)
             else:
                 plotter.add_mesh(grid, show_edges=show_edges)
         else:
             try:
                 crinkled = grid.clip(normal=clip_plane, origin=clip_origin, crinkle=True)
-                if not clim == (0, 0, 0):
+                if not clim == (0, 0):
                     plotter.add_mesh(crinkled, show_edges=show_edges, clim=clim)
                 else:
                     plotter.add_mesh(crinkled, show_edges=show_edges)
