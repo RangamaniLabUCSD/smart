@@ -357,7 +357,6 @@ class SolverConfig(BaseConfig):
     initial_dt: Optional[float] = None
     adjust_dt: Optional[Tuple[float, float]] = None
     time_precision: int = 6
-    print_assembly: bool = True
     attempt_timestep_restart_on_divergence: bool = False
     reset_timestep_for_negative_solution: bool = False
 

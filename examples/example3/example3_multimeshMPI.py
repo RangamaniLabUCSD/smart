@@ -167,7 +167,6 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
             "final_t": 1,
             "initial_dt": 0.01,
             "time_precision": 6,
-            "print_assembly": False,
         }
     )
 
