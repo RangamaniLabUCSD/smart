@@ -213,10 +213,7 @@ def plot(
         plotter.show()
     else:
         logger.debug(f"Saving plot to {filename}")
-        plotter.screenshot(filename)
-        import matplotlib.image as mpimg
-
-        return mpimg.imread(filename)
+        return plotter.screenshot(filename, return_img=True)
 
 
 @require_pyvista
