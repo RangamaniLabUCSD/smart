@@ -22,7 +22,7 @@ jobs:
       DISPLAY: ":99.0"
       PYVISTA_TRAME_SERVER_PROXY_PREFIX: '/proxy/'
       PYVISTA_TRAME_SERVER_PROXY_ENABLED: "True"
-      PYVISTA_OFF_SCREEN: false
+      PYVISTA_OFF_SCREEN: True
       PYVISTA_JUPYTER_BACKEND: "panel"
 
     steps:
@@ -33,7 +33,7 @@ jobs:
         run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 
       - name: Install dependencies
-        run: python3 -m pip install ".[docs,dev,examples]"
+        run: python3 -m pip install ".[docs,dev,examples,pyvista]"
 
       - name: Cache notebooks
         id: cache-notebooks

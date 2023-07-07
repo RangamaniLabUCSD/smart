@@ -10,6 +10,9 @@ import functools
 import pathlib
 from typing import Optional
 import warnings
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["create_vtk_structures", "plot"]
 
@@ -118,7 +121,7 @@ def plot(
     clip_origin: Tuple[float, float, float] = (0, 0, 0),
     clip_logic: bool = True,
     clim: Tuple[float, float] = (0, 0),
-):
+) -> Optional[np.ndarray]:
     """
     Plot a (discontinuous) Lagrange function with Pyvista
 
@@ -209,7 +212,8 @@ def plot(
     if filename is None:
         plotter.show()
     else:
-        plotter.screenshot(filename)
+        logger.debug(f"Saving plot to {filename}")
+        return plotter.screenshot(filename, return_img=True)
 
 
 @require_pyvista
