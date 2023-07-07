@@ -33,7 +33,7 @@ jobs:
         run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 
       - name: Install dependencies
-        run: python3 -m pip install ".[docs,dev,examples]"
+        run: python3 -m pip install ".[docs,dev,examples,pyvista]"
 
       - name: Cache notebooks
         id: cache-notebooks
