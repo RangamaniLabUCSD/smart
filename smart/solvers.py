@@ -38,7 +38,6 @@ class smartSNESProblem:
         stopwatches: Dictionary of stop-watches (stopwatch_name: stopwatch-class).
             Must include at least `snes jacobian assemble`, `snes residual assemble`
             and `snes initialize zero matrices`
-        verbose: If True, output logger info.
     """
 
     def __init__(
@@ -49,7 +48,6 @@ class smartSNESProblem:
         active_compartments: List[Compartment],
         all_compartments: List[Compartment],
         stopwatches: Dict[str, Stopwatch],
-        verbose: bool,
     ):
         self.u = u
         self.Fforms = Fforms
@@ -93,9 +91,6 @@ class smartSNESProblem:
         self.active_compartment_names = [c.name for c in active_compartments]
         self.mesh_id_to_name = {c.mesh_id: c.name for c in all_compartments}
 
-        # Should we print assembly info (can get very verbose)
-        self.verbose = verbose
-
         # Timings
         for key in _stopwatch_keys:
             if key not in stopwatches.keys():
@@ -113,11 +108,10 @@ class smartSNESProblem:
                 ):
                     self.empty_forms.append((i, j))
         if len(self.empty_forms) > 0:
-            if self.verbose:
-                logger.debug(
-                    f"Forms {self.empty_forms} are empty. Skipping assembly.",
-                    extra=dict(format_type="data"),
-                )
+            logger.debug(
+                f"Forms {self.empty_forms} are empty. Skipping assembly.",
+                extra=dict(format_type="data"),
+            )
 
     def init_petsc_matnest(self):
         Jforms = self.Jforms_all
@@ -132,11 +126,10 @@ class smartSNESProblem:
                     if Jforms[ij][k].function_space(0) is None:
                         # The only reason this is empty is because the whole form is empty
                         assert len(Jforms[ij]) == 1
-                        if self.verbose:
-                            logger.debug(
-                                f"{self.Jijk_name(i,j,k=None)} is empty",
-                                extra=dict(format_type="log"),
-                            )
+                        logger.debug(
+                            f"{self.Jijk_name(i,j,k=None)} is empty",
+                            extra=dict(format_type="log"),
+                        )
                         continue
                     else:
                         non_empty_forms += 1
@@ -158,14 +151,13 @@ class smartSNESProblem:
 
                 if non_empty_forms == 0:
                     # If all forms are empty, we don't need to assemble. Initialize to zero matrix
-                    if self.verbose:
-                        logger.debug(
-                            f"{self.Jijk_name(i,j)} is empty - initializing as "
-                            f"empty PETSc Matrix with local size {self.local_sizes[i]}, "
-                            f"{self.local_sizes[j]} "
-                            f"and global size {self.global_sizes[i]}, {self.global_sizes[j]}",
-                            extra=dict(format_type="log"),
-                        )
+                    logger.debug(
+                        f"{self.Jijk_name(i,j)} is empty - initializing as "
+                        f"empty PETSc Matrix with local size {self.local_sizes[i]}, "
+                        f"{self.local_sizes[j]} "
+                        f"and global size {self.global_sizes[i]}, {self.global_sizes[j]}",
+                        extra=dict(format_type="log"),
+                    )
                     self.tensors[ij][0] = d.PETScMatrix(self.init_petsc_matrix(i, j, assemble=True))
                     Jpetsc.append(self.tensors[ij][0])
                 elif non_empty_forms == 1:
@@ -205,19 +197,17 @@ class smartSNESProblem:
 
     def init_petsc_vecnest(self):
         dim = self.dim
-        if self.verbose:
-            logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
+        logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
 
         Fpetsc = []
         for j in range(dim):
             Fsum = None
             for k in range(len(self.Fforms[j])):
                 if self.Fforms[j][k].function_space(0) is None:
-                    if self.verbose:
-                        logger.warning(
-                            f"{self.Fjk_name(j,k)}] has no function space",
-                            extra=dict(format_type="log"),
-                        )
+                    logger.warning(
+                        f"{self.Fjk_name(j,k)}] has no function space",
+                        extra=dict(format_type="log"),
+                    )
                     continue
 
                 tensor = d.PETScVector(self.comm)
@@ -230,13 +220,12 @@ class smartSNESProblem:
                     Fsum += d.assemble_mixed(self.Fforms[j][k], tensor=tensor)
 
             if Fsum is None:
-                if self.verbose:
-                    logger.debug(
-                        f"{self.Fjk_name(j)} is empty - initializing as empty PETSc "
-                        f"Vector with local size {self.local_sizes[j]} "
-                        f"and global size {self.global_sizes[j]}",
-                        extra=dict(format_type="log"),
-                    )
+                logger.debug(
+                    f"{self.Fjk_name(j)} is empty - initializing as empty PETSc "
+                    f"Vector with local size {self.local_sizes[j]} "
+                    f"and global size {self.global_sizes[j]}",
+                    extra=dict(format_type="log"),
+                )
                 Fsum = d.PETScVector(self.init_petsc_vector(j, assemble=True))
 
             Fpetsc.append(Fsum.vec())
@@ -257,8 +246,7 @@ class smartSNESProblem:
 
 
         """
-        if self.verbose:
-            logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
+        logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
@@ -280,22 +268,20 @@ class smartSNESProblem:
                     Jij_petsc = Jnest.getNestSubMatrix(i, j)
                 Jij_petsc.zeroEntries()  # this maintains sparse (non-zeros) structure
 
-                if self.verbose:
-                    logger.debug(
-                        f"Assembling {self.Jijk_name(i,j)}:",
-                        extra=dict(format_type="assembly_sub"),
-                    )
+                logger.debug(
+                    f"Assembling {self.Jijk_name(i,j)}:",
+                    extra=dict(format_type="assembly_sub"),
+                )
 
                 Jmats = []
                 # Jijk == dFi/duj(Omega_k)
                 for k in range(num_subforms):
                     # Check for empty form
                     if Jform[ij][k].function_space(0) is None:
-                        if self.verbose:
-                            logger.debug(
-                                f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.",
-                                extra=dict(format_type="data"),
-                            )
+                        logger.debug(
+                            f"{self.Jijk_name(i,j,k)} is empty. Skipping assembly.",
+                            extra=dict(format_type="data"),
+                        )
                         continue
 
                     # if we have the sparsity pattern re-use it, if not save it for next time
@@ -305,11 +291,10 @@ class smartSNESProblem:
                     elif self.is_single_domain:
                         self.tensors[ij][k] = d.PETScMatrix(self.comm)
                     else:
-                        if self.verbose:
-                            logger.debug(
-                                f"Reusing tensor for {self.Jijk_name(i,j,k)}",
-                                extra=dict(format_type="data"),
-                            )
+                        logger.debug(
+                            f"Reusing tensor for {self.Jijk_name(i,j,k)}",
+                            extra=dict(format_type="data"),
+                        )
                     # Assemble and append to the list of subforms
                     Jmats.append(d.assemble_mixed(Jform[ij][k], tensor=self.tensors[ij][k]))
                     # Print some useful info on assembled Jijk
@@ -340,8 +325,7 @@ class smartSNESProblem:
                 PETSc nest vector representing the residual
         """
         dim = self.dim
-        if self.verbose:
-            logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
+        logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
 
         if self.is_single_domain:
@@ -483,8 +467,6 @@ class smartSNESProblem:
 
     def print_Jijk_info(self, i, j, k=None, tensor=None):
         "Print information on Jacobian nest matrix"
-        if not self.verbose:
-            return
         if tensor is None:
             return
         # Print some useful info on Jijk
