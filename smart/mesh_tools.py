@@ -39,16 +39,25 @@ def facet_topology(f: d.Facet, mf3: d.MeshFunction):
     'internal', or 'interface' (boundary of inner cube)
     """
     # cells adjacent face
-    localCells = [mf3.array()[c.index()] for c in d.cells(f)]
-    if len(localCells) == 1:
-        topology = "boundary"  # boundary facet
-    elif len(localCells) == 2 and localCells[0] == localCells[1]:
-        topology = "internal"  # internal facet
-    elif len(localCells) == 2:
-        topology = "interface"  # interface facet
+
+    # Initialize facet to cell connectivity
+    mf3.mesh().init(2, 3)
+    cell_values = mf3.array()
+    connected_cells = f.entities(f.mesh().topology().dim())
+    if f.exterior():
+        return "boundary", cell_values[connected_cells]
     else:
-        raise Exception("Facet has more than two cells")
-    return (topology, localCells)
+        if len(connected_cells) == 2:
+            if cell_values[connected_cells[0]] == cell_values[connected_cells[1]]:
+                return "internal", cell_values[connected_cells]
+            else:
+                return "interface", cell_values[connected_cells]
+        else:
+            assert len(connected_cells) == 1
+            raise Exception(
+                "Missing information for determining if facet is internal or interface",
+                ", have you turned ghost mode to 'shared_facet'?",
+            )
 
 
 def cube_condition(cell, xmin=0.3, xmax=0.7):
@@ -76,18 +85,19 @@ def create_cubes(N=16, condition=cube_condition):
     10 - Boundary of subvolume 1
     0  - Interior facets
     """
-    # Create a mesh
+    # Create a mesh (use ghost mode to fix interfaces correctly)
+    d.parameters["ghost_mode"] = "shared_facet"
     mesh = d.UnitCubeMesh(N, N, N)
     # Initialize mesh functions
     mf3 = d.MeshFunction("size_t", mesh, 3, 0)
     mf2 = d.MeshFunction("size_t", mesh, 2, 0)
 
     # Mark all cells that satisfy condition as 3, else 1
-    for c in d.cells(mesh):
+    for c in d.cells(mesh, "all"):
         mf3[c] = 2 if condition(c) else 1
 
     # Mark facets
-    for f in d.faces(mesh):
+    for f in d.facets(mesh):
         topology, cellIndices = facet_topology(f, mf3)
         if topology == "interface":
             mf2[f] = 12
