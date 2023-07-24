@@ -175,62 +175,7 @@ def create_ellipsoids(
     Returns:
         Tuple (mesh, facet_marker, cell_marker)
     """
-    import gmsh
 
-    if np.any(np.isclose(outerRad, 0)):
-        ValueError("One of the outer radii is equal to zero")
-    if np.isclose(hEdge, 0):
-        hEdge = 0.1 * max(outerRad)
-    if np.isclose(hInnerEdge, 0):
-        hInnerEdge = 0.2 * max(outerRad) if np.any(np.isclose(innerRad, 0)) else 0.2 * max(innerRad)
-    if innerRad[0] > outerRad[0] or innerRad[1] > outerRad[1] or innerRad[2] > outerRad[2]:
-        ValueError("Inner ellipsoid does not fit inside outer ellipsoid")
-    # Create the two ellipsoid mesh using gmsh
-    gmsh.initialize()
-    gmsh.option.setNumber("General.Terminal", int(verbose))
-
-    gmsh.model.add("twoellipsoids")
-    # first add ellipsoid 1 of radius outerRad and center (0,0,0)
-    outer_ellipsoid = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
-    gmsh.model.occ.dilate([(3, outer_ellipsoid)], 0, 0, 0, outerRad[0], outerRad[1], outerRad[2])
-    if np.any(np.isclose(innerRad, 0)):
-        # Use outer_ellipsoid only
-        gmsh.model.occ.synchronize()
-        gmsh.model.add_physical_group(3, [outer_ellipsoid], tag=outer_vol_tag)
-        facets = gmsh.model.getBoundary([(3, outer_ellipsoid)])
-        assert len(facets) == 1
-        gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
-    else:
-        # Add inner_ellipsoid (radius innerRad, center (0,0,0))
-        inner_ellipsoid = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
-        gmsh.model.occ.dilate(
-            [(3, inner_ellipsoid)], 0, 0, 0, innerRad[0], innerRad[1], innerRad[2]
-        )
-        # Create interface between ellipsoids
-        two_ellipsoids, (outer_ellipsoid_map, inner_ellipsoid_map) = gmsh.model.occ.fragment(
-            [(3, outer_ellipsoid)], [(3, inner_ellipsoid)]
-        )
-        gmsh.model.occ.synchronize()
-
-        # Get the outer boundary
-        outer_shell = gmsh.model.getBoundary(two_ellipsoids, oriented=False)
-        assert len(outer_shell) == 1
-        # Get the inner boundary
-        inner_shell = gmsh.model.getBoundary(inner_ellipsoid_map, oriented=False)
-        assert len(inner_shell) == 1
-        # Add physical markers for facets
-        gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
-        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
-
-        # Physical markers for
-        all_volumes = [tag[1] for tag in outer_ellipsoid_map]
-        inner_volume = [tag[1] for tag in inner_ellipsoid_map]
-        outer_volume = []
-        for vol in all_volumes:
-            if vol not in inner_volume:
-                outer_volume.append(vol)
-        gmsh.model.add_physical_group(3, outer_volume, tag=outer_vol_tag)
-        gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
 
     def meshSizeCallback(dim, tag, x, y, z, lc):
         # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
@@ -268,28 +213,92 @@ def create_ellipsoids(
             lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
         return min(lc3, lcTest)
 
-    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
-    # set off the other options for mesh size determination
-    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-    # this changes the algorithm from Frontal-Delaunay to Delaunay,
-    # which may provide better results when there are larger gradients in mesh size
-    gmsh.option.setNumber("Mesh.Algorithm", 5)
-
-    gmsh.model.mesh.generate(3)
+    import gmsh
+    # Create temporary path for mesh (dependent on number of processes)
+    # Only generate mesh on rank 0
     rank = MPI.COMM_WORLD.rank
-    tmp_folder = pathlib.Path(f"tmp_ellipsoid_{outerRad}_{innerRad}_{rank}")
-    tmp_folder.mkdir(exist_ok=True)
+    size = MPI.COMM_WORLD.size
+    tmp_folder = pathlib.Path(f"tmp_ellipsoid_{outerRad}_{innerRad}_{size}")
+    if rank == 0:
+        tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "ellipsoids.msh"
-    gmsh.write(str(gmsh_file))
-    gmsh.finalize()
 
+    if rank == 0:
+        if np.any(np.isclose(outerRad, 0)):
+            ValueError("One of the outer radii is equal to zero")
+        if np.isclose(hEdge, 0):
+            hEdge = 0.1 * max(outerRad)
+        if np.isclose(hInnerEdge, 0):
+            hInnerEdge = 0.2 * max(outerRad) if np.any(np.isclose(innerRad, 0)) else 0.2 * max(innerRad)
+        if innerRad[0] > outerRad[0] or innerRad[1] > outerRad[1] or innerRad[2] > outerRad[2]:
+            ValueError("Inner ellipsoid does not fit inside outer ellipsoid")
+        # Create the two ellipsoid mesh using gmsh
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Terminal", int(verbose))
+
+        gmsh.model.add("twoellipsoids")
+        # first add ellipsoid 1 of radius outerRad and center (0,0,0)
+        outer_ellipsoid = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
+        gmsh.model.occ.dilate([(3, outer_ellipsoid)], 0, 0, 0, outerRad[0], outerRad[1], outerRad[2])
+        if np.any(np.isclose(innerRad, 0)):
+            # Use outer_ellipsoid only
+            gmsh.model.occ.synchronize()
+            gmsh.model.add_physical_group(3, [outer_ellipsoid], tag=outer_vol_tag)
+            facets = gmsh.model.getBoundary([(3, outer_ellipsoid)])
+            assert len(facets) == 1
+            gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
+        else:
+            # Add inner_ellipsoid (radius innerRad, center (0,0,0))
+            inner_ellipsoid = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
+            gmsh.model.occ.dilate(
+                [(3, inner_ellipsoid)], 0, 0, 0, innerRad[0], innerRad[1], innerRad[2]
+            )
+            # Create interface between ellipsoids
+            two_ellipsoids, (outer_ellipsoid_map, inner_ellipsoid_map) = gmsh.model.occ.fragment(
+                [(3, outer_ellipsoid)], [(3, inner_ellipsoid)]
+            )
+            gmsh.model.occ.synchronize()
+
+            # Get the outer boundary
+            outer_shell = gmsh.model.getBoundary(two_ellipsoids, oriented=False)
+            assert len(outer_shell) == 1
+            # Get the inner boundary
+            inner_shell = gmsh.model.getBoundary(inner_ellipsoid_map, oriented=False)
+            assert len(inner_shell) == 1
+            # Add physical markers for facets
+            gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
+            gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
+
+            # Physical markers for
+            all_volumes = [tag[1] for tag in outer_ellipsoid_map]
+            inner_volume = [tag[1] for tag in inner_ellipsoid_map]
+            outer_volume = []
+            for vol in all_volumes:
+                if vol not in inner_volume:
+                    outer_volume.append(vol)
+            gmsh.model.add_physical_group(3, outer_volume, tag=outer_vol_tag)
+            gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
+
+        gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+        # set off the other options for mesh size determination
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+        # this changes the algorithm from Frontal-Delaunay to Delaunay,
+        # which may provide better results when there are larger gradients in mesh size
+        gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+        gmsh.model.mesh.generate(3)
+        gmsh.write(str(gmsh_file))
+        gmsh.finalize()
+    MPI.COMM_WORLD.Barrier()
     # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
     dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
     # remove tmp mesh and tmp folder
-    gmsh_file.unlink(missing_ok=False)
-    tmp_folder.rmdir()
+    if rank == 0:
+        gmsh_file.unlink(missing_ok=False)
+        tmp_folder.rmdir()
+    
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 
@@ -601,38 +610,40 @@ def gmsh_to_dolfin(
             mf_cell: markers for cells
     """
     import meshio
-
-    # load, convert to xdmf, and save as temp files
-    mesh_in = meshio.read(gmsh_file_name)
-    if dimension == 2:
-        cell_type = "triangle"
-        facet_type = "line"
-    elif dimension == 3:
-        cell_type = "tetra"
-        facet_type = "triangle"
-    else:
-        ValueError(f"Mesh of dimension {dimension} not implemented")
-    # convert cell mesh
-    cells = mesh_in.get_cells_type(cell_type)
-    cell_data = mesh_in.get_cell_data("gmsh:physical", cell_type)  # extract values of tags
-    out_mesh_cell = meshio.Mesh(
-        points=mesh_in.points,
-        cells={cell_type: cells},
-        cell_data={"mf_data": [cell_data]},
-    )
     tmp_file_cell = tmp_folder / "tempmesh_cell.xdmf"
-    meshio.write(tmp_file_cell, out_mesh_cell)
-    # convert facet mesh
-    facets = mesh_in.get_cells_type(facet_type)
-    facet_data = mesh_in.get_cell_data("gmsh:physical", facet_type)  # extract values of tags
-    out_mesh_facet = meshio.Mesh(
-        points=mesh_in.points,
-        cells={facet_type: facets},
-        cell_data={"mf_data": [facet_data]},
-    )
     tmp_file_facet = tmp_folder / "tempmesh_facet.xdmf"
-    meshio.write(tmp_file_facet, out_mesh_facet)
 
+    if comm.rank == 0:
+        # load, convert to xdmf, and save as temp files
+        mesh_in = meshio.read(gmsh_file_name)
+        if dimension == 2:
+            cell_type = "triangle"
+            facet_type = "line"
+        elif dimension == 3:
+            cell_type = "tetra"
+            facet_type = "triangle"
+        else:
+            ValueError(f"Mesh of dimension {dimension} not implemented")
+        # convert cell mesh
+        cells = mesh_in.get_cells_type(cell_type)
+        cell_data = mesh_in.get_cell_data("gmsh:physical", cell_type)  # extract values of tags
+        out_mesh_cell = meshio.Mesh(
+            points=mesh_in.points,
+            cells={cell_type: cells},
+            cell_data={"mf_data": [cell_data]},
+        )
+        meshio.write(tmp_file_cell, out_mesh_cell)
+        # convert facet mesh
+        facets = mesh_in.get_cells_type(facet_type)
+        facet_data = mesh_in.get_cell_data("gmsh:physical", facet_type)  # extract values of tags
+        out_mesh_facet = meshio.Mesh(
+            points=mesh_in.points,
+            cells={facet_type: facets},
+            cell_data={"mf_data": [facet_data]},
+        )
+        meshio.write(tmp_file_facet, out_mesh_facet)
+
+    comm.Barrier()
     # convert xdmf mesh to dolfin-style mesh
     dmesh = d.Mesh(comm)
     mvc_cell = d.MeshValueCollection("size_t", dmesh, dimension)
@@ -651,10 +662,11 @@ def gmsh_to_dolfin(
     mf_facet.array()[np.where(mf_facet.array() > 1e9)[0]] = 0
 
     # remove temp meshes
-    tmp_file_cell.unlink(missing_ok=False)
-    tmp_file_cell.with_suffix(".h5").unlink(missing_ok=False)
-    tmp_file_facet.unlink(missing_ok=False)
-    tmp_file_facet.with_suffix(".h5").unlink(missing_ok=False)
+    if comm.rank == 0:
+        tmp_file_cell.unlink(missing_ok=False)
+        tmp_file_cell.with_suffix(".h5").unlink(missing_ok=False)
+        tmp_file_facet.unlink(missing_ok=False)
+        tmp_file_facet.with_suffix(".h5").unlink(missing_ok=False)
     # return dolfin mesh and mfs (marker functions)
     return (dmesh, mf_facet, mf_cell)
 
