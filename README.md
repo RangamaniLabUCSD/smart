@@ -62,6 +62,7 @@ However this requires FEniCS version 2019.2.0 or later to already be installed. 
 The SMART repository contains a number of examples in the `examples` directory which also run as continuous integration tests (see "Automated Tests" below):
 * [Example 1](https://rangamanilabucsd.github.io/smart/examples/example1/example1.html): Formation of Turing patterns in 2D reaction-diffusion (rectangular domain)
 * [Example 2](https://rangamanilabucsd.github.io/smart/examples/example2/example2.html): Simple cell signaling model in 2D (ellipse)
+* [Example 2 - 3D](https://rangamanilabucsd.github.io/smart/examples/example2-3d/example2-3d.html): Simple cell signaling model in 3D (realistic spine geometry)
 * [Example 3](https://rangamanilabucsd.github.io/smart/examples/example3/example3.html): Model of protein phosphorylation and diffusion in 3D (sphere)
 * [Example 4](https://rangamanilabucsd.github.io/smart/examples/example4/example4.html): Model of second messenger reaction-diffusion in 3D (ellipsoid-in-an-ellipsoid)
 * [Example 5](https://rangamanilabucsd.github.io/smart/examples/example5/example5.html): Simple cell signaling model in 3D (cube-in-a-cube)
@@ -70,10 +71,12 @@ The SMART repository contains a number of examples in the `examples` directory w
 ## Functionality documentation
 SMART is equipped to handle:
 * Reaction-diffusion with any number of species, reactions, and compartments.
-* 3D-2D problems or 2D-1D problems; that is, you can solve a problem with many 3d sub-volumes coupled to many 2d sub-surfaces, or a problem with many 2d "sub-volumes" coupled to many 1d "sub-surfaces"
+* 3D-2D problems or 2D-1D problems; that is, you can solve a problem with many 3D sub-volumes coupled to many 2D sub-surfaces, or a problem with many 2D "sub-volumes" coupled to many 1D "sub-surfaces"
 * Conversion of units at run-time via [Pint](https://pint.readthedocs.io/en/stable/) so that models can be specified in whatever units are most natural/convenient to the user.
 * Specification of a time-dependent function either algebraically or from data (SMART will numerically integrate the data points at each time-step).
 * Customized reaction equations (e.g. irreversible Hill equation).
+
+The current version of SMART is not compatible with MPI-based mesh parallelization; this feature is in development pending a future release of DOLFIN addressing some issues when using `MeshView`s in parallel. However, SMART users can utilize MPI to run multiple simulations in parallel (one mesh per process), as demonstrated in [Example 3 with MPI](https://github.com/RangamaniLabUCSD/smart/blob/development/examples/example3/example3_multimeshMPI.py).
 
 The general form of the mixed-dimensional partial differential equations (PDEs) solved by SMART, along with mathematical details of the numerical implementation, are documented [here](https://rangamanilabucsd.github.io/smart/docs/math.html).
 
@@ -88,6 +91,7 @@ Upon pushing new code to the SMART repository, a number of tests run:
     - Install test dependencies: `python3 -m pip install fenics-smart[test]`. Alternatively, if you have already installed SMART, you can install `pytest` and `pytest-cov` using `python3 -m pip install pytest pytest-cov`.
     - Run tests from the root of the repository: `python3 -m pytest`
 * Examples 1-6: All 6 examples are run when building the docs. These serve as Contiuous Integration (CI) tests; within each run, there is a regression test comparing the output values from the simulation with values obtained from a previous build of SMART. Outputs from examples 2 and 3 are also compared to analytical solutions to demonstrate the accuracy of SMART simulations.
+* Example 2 - 3D
 * Example 3 with MPI: Example 3 is run using MPI to run differently sized meshes in parallel (each process is assigned a single mesh).
 
 ## Contributing guidelines
