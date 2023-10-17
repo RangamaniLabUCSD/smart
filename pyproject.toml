@@ -37,8 +37,8 @@ test = [
     "pytest-cov",
 ]
 docs = [
-   "jupyter-book",
-   "sphinx-autoapi2"
+   "jupyter-book==0.15.1",
+   "sphinx-autoapi==2.1.1"
 ]
 examples = [
     "meshio",
