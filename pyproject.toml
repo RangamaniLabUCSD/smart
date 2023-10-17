@@ -38,7 +38,7 @@ test = [
 ]
 docs = [
    "jupyter-book",
-   "sphinx-autoapi"
+   "sphinx-autoapi==2.1.1"
 ]
 examples = [
     "meshio",
