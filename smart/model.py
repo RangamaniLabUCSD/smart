@@ -15,8 +15,13 @@ import sympy as sym
 from cached_property import cached_property
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
-from ufl.algorithms.ad import expand_derivatives
-from ufl.form import sub_forms_by_domain
+
+try:
+    from ufl_legacy.algorithms.ad import expand_derivatives
+    from ufl_legacy.form import sub_forms_by_domain
+except ImportError:
+    from ufl.algorithms.ad import expand_derivatives
+    from ufl.form import sub_forms_by_domain
 
 from .common import Stopwatch
 from .common import sub
