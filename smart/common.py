@@ -9,7 +9,10 @@ from typing import Any, Callable, Dict, List, Union
 
 import dolfin as d
 
-import ufl
+try:
+    import ufl_legacy as ufl
+except ImportError:
+    import ufl
 from pytz import timezone
 from termcolor import colored
 
