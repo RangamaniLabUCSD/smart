@@ -12,15 +12,14 @@ on:
   workflow_dispatch:
 
 jobs:
-
   build:
     runs-on: ubuntu-22.04
-    container: ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21
+    container: ghcr.io/scientificcomputing/fenics-gmsh:2023-08-16
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
       DISPLAY: ":99.0"
-      PYVISTA_TRAME_SERVER_PROXY_PREFIX: '/proxy/'
+      PYVISTA_TRAME_SERVER_PROXY_PREFIX: "/proxy/"
       PYVISTA_TRAME_SERVER_PROXY_ENABLED: "True"
       PYVISTA_OFF_SCREEN: True
       PYVISTA_JUPYTER_BACKEND: "panel"
@@ -33,14 +32,14 @@ jobs:
         run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 
       - name: Install dependencies
-        run: python3 -m pip install ".[docs,dev,examples,pyvista]"
+        run: python3 -m pip install ".[docs,examples,pyvista]"
 
       - name: Cache notebooks
         id: cache-notebooks
         uses: actions/cache@v3
         with:
           path: _build
-          key: cache_key_2  # Bump number manually when you want to clear the cache
+          key: cache_key_2 # Bump number manually when you want to clear the cache
 
       - name: Build docs
         run: jupyter book build .
