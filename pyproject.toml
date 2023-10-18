@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0.0", "wheel"]
 
 [project]
 name = "fenics-smart"
-version = "2.1.3"
+version = "2.1.4"
 description = "Spatial Modeling Algorithms for Reactions and Transport (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes in biological cells."
-authors = [{name = "Justin Laughlin", email = "justinglaughlin@gmail.com"}]
-license = {file = "LICENSE"}
+authors = [{ name = "Justin Laughlin", email = "justinglaughlin@gmail.com" }]
+license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
@@ -32,45 +32,30 @@ packages = ["smart"]
 
 
 [project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-cov",
-]
-docs = [
-   "jupyter-book",
-   "sphinx-autoapi"
-]
-examples = [
-    "meshio",
-    "gmsh",
-    "matplotlib",
-    "jupyter",
-    "jupyterlab"
-]
-pyvista = [
-    "pyvista==0.38.4",
-    "panel"
-]
+test = ["pytest", "pytest-cov"]
+# Astroid is pinned due to: https://github.com/readthedocs/sphinx-autoapi/issues/407
+# which causes https://github.com/executablebooks/jupyter-book/issues/2063
+docs = ["jupyter-book==0.15.1", "sphinx-autoapi==2.0.1", "astroid<3"]
+examples = ["meshio", "gmsh", "matplotlib", "jupyter", "jupyterlab"]
+pyvista = ["pyvista==0.38.4", "panel"]
 
 all = [
-   "fenics-smart[examples]",
-   "fenics-smart[test]",
-   "fenics-smart[docs]",
-   "fenics-smart[pyvista]"
+    "fenics-smart[examples]",
+    "fenics-smart[test]",
+    "fenics-smart[docs]",
+    "fenics-smart[pyvista]",
 ]
 
 
 [tool.pytest.ini_options]
 addopts = [
-   "--cov=smart",
-   "--cov-report=html",
-   "--cov-report=term-missing",
-   "-v"
+    "--cov=smart",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "-v",
 ]
 
-testpaths = [
-    "tests"
-]
+testpaths = ["tests"]
 
 
 [tool.black]

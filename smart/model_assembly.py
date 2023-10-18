@@ -598,7 +598,21 @@ class Parameter(ObjectInstance):
         notes="",
         use_preintegration=False,
     ):
-        """Use sympy to parse time-dependent expression for parameter"""
+        """
+        Use sympy to parse time-dependent expression for parameter
+        Note that the user can provide a symbolic expression for preintegration
+        There was previously a concern that the preintegration expression would no longer be valid
+        if the parameter appears in another time-dependent expression.
+        However, in the current version of SMART, there is no way to include a time-dependent
+        parameter in the definition of another time-dependent parameter, so this is not applicable.
+        This should be kept in mind for future versions of SMART. The associated warning was:
+        #     logger.warning(
+        #         f"Warning! Pre-integrating parameter {self.name}. Make sure that "
+        #         f"expressions {self.name} appears in have no other time-dependent variables,"
+        #         "else this preintegration expression may be invalid",
+        #         extra=dict(format_type="warning"),
+        #     )
+        """
         # Parse the given string to create a sympy expression
         if isinstance(sym_expr, str):
             sym_expr = parse_expr(sym_expr)
@@ -659,13 +673,6 @@ class Parameter(ObjectInstance):
             self.is_time_dependent = False
         if not hasattr(self, "is_space_dependent"):
             self.is_space_dependent = False
-
-        if self.use_preintegration:
-            logger.warning(
-                f"Warning! Pre-integrating parameter {self.name}. Make sure that "
-                f"expressions {self.name} appears in have no other time-dependent variables.",
-                extra=dict(format_type="warning"),
-            )
 
         attributes = [
             "sym_expr",
