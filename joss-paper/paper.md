@@ -32,7 +32,7 @@ authors:
     affiliation: 1
     corresponding: true # (This is how to denote the corresponding author)
 affiliations:
-  - name: Department of Mechanical and Aerospace Engineering, University of California San Diego, La Jolla, CA, USA
+  - name: Department of Mechanical and Aerospace Engineering, University of California San Diego, La Jolla, CA, United States of America
     index: 1
   - name: Department of Numerical Analysis and Scientific Computing, Simula Research Laboratory, Oslo, Norway
     index: 2
