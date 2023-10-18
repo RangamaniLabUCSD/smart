@@ -2,6 +2,7 @@
 [![PyPI](https://img.shields.io/pypi/v/fenics-smart)](https://pypi.org/project/fenics-smart/)
 [![Deploy static content to Pages](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml)
 [![pre-commit](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10019463.svg)](https://doi.org/10.5281/zenodo.10019463)
 # Spatial Modeling Algorithms for Reaction-Transport [systems|models|equations]
 
 ## Statement of Need
@@ -22,7 +23,7 @@ The simplest way to use `fenics-smart` is to use the provided docker image. You 
 ```
 docker pull ghcr.io/rangamanilabucsd/smart:latest
 ```
-It is also possible to pull a specific version by changing the tag, e.g
+It is also possible to pull a specific version by changing the tag, e.g.
 ```
 docker pull ghcr.io/rangamanilabucsd/smart:v2.0.1
 ```
