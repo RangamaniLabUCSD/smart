@@ -3,6 +3,7 @@
 [![Deploy static content to Pages](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml)
 [![pre-commit](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10019463.svg)](https://doi.org/10.5281/zenodo.10019463)
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.05580/status.svg)](https://doi.org/10.21105/joss.05580)
 # Spatial Modeling Algorithms for Reaction-Transport [systems|models|equations]
 
 ## Statement of Need
