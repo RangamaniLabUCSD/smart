@@ -2,7 +2,11 @@
 Utility functions for visualizing SMART meshes using pyvista.
 """
 import dolfin
-from ufl import vertex
+
+try:
+    from ufl_legacy import vertex
+except ImportError:
+    from ufl import vertex
 from typing import Tuple
 import numpy.typing as npt
 import numpy as np

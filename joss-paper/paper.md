@@ -32,7 +32,7 @@ authors:
     affiliation: 1
     corresponding: true # (This is how to denote the corresponding author)
 affiliations:
-  - name: Department of Mechanical and Aerospace Engineering, University of California San Diego, La Jolla, CA, USA
+  - name: Department of Mechanical and Aerospace Engineering, University of California San Diego, La Jolla, CA, United States of America
     index: 1
   - name: Department of Numerical Analysis and Scientific Computing, Simula Research Laboratory, Oslo, Norway
     index: 2
@@ -59,7 +59,7 @@ These reaction pathways include numerous chemical species that react across boun
 Such systems of multi-dimensional partial differential equations (PDEs) are notoriously difficult to solve
 because of their high dimensionality, non-linearities, strong coupling, stiffness, and potential instabilities.
 In this work, we describe *Spatial Modeling Algorithms for Reactions and Transport* (SMART),
-a high-performance finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes.
+a finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes.
 SMART is based on the FEniCS finite element library, provides a symbolic representation
 framework for specifying reaction pathways, and supports geometries in 2D and 3D including
 large and irregular cell geometries obtained from modern ultrastructural characterization methods.

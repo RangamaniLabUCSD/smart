@@ -2,11 +2,13 @@
 [![PyPI](https://img.shields.io/pypi/v/fenics-smart)](https://pypi.org/project/fenics-smart/)
 [![Deploy static content to Pages](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/build_docs.yml)
 [![pre-commit](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/RangamaniLabUCSD/smart/actions/workflows/pre-commit.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10019463.svg)](https://doi.org/10.5281/zenodo.10019463)
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.05580/status.svg)](https://doi.org/10.21105/joss.05580)
 # Spatial Modeling Algorithms for Reaction-Transport [systems|models|equations]
 
 ## Statement of Need
 
-*Spatial Modeling Algorithms for Reactions and Transport* (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes,
+*Spatial Modeling Algorithms for Reactions and Transport* (SMART) is a finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes,
 especially tailored to modeling such systems within biological cells.
 SMART is based on the [FEniCS finite element library](https://fenicsproject.org/), provides a symbolic representation
 framework for specifying reaction pathways, and supports large and irregular cell geometries in 2D and 3D.
@@ -22,7 +24,7 @@ The simplest way to use `fenics-smart` is to use the provided docker image. You 
 ```
 docker pull ghcr.io/rangamanilabucsd/smart:latest
 ```
-It is also possible to pull a specific version by changing the tag, e.g
+It is also possible to pull a specific version by changing the tag, e.g.
 ```
 docker pull ghcr.io/rangamanilabucsd/smart:v2.0.1
 ```
