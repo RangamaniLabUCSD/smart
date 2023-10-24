@@ -245,7 +245,7 @@ def create_ellipsoids(
             R_rel_inner = np.sqrt(
                 (x / innerRad[0]) ** 2 + (y / innerRad[1]) ** 2 + (z / innerRad[2]) ** 2
             )
-            lc3 = 0.2 * max(innerRad)
+            lc3 = min(hInnerEdge, 0.5 * max(innerRad))
             innerRad_scale = np.mean(
                 [innerRad[0] / outerRad[0], innerRad[1] / outerRad[1], innerRad[2] / outerRad[2]]
             )
