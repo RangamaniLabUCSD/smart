@@ -905,7 +905,7 @@ def create_2Dcell(
     if innerExpr == "":
         # No inner shape in this case
         gmsh.model.occ.synchronize()
-        gmsh.model.add_physical_group(2, cell_plane_tag, tag=outer_tag)
+        gmsh.model.add_physical_group(2, [cell_plane_tag], tag=outer_tag)
         facets = gmsh.model.getBoundary([(2, cell_plane_tag)])
         facet_tag_list = []
         for i in range(len(facets)):
