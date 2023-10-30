@@ -15,20 +15,74 @@ facet markers ``mf2`` to hdf5 and pvd files.
 from typing import Tuple
 import pathlib
 import numpy as np
+import sympy as sym
 import dolfin as d
 from mpi4py import MPI
+from sympy.parsing.sympy_parser import parse_expr
+from sympy.solvers.solveset import solveset_real
 
 __all__ = [
+    "implicit_axisymm",
     "facet_topology",
     "cube_condition",
     "create_cubes",
     "create_spheres",
     "create_ellipsoids",
+    "create_axisymm",
     "create_cylinders",
     "create_ellipses",
+    "create_2Dcell",
     "gmsh_to_dolfin",
     "write_mesh",
 ]
+
+
+def implicit_axisymm(boundExpr):
+    outerExpr0 = parse_expr(boundExpr)
+    r = sym.Symbol("r", real=True)
+    z = sym.Symbol("z", real=True)
+    outerExpr0 = outerExpr0.subs({"r": 0, "z": z})
+    z0 = solveset_real(outerExpr0, z)
+    rVals = [0.0]
+    zVals = [float(max(z0))]
+    sGap = max(z0) / 100
+    curTan = [1, 0]
+    while rVals[-1] >= 0 and zVals[-1] >= 0:
+        rNext = rVals[-1] + curTan[0] * sGap
+        zNext = zVals[-1] + curTan[1] * sGap
+        exprCur = parse_expr(boundExpr)
+        exprCur = exprCur.subs({"r": rNext, "z": z})
+        zNextSol = list(solveset_real(exprCur, z))
+        zNextList = [0] * len(zNextSol)
+        for i in range(len(zNextSol)):
+            zNextList[i] = abs(zNextSol[i] - zNext)
+        if zNextSol == [] or min(zNextList) > sGap:
+            exprCur = parse_expr(boundExpr)
+            exprCur = exprCur.subs({"r": r, "z": zNext})
+            rNextSol = list(solveset_real(exprCur, r))
+            rNextList = [0] * len(rNextSol)
+            for i in range(len(rNextSol)):
+                rNextList[i] = abs(rNextSol[i] - rNext)
+            idx = rNextList.index(min(rNextList))
+            if rNextSol == [] or min(rNextList) > sGap:
+                ValueError("Next point could not be found")
+            rNext = rNextSol[idx]
+        else:
+            idx = zNextList.index(min(zNextList))
+            zNext = zNextSol[idx]
+        rVals.append(float(rNext))
+        zVals.append(float(zNext))
+        curTan = np.array([rVals[-1] - rVals[-2], zVals[-1] - zVals[-2]])
+        curTan = curTan / np.sqrt(float(curTan[0] ** 2 + curTan[1] ** 2))
+    if rVals[-1] < 0:
+        rVals[-1] = 0
+        zVals[-1] = zVals[-2] + (zVals[-1] - zVals[-2]) * (0 - rVals[-2]) / (rVals[-1] - rVals[-2])
+    elif zVals[-1] < 0:
+        zVals[-1] = 0
+        rVals[-1] = rVals[-2] + (rVals[-1] - rVals[-2]) * (0 - zVals[-2]) / (zVals[-1] - zVals[-2])
+    rVals = np.array(rVals)
+    zVals = np.array(zVals)
+    return (rVals, zVals)
 
 
 def facet_topology(f: d.Facet, mf3: d.MeshFunction):
@@ -227,13 +281,10 @@ def create_ellipsoids(
         # or set when calling function) and hInnerEdge at the ERM
         # (defaults to 0.2*innerRad, or set when calling function)
         # between these, the value is interpolated based on R,
-        # and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
+        # and inside the value is interpolated between hInnerEdge and 0.2*innerRad
+        # If hInnerEdge > 0.2*innerRad, lc = hInnerRad inside the inner ellipsoid
         # if innerRad=0, then the mesh length is interpolated between
         # hEdge at the PM and 0.2*outerRad in the center
-        # for one ellipsoid (innerRad = 0), if hEdge > 0.2*outerRad,
-        # then lc = 0.2*outerRad in the whole volume
-        # for two ellipsoids, if hEdge or hInnerEdge > 0.2*innerRad,
-        # they are set to lc = 0.2*innerRad
         R_rel_outer = np.sqrt(
             (x / outerRad[0]) ** 2 + (y / outerRad[1]) ** 2 + (z / outerRad[2]) ** 2
         )
@@ -245,7 +296,7 @@ def create_ellipsoids(
             R_rel_inner = np.sqrt(
                 (x / innerRad[0]) ** 2 + (y / innerRad[1]) ** 2 + (z / innerRad[2]) ** 2
             )
-            lc3 = 0.2 * max(innerRad)
+            lc3 = max(hInnerEdge, 0.2 * max(innerRad))
             innerRad_scale = np.mean(
                 [innerRad[0] / outerRad[0], innerRad[1] / outerRad[1], innerRad[2] / outerRad[2]]
             )
@@ -256,7 +307,7 @@ def create_ellipsoids(
             lcTest = lc1 + (lc2 - lc1) * (1 - R_rel_outer) / (1 - innerRad_scale)
         else:
             lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
-        return min(lc3, lcTest)
+        return lcTest
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
     # set off the other options for mesh size determination
@@ -272,6 +323,205 @@ def create_ellipsoids(
     tmp_folder = pathlib.Path(f"tmp_ellipsoid_{outerRad}_{innerRad}_{rank}")
     tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "ellipsoids.msh"
+    gmsh.write(str(gmsh_file))
+    gmsh.finalize()
+
+    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
+    # remove tmp mesh and tmp folder
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir()
+    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    return (dmesh, mf2, mf3)
+
+
+def create_axisymm(
+    outerExpr: str = "",
+    innerExpr: str = "",
+    hEdge: float = 0,
+    hInnerEdge: float = 0,
+    interface_marker: int = 12,
+    outer_marker: int = 10,
+    inner_vol_tag: int = 2,
+    outer_vol_tag: int = 1,
+    comm: MPI.Comm = d.MPI.comm_world,
+    verbose: bool = False,
+) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+    """
+    Creates an axisymmetric mesh, with the bounding curve defined in
+    terms of r and z. (e.g. unit circle defined by "r**2 + (z-1)**2 == 1")
+    It is assumed that substrate is present at z = 0, so if the curve extends
+    below z = 0 , there is a sharp cutoff.
+    Can include one compartment inside another compartment
+
+    Args:
+        outerExpr: String implicitly defining an r-z curve for the outer surface
+        innerExpr: String implicitly defining an r-z curve for the inner surface
+        hEdge: maximum mesh size at the outer edge
+        hInnerEdge: maximum mesh size at the edge
+            of the inner compartment
+        interface_marker: The value to mark facets on the interface with
+        outer_marker: The value to mark facets on the outer ellipsoid with
+        inner_vol_tag: The value to mark the inner ellipsoidal volume with
+        outer_vol_tag: The value to mark the outer ellipsoidal volume with
+        comm: MPI communicator to create the mesh with
+        verbose: If true print gmsh output, else skip
+    Returns:
+        Tuple (mesh, facet_marker, cell_marker)
+    """
+    import gmsh
+
+    if outerExpr == "":
+        ValueError("Outer surface is not defined")
+
+    rValsOuter, zValsOuter = implicit_axisymm(outerExpr)
+
+    if not innerExpr == "":
+        rValsInner, zValsInner = implicit_axisymm(innerExpr)
+        zMid = np.mean(zValsInner)
+        ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
+        RInnerVec = np.sqrt(rValsInner**2 + (zValsInner - zMid) ** 2)
+        maxOuterDim = max(ROuterVec)
+        maxInnerDim = max(RInnerVec)
+    else:
+        zMid = np.mean(zValsOuter)
+        ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
+        maxOuterDim = max(ROuterVec)
+    if np.isclose(hEdge, 0):
+        hEdge = 0.1 * maxOuterDim
+    if np.isclose(hInnerEdge, 0):
+        hInnerEdge = 0.2 * maxOuterDim if innerExpr == "" else 0.2 * maxInnerDim
+    # Create the two axisymmetric body mesh using gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+    gmsh.model.add("axisymm")
+    # first add outer body and revolve
+    outer_tag_list = []
+    for i in range(len(rValsOuter)):
+        cur_tag = gmsh.model.occ.add_point(rValsOuter[i], 0, zValsOuter[i])
+        outer_tag_list.append(cur_tag)
+    outer_spline_tag = gmsh.model.occ.add_spline(outer_tag_list)
+    if np.isclose(zValsOuter[-1], 0):  # then include substrate at z=0
+        origin_tag = gmsh.model.occ.add_point(0, 0, 0)
+        symm_axis_tag = gmsh.model.occ.add_line(origin_tag, outer_tag_list[0])
+        bottom_tag = gmsh.model.occ.add_line(origin_tag, outer_tag_list[-1])
+        outer_loop_tag = gmsh.model.occ.add_curve_loop(
+            [outer_spline_tag, symm_axis_tag, bottom_tag]
+        )
+    else:
+        symm_axis_tag = gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1])
+        outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag, symm_axis_tag])
+    cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
+    outer_shape = gmsh.model.occ.revolve([(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi)
+    outer_shape_tags = []
+    for i in range(len(outer_shape)):
+        if outer_shape[i][0] == 3:  # pull out tags associated with 3d objects
+            outer_shape_tags.append(outer_shape[i][1])
+    assert len(outer_shape_tags) == 1  # should be just one 3D body from the full revolution
+
+    if innerExpr == "":
+        # No inner shape in this case
+        gmsh.model.occ.synchronize()
+        gmsh.model.add_physical_group(3, outer_shape_tags, tag=outer_vol_tag)
+        facets = gmsh.model.getBoundary([(3, outer_shape_tags[0])])
+        assert (
+            len(facets) == 2
+        )  # 2 boundaries because of bottom surface at z = 0, both belong to PM
+        gmsh.model.add_physical_group(2, [facets[0][1], facets[1][1]], tag=outer_marker)
+    else:
+        # Add inner shape
+        inner_tag_list = []
+        for i in range(len(rValsInner)):
+            cur_tag = gmsh.model.occ.add_point(rValsInner[i], 0, zValsInner[i])
+            inner_tag_list.append(cur_tag)
+        inner_spline_tag = gmsh.model.occ.add_spline(inner_tag_list)
+        symm_inner_tag = gmsh.model.occ.add_line(inner_tag_list[0], inner_tag_list[-1])
+        inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, symm_inner_tag])
+        inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
+        inner_shape = gmsh.model.occ.revolve([(2, inner_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi)
+        inner_shape_tags = []
+        for i in range(len(inner_shape)):
+            if inner_shape[i][0] == 3:  # pull out tags associated with 3d objects
+                inner_shape_tags.append(inner_shape[i][1])
+        assert len(inner_shape_tags) == 1  # should be just one 3D body from the full revolution
+
+        # Create interface between 2 objects
+        two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
+            [(3, outer_shape_tags[0])], [(3, inner_shape_tags[0])]
+        )
+        gmsh.model.occ.synchronize()
+
+        # Get the outer boundary
+        outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
+        assert (
+            len(outer_shell) == 2
+        )  # 2 boundaries because of bottom surface at z = 0, both belong to PM
+        # Get the inner boundary
+        inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
+        assert len(inner_shell) == 1
+        # Add physical markers for facets
+        gmsh.model.add_physical_group(
+            outer_shell[0][0], [outer_shell[0][1], outer_shell[1][1]], tag=outer_marker
+        )
+        gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
+
+        # Physical markers for
+        all_volumes = [tag[1] for tag in outer_shape_map]
+        inner_volume = [tag[1] for tag in inner_shape_map]
+        outer_volume = []
+        for vol in all_volumes:
+            if vol not in inner_volume:
+                outer_volume.append(vol)
+        gmsh.model.add_physical_group(3, outer_volume, tag=outer_vol_tag)
+        gmsh.model.add_physical_group(3, inner_volume, tag=inner_vol_tag)
+
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is hEdge at the PM and hInnerEdge at the inner membrane
+        # between these, the value is interpolated based on the relative distance
+        # between the two membranes.
+        # Inside the inner shape, the value is interpolated between hInnerEdge
+        # and lc3, where lc3 = max(hInnerEdge, 0.2*maxInnerDim)
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*maxOuterDim in the center
+        rCur = np.sqrt(x**2 + y**2)
+        RCur = np.sqrt(rCur**2 + (z - zMid) ** 2)
+        outer_dist = np.sqrt((rCur - rValsOuter) ** 2 + (z - zValsOuter) ** 2)
+        np.append(outer_dist, z)  # include the distance from the substrate
+        dist_to_outer = min(outer_dist)
+        if innerExpr == "":
+            lc3 = 0.2 * maxOuterDim
+            dist_to_inner = RCur
+            in_outer = True
+        else:
+            inner_dist = np.sqrt((rCur - rValsInner) ** 2 + (z - zValsInner) ** 2)
+            dist_to_inner = min(inner_dist)
+            inner_idx = np.argmin(inner_dist)
+            inner_rad = RInnerVec[inner_idx]
+            R_rel_inner = RCur / inner_rad
+            lc3 = max(hInnerEdge, 0.2 * maxInnerDim)
+            in_outer = R_rel_inner > 1
+        lc1 = hEdge
+        lc2 = hInnerEdge
+        if in_outer:
+            lcTest = lc1 + (lc2 - lc1) * (dist_to_outer) / (dist_to_inner + dist_to_outer)
+        else:
+            lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
+        return lcTest
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+    gmsh.model.mesh.generate(3)
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_axisymm_{rank}")
+    tmp_folder.mkdir(exist_ok=True)
+    gmsh_file = tmp_folder / "axisymm.msh"
     gmsh.write(str(gmsh_file))
     gmsh.finalize()
 
@@ -379,25 +629,21 @@ def create_cylinders(
         # or set when calling function) and hInnerEdge at the ERM
         # (defaults to 0.2*innerRad, or set when calling function)
         # between these, the value is interpolated based on r (polar coord),
-        # and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
+        # and inside the value is interpolated between hInnerEdge and 0.2*innerRad
         # if innerRad=0, then the mesh length is interpolated between
         # hEdge at the PM and 0.2*outerRad in the center
-        # for one cylinder (innerRad = 0), if hEdge > 0.2*outerRad,
-        # then lc = 0.2*outerRad in the whole volume
-        # for two cylinders, if hEdge or hInnerEdge > 0.2*innerRad,
-        # they are set to lc = 0.2*innerRad
         r_cur = np.sqrt(x**2 + y**2)
         if np.isclose(innerRad, 0):
             lc3 = 0.2 * outerRad
         else:
-            lc3 = 0.2 * innerRad
+            lc3 = max(hInnerEdge, 0.2 * innerRad)
         lc1 = hEdge
         lc2 = hInnerEdge
         if r_cur > innerRad:
             lcTest = lc1 + (lc2 - lc1) * (outerRad - r_cur) / (outerRad - innerRad)
         else:
             lcTest = lc2 + (lc3 - lc2) * (innerRad - r_cur) / innerRad
-        return min(lc3, lcTest)
+        return lcTest
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
     # set off the other options for mesh size determination
@@ -518,13 +764,10 @@ def create_ellipses(
         # or set when calling function) and hInnerEdge at the ERM
         # (defaults to 0.2*innerRad, or set when calling function)
         # between these, the value is interpolated based on R,
-        # and inside the value is interpolated between hInnerEdge and 0.2*innerEdge
+        # and inside the value is interpolated between hInnerEdge and 0.2*innerRad
+        # If hInnerEdge > 0.2*innerRad, lc = hInnerEdge inside the inner ellipse
         # if innerRad=0, then the mesh length is interpolated between
         # hEdge at the PM and 0.2*outerRad in the center
-        # for one ellipse (innerRad = 0), if hEdge > 0.2*outerRad,
-        # then lc = 0.2*outerRad in the whole volume
-        # for two ellipses, if hEdge or hInnerEdge > 0.2*innerRad,
-        # they are set to lc = 0.2*innerRad
         R_rel_outer = np.sqrt((x / outerRad[0]) ** 2 + (y / outerRad[1]) ** 2)
         if np.any(np.isclose(innerRad, 0)):
             lc3 = 0.2 * max(outerRad)
@@ -532,7 +775,7 @@ def create_ellipses(
             in_outer = True
         else:
             R_rel_inner = np.sqrt((x / innerRad[0]) ** 2 + (y / innerRad[1]) ** 2)
-            lc3 = 0.2 * max(innerRad)
+            lc3 = max(hInnerEdge, 0.2 * max(innerRad))
             innerRad_scale = np.mean([innerRad[0] / outerRad[0], innerRad[1] / outerRad[1]])
             in_outer = R_rel_inner > 1
         lc1 = hEdge
@@ -541,7 +784,7 @@ def create_ellipses(
             lcTest = lc1 + (lc2 - lc1) * (1 - R_rel_outer) / (1 - innerRad_scale)
         else:
             lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
-        return min(lc3, lcTest)
+        return lcTest
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
     # set off the other options for mesh size determination
@@ -567,6 +810,230 @@ def create_ellipses(
     tmp_folder.rmdir()
     # return dolfin mesh, mf1 (1d tags) and mf2 (2d tags)
     return (dmesh, mf1, mf2)
+
+
+def create_2Dcell(
+    outerExpr: str = "",
+    innerExpr: str = "",
+    hEdge: float = 0,
+    hInnerEdge: float = 0,
+    interface_marker: int = 12,
+    outer_marker: int = 10,
+    inner_tag: int = 2,
+    outer_tag: int = 1,
+    comm: MPI.Comm = d.MPI.comm_world,
+    verbose: bool = False,
+    half_cell: bool = True,
+) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+    """
+    Creates a 2D mesh of a cell profile, with the bounding curve defined in
+    terms of r and z (e.g. unit circle would be "r**2 + (z-1)**2 == 1)
+    It is assumed that substrate is present at z = 0, so if the curve extends
+    below z = 0 , there is a sharp cutoff.
+    If half_cell = True, only have of the contour is constructed, with a
+    left zero-flux boundary at r = 0.
+    Can include one compartment inside another compartment.
+    Recommended for use with the axisymmetric feature of SMART.
+
+    Args:
+        outerExpr: String implicitly defining an r-z curve for the outer surface
+        innerExpr: String implicitly defining an r-z curve for the inner surface
+        hEdge: maximum mesh size at the outer edge
+        hInnerEdge: maximum mesh size at the edge
+            of the inner compartment
+        interface_marker: The value to mark facets on the interface with
+        outer_marker: The value to mark facets on edge of the outer ellipse with
+        inner_tag: The value to mark the inner ellipse surface with
+        outer_tag: The value to mark the outer ellipse surface with
+        comm: MPI communicator to create the mesh with
+        verbose: If true print gmsh output, else skip
+        half_cell: If true, consider r=0 the symmetry axis for an axisymm shape
+    Returns:
+        Tuple (mesh, facet_marker, cell_marker)
+    """
+    import gmsh
+
+    if outerExpr == "":
+        ValueError("Outer surface is not defined")
+
+    rValsOuter, zValsOuter = implicit_axisymm(outerExpr)
+
+    if not innerExpr == "":
+        rValsInner, zValsInner = implicit_axisymm(innerExpr)
+        zMid = np.mean(zValsInner)
+        ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
+        RInnerVec = np.sqrt(rValsInner**2 + (zValsInner - zMid) ** 2)
+        maxOuterDim = max(ROuterVec)
+        maxInnerDim = max(RInnerVec)
+    else:
+        zMid = np.mean(zValsOuter)
+        ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
+        maxOuterDim = max(ROuterVec)
+    if np.isclose(hEdge, 0):
+        hEdge = 0.1 * maxOuterDim
+    if np.isclose(hInnerEdge, 0):
+        hInnerEdge = 0.2 * maxOuterDim if innerExpr == "" else 0.2 * maxInnerDim
+    # Create the 2D mesh using gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+    gmsh.model.add("2DCell")
+    # first add outer body and revolve
+    outer_tag_list = []
+    for i in range(len(rValsOuter)):
+        cur_tag = gmsh.model.occ.add_point(rValsOuter[i], 0, zValsOuter[i])
+        outer_tag_list.append(cur_tag)
+    outer_spline_tag = gmsh.model.occ.add_spline(outer_tag_list)
+    if np.isclose(zValsOuter[-1], 0):  # then include substrate at z=0
+        if half_cell:
+            origin_tag = gmsh.model.occ.add_point(0, 0, 0)
+            symm_axis_tag = gmsh.model.occ.add_line(origin_tag, outer_tag_list[0])
+            bottom_tag = gmsh.model.occ.add_line(origin_tag, outer_tag_list[-1])
+            outer_loop_tag = gmsh.model.occ.add_curve_loop(
+                [outer_spline_tag, bottom_tag, symm_axis_tag]
+            )
+        else:
+            bottom_tag = gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1])
+            outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag, bottom_tag])
+    else:
+        if half_cell:
+            symm_axis_tag = gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1])
+            outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag, symm_axis_tag])
+        else:
+            outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag])
+    cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
+
+    if innerExpr == "":
+        # No inner shape in this case
+        gmsh.model.occ.synchronize()
+        gmsh.model.add_physical_group(2, cell_plane_tag, tag=outer_tag)
+        facets = gmsh.model.getBoundary([(2, cell_plane_tag)])
+        facet_tag_list = []
+        for i in range(len(facets)):
+            facet_tag_list.append(facets[i][1])
+        if half_cell:  # if half, set symmetry axis to 0 (no flux)
+            rRef = max(rValsOuter)
+            xmin, ymin, zmin = (-rRef / 10, -rRef / 10, -1)
+            xmax, ymax, zmax = (rRef / 10, rRef / 10, max(zValsOuter) + 1)
+            all_symm_bound = gmsh.model.occ.get_entities_in_bounding_box(
+                xmin, ymin, zmin, xmax, ymax, zmax, dim=1
+            )
+            symm_bound_markers = []
+            for i in range(len(all_symm_bound)):
+                symm_bound_markers.append(all_symm_bound[i][1])
+            gmsh.model.add_physical_group(1, symm_bound_markers, tag=0)
+        gmsh.model.add_physical_group(1, facet_tag_list, tag=outer_marker)
+    else:
+        # Add inner shape
+        inner_tag_list = []
+        for i in range(len(rValsInner)):
+            cur_tag = gmsh.model.occ.add_point(rValsInner[i], 0, zValsInner[i])
+            inner_tag_list.append(cur_tag)
+        inner_spline_tag = gmsh.model.occ.add_spline(inner_tag_list)
+        if half_cell:
+            symm_inner_tag = gmsh.model.occ.add_line(inner_tag_list[0], inner_tag_list[-1])
+            inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, symm_inner_tag])
+        else:
+            inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag])
+        inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
+
+        # Create interface between 2 objects
+        two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
+            [(2, cell_plane_tag)], [(2, inner_plane_tag)]
+        )
+        gmsh.model.occ.synchronize()
+
+        # Get the outer boundary
+        outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
+        outer_marker_list = []
+        for i in range(len(outer_shell)):
+            outer_marker_list.append(outer_shell[i][1])
+        # Get the inner boundary
+        inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
+        inner_marker_list = []
+        for i in range(len(inner_shell)):
+            inner_marker_list.append(inner_shell[i][1])
+        # Add physical markers for facets
+        if half_cell:  # if half, set symmetry axis to 0 (no flux)
+            rRef = max(rValsInner)
+            xmin, ymin, zmin = (-rRef / 10, -rRef / 10, -1)
+            xmax, ymax, zmax = (rRef / 10, rRef / 10, max(zValsOuter) + 1)
+            all_symm_bound = gmsh.model.occ.get_entities_in_bounding_box(
+                xmin, ymin, zmin, xmax, ymax, zmax, dim=1
+            )
+            symm_bound_markers = []
+            for i in range(len(all_symm_bound)):
+                symm_bound_markers.append(all_symm_bound[i][1])
+            gmsh.model.add_physical_group(1, symm_bound_markers, tag=0)
+        gmsh.model.add_physical_group(1, outer_marker_list, tag=outer_marker)
+        gmsh.model.add_physical_group(1, inner_marker_list, tag=interface_marker)
+
+        # Physical markers for "volumes"
+        all_volumes = [tag[1] for tag in outer_shape_map]
+        inner_volume = [tag[1] for tag in inner_shape_map]
+        outer_volume = []
+        for vol in all_volumes:
+            if vol not in inner_volume:
+                outer_volume.append(vol)
+        gmsh.model.add_physical_group(2, outer_volume, tag=outer_tag)
+        gmsh.model.add_physical_group(2, inner_volume, tag=inner_tag)
+
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is hEdge at the PM and hInnerEdge at the inner membrane
+        # between these, the value is interpolated based on the relative distance
+        # between the two membranes.
+        # Inside the inner shape, the value is interpolated between hInnerEdge
+        # and lc3, where lc3 = max(hInnerEdge, 0.2*maxInnerDim)
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*maxOuterDim in the center
+        rCur = np.sqrt(x**2 + y**2)
+        RCur = np.sqrt(rCur**2 + (z - zMid) ** 2)
+        outer_dist = np.sqrt((rCur - rValsOuter) ** 2 + (z - zValsOuter) ** 2)
+        np.append(outer_dist, z)  # include the distance from the substrate
+        dist_to_outer = min(outer_dist)
+        if innerExpr == "":
+            lc3 = 0.2 * maxOuterDim
+            dist_to_inner = RCur
+            in_outer = True
+        else:
+            inner_dist = np.sqrt((rCur - rValsInner) ** 2 + (z - zValsInner) ** 2)
+            dist_to_inner = min(inner_dist)
+            inner_idx = np.argmin(inner_dist)
+            inner_rad = RInnerVec[inner_idx]
+            R_rel_inner = RCur / inner_rad
+            lc3 = max(hInnerEdge, 0.2 * maxInnerDim)
+            in_outer = R_rel_inner > 1
+        lc1 = hEdge
+        lc2 = hInnerEdge
+        if in_outer:
+            lcTest = lc1 + (lc2 - lc1) * (dist_to_outer) / (dist_to_inner + dist_to_outer)
+        else:
+            lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
+        return lcTest
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+    gmsh.model.mesh.generate(2)
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_2DCell_{rank}")
+    tmp_folder.mkdir(exist_ok=True)
+    gmsh_file = tmp_folder / "2DCell.msh"
+    gmsh.write(str(gmsh_file))
+    gmsh.finalize()
+
+    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 2, comm)
+    # remove tmp mesh and tmp folder
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir()
+    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    return (dmesh, mf2, mf3)
 
 
 def gmsh_to_dolfin(
