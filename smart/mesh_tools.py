@@ -1146,22 +1146,7 @@ def write_mesh(
     cell_dim = mf_cell.dim()
     facet_dim = mf_facet.dim()
     # Write mesh and meshfunctions to file
-    hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")
-    hdf5.write(mesh, "/mesh")
-    hdf5.write(mf_cell, f"/mf{cell_dim}")
-    hdf5.write(mf_facet, f"/mf{facet_dim}")
-    # For visualization of domains
-    (
-        d.File(
-            mesh.mpi_comm(),
-            str(filename.with_stem(filename.stem + f"_mf{cell_dim}").with_suffix(".pvd")),
-        )
-        << mf_cell
-    )
-    (
-        d.File(
-            mesh.mpi_comm(),
-            str(filename.with_stem(filename.stem + f"_mf{facet_dim}").with_suffix(".pvd")),
-        )
-        << mf_facet
-    )
+    with d.HDF5File(comm, str(filename.with_suffix(".h5")), "w") as hdf5:
+        hdf5.write(mesh, "/mesh")
+        hdf5.write(mf_cell, f"/mf{cell_dim}")
+        hdf5.write(mf_facet, f"/mf{facet_dim}")
