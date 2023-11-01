@@ -1138,17 +1138,18 @@ def write_mesh(
     hdf5.write(mf_cell, f"/mf{cell_dim}")
     hdf5.write(mf_facet, f"/mf{facet_dim}")
     # For visualization of domains
+    stem = filename.stem
     (
         d.File(
             mesh.mpi_comm(),
-            str(filename.with_stem(filename.stem + f"_mf{cell_dim}").with_suffix(".pvd")),
+            (filename.parent / f"{stem}_mf{cell_dim}").with_suffix(".pvd").as_posix(),
         )
         << mf_cell
     )
     (
         d.File(
             mesh.mpi_comm(),
-            str(filename.with_stem(filename.stem + f"_mf{facet_dim}").with_suffix(".pvd")),
+            (filename.parent / f"{stem}_mf{facet_dim}").with_suffix(".pvd").as_posix(),
         )
         << mf_facet
     )
