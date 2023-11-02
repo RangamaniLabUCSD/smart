@@ -1179,7 +1179,7 @@ def load_mesh(
     mf_cell = d.MeshFunction("size_t", mesh, dim)
     mf_facet = d.MeshFunction("size_t", mesh, dim - 1)
 
-    with d.HDF5File(comm, str(filename.with_suffix(".h5")), "r") as hdf5:
+    with d.HDF5File(mesh.mpi_comm(), str(filename.with_suffix(".h5")), "r") as hdf5:
         hdf5.read(mf_cell, f"/mf{dim}")
         hdf5.read(mf_facet, f"/mf{dim-1}")
 
