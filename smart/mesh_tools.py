@@ -12,7 +12,7 @@ dolfin meshes using :func:`gmsh_to_dolfin`
 facet markers ``mf2`` to hdf5 and pvd files.
 """
 
-from typing import Tuple
+from typing import Tuple, NamedTuple
 import pathlib
 import numpy as np
 import sympy as sym
@@ -1133,7 +1133,35 @@ def write_mesh(
     cell_dim = mf_cell.dim()
     facet_dim = mf_facet.dim()
     # Write mesh and meshfunctions to file
-    hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")
-    hdf5.write(mesh, "/mesh")
-    hdf5.write(mf_cell, f"/mf{cell_dim}")
-    hdf5.write(mf_facet, f"/mf{facet_dim}")
+    with d.HDF5File(comm, str(filename.with_suffix(".h5")), "w") as hdf5:
+        hdf5.write(mesh, "/mesh")
+        hdf5.write(mf_cell, f"/mf{cell_dim}")
+        hdf5.write(mf_facet, f"/mf{facet_dim}")
+
+
+class LoadedMesh(NamedTuple):
+    mesh: d.Mesh
+    mf_cell: d.MeshFunction
+    mf_facet: d.MeshFunction
+    filename: pathlib.Path
+
+
+def load_mesh(filename: pathlib.Path | str, comm: MPI.Intracomm = MPI.COMM_WORLD) -> LoadedMesh:
+
+    mesh = d.Mesh(comm)
+
+    if not pathlib.Path(filename).is_file():
+        raise FileNotFoundError(f"File {filename} does not exists")
+
+    with d.HDF5File(comm, pathlib.Path(filename).with_suffix(".h5").as_posix(), "r") as hdf5:
+        hdf5.read(mesh, "/mesh", False)
+
+    dim = mesh.geometric_dimension()
+    mf_cell = d.MeshFunction("size_t", mesh, dim)
+    mf_facet = d.MeshFunction("size_t", mesh, dim - 1)
+
+    with d.HDF5File(comm, str(filename.with_suffix(".h5")), "r") as hdf5:
+        hdf5.read(mf_cell, f"/mf{dim}")
+        hdf5.read(mf_facet, f"/mf{dim-1}")
+
+    return LoadedMesh(mesh=mesh, mf_cell=mf_cell, mf_facet=mf_facet, filename=filename)
