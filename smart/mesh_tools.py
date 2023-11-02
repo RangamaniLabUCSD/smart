@@ -12,7 +12,7 @@ dolfin meshes using :func:`gmsh_to_dolfin`
 facet markers ``mf2`` to hdf5 and pvd files.
 """
 
-from typing import Tuple, NamedTuple, Optional
+from typing import Tuple, NamedTuple, Optional, Union
 import pathlib
 import numpy as np
 import sympy as sym
@@ -1147,7 +1147,7 @@ class LoadedMesh(NamedTuple):
 
 
 def load_mesh(
-    filename: pathlib.Path | str,
+    filename: Union[pathlib.Path, str],
     comm: MPI.Intracomm = MPI.COMM_WORLD,
     mesh: Optional[d.Mesh] = None,
 ) -> LoadedMesh:
