@@ -214,6 +214,7 @@ class Model:
         """Main model initialization function, split into 5 subfunctions"""
 
         # Solver related parameters
+        timer = d.Timer("Initialize Model")
         self._base_t = Decimal("0." + (self.config.solver["time_precision"] - 1) * "0" + "1")
         self.t = self.rounded_decimal(0.0)
         self.dt = self.rounded_decimal(self.config.solver["initial_dt"])
@@ -238,9 +239,11 @@ class Model:
             self.cc.print()
             self.print_meshes()
             self.rc.print()
+        timer.stop()
 
     def _init_1(self):
         """Checking validity of model"""
+        timer = d.Timer("Initialize model step 1")
         logger.debug("Checking validity of model (step 1 of ZZ)", extra=dict(format_type="title"))
         self._init_1_1_check_mesh_dimensionality()
         self._init_1_2_check_namespace_conflicts()
@@ -249,10 +252,12 @@ class Model:
             "Step 1 of initialization completed successfully!",
             extra=dict(text_color="magenta"),
         )
+        timer.stop()
 
     def _init_2(self):
         """Cross-container dependent initializations
         (requires information from multiple containers)"""
+        timer = d.Timer("Initialize model step 2")
         logger.debug(
             "Cross-Container Dependent Initializations (step 2 of ZZ)",
             extra=dict(
@@ -270,9 +275,11 @@ class Model:
             "Step 2 of initialization completed " "successfully!",
             extra=dict(text_color="magenta"),
         )
+        timer.stop()
 
     def _init_3(self):
         """Mesh-related initializations"""
+        timer = d.Timer("Initialize model step 3")
         logger.debug(
             "Mesh-related Initializations (step 3 of ZZ)",
             extra=dict(format_type="title"),
@@ -289,9 +296,11 @@ class Model:
             "Step 3 of initialization completed successfully!",
             extra=dict(format_type="log_important"),
         )
+        timer.stop()
 
     def _init_4(self):
         """Dolfin function initializations"""
+        timer = d.Timer("Initialize model step 4")
         logger.debug("Dolfin Initializations (step 4 of ZZ)", extra=dict(format_type="title"))
         self._init_4_0_initialize_dolfin_parameters()
         self._init_4_1_get_active_compartments()
@@ -301,11 +310,13 @@ class Model:
         self._init_4_5_name_functions()
         self._init_4_6_check_dolfin_function_validity()
         self._init_4_7_set_initial_conditions()
+        timer.stop()
 
     def _init_5(self, initialize_solver):
         """Convert reactions to fluxes and define variational form.
         If initialize_solver is true, also initialize solver.
         """
+        timer = d.Timer("Initialize model step 5")
         logger.debug(
             "Dolfin fluxes, forms, and problems+solvers (step 5 of ZZ)",
             extra=dict(
@@ -316,6 +327,8 @@ class Model:
         self._init_5_2_create_variational_forms()
         if initialize_solver:
             self.initialize_discrete_variational_problem_and_solver()
+
+        timer.stop()
 
     # Step 1 - Checking model validity
 
