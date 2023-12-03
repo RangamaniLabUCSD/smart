@@ -1569,8 +1569,8 @@ class Flux(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
-        # note - throws an error when it doesn't return a float
-        # (happens when it returns 0 from sign function, for instance)
+        # note - for this eval to work, all variables in the expression must be defined
+        # dolfin quantities and all functions must match one in the list in the config module.
         self._equation_quantity = self.equation_lambda(**self.equation_variables)
         if input_type == "quantity":
             return self._equation_quantity

@@ -837,6 +837,7 @@ def create_2Dcell(
     comm: MPI.Comm = d.MPI.comm_world,
     verbose: bool = False,
     half_cell: bool = True,
+    return_curvature: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 2D mesh of a cell profile, with the bounding curve defined in
@@ -870,6 +871,9 @@ def create_2Dcell(
         ValueError("Outer surface is not defined")
 
     rValsOuter, zValsOuter = implicit_curve(outerExpr)
+    if not half_cell:
+        rValsOuter = np.append(-rValsOuter[-1:1:-1], rValsOuter)
+        zValsOuter = np.append(zValsOuter[-1:1:-1], zValsOuter)
 
     if not innerExpr == "":
         rValsInner, zValsInner = implicit_curve(innerExpr)
@@ -946,7 +950,12 @@ def create_2Dcell(
             symm_inner_tag = gmsh.model.occ.add_line(inner_tag_list[0], inner_tag_list[-1])
             inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, symm_inner_tag])
         else:
-            inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag])
+            inner_tag_list2 = []
+            for i in range(len(rValsInner)):
+                cur_tag = gmsh.model.occ.add_point(-rValsInner[i], 0, zValsInner[i])
+                inner_tag_list2.append(cur_tag)
+            inner_spline_tag2 = gmsh.model.occ.add_spline(inner_tag_list2)
+            inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, inner_spline_tag2])
         inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
 
         # Create interface between 2 objects
@@ -1046,7 +1055,10 @@ def create_2Dcell(
     gmsh_file.unlink(missing_ok=False)
     tmp_folder.rmdir()
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
-    return (dmesh, mf2, mf3)
+    if return_curvature:
+        return (dmesh, mf2, mf3, mf3)
+    else:
+        return (dmesh, mf2, mf3)
 
 
 def gmsh_to_dolfin(
@@ -1165,3 +1177,45 @@ def write_mesh(
         )
         << mf_facet
     )
+
+    def compute_curvature(
+        ref_mesh: d.mesh,
+        mf_facet: d.MeshFunction,
+        mf_cell: d.MeshFunction,
+        facet_val: int = 10,
+        cell_val: int = 1,
+    ):
+        mesh = d.MeshView.create(mf_cell, cell_val)
+        bmesh = d.MeshView.create(mf_facet, facet_val)
+
+        n = d.FacetNormal(mesh)
+        V = d.VectorFunctionSpace(mesh, "CG", 1)
+        u = d.TrialFunction(V)
+        v = d.TestFunction(V)
+        ds = d.Measure("ds", mesh)
+        a = d.inner(u, v) * ds
+        lform = d.inner(n, v) * ds
+        A = d.assemble(a, keep_diagonal=True)
+        L = d.assemble(lform)
+
+        A.ident_zeros()
+        nh = d.Function(V)
+        d.solve(A, nh.vector(), L)  # project facet normals onto CG1
+
+        Vb = d.FunctionSpace(bmesh, "CG", 1)
+        Vb_vec = d.VectorFunctionSpace(bmesh, "CG", 1)
+        nb = d.interpolate(nh, Vb_vec)
+        p, q = d.TrialFunction(Vb), d.TestFunction(Vb)
+        dx = d.Measure("dx", bmesh)
+        a = d.inner(p, q) * dx
+        lform = d.inner(d.div(nb), q) * dx
+        A = d.assemble(a, keep_diagonal=True)
+        L = d.assemble(lform)
+        A.ident_zeros()
+        kappab = d.Function(Vb)
+        d.solve(A, kappab.vector(), L)
+
+        # kappa_full = boundary_to_mesh(kappab, ref_mesh)
+        kappa_mf = d.MeshFunction("double", ref_mesh, 0)
+        # kappa_mf.set_values(kappa_full.vector().get_local())
+        return kappa_mf

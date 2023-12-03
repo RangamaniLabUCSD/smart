@@ -1029,6 +1029,7 @@ class Model:
                         linear_wrt_comp,
                     )
                 )
+
             # mass (time derivative) terms
             if self.config.flags["axisymmetric_model"]:
                 Muform = x[0] * (u) * v / self.dT * dx
@@ -1802,7 +1803,7 @@ class Model:
         self.update_solution(ukeys=["u"], unew="n")
 
     def update_time_dependent_parameters(self):
-        r"""
+        """
         Updates all time dependent parameters. Time-dependent parameters are
         either defined either symbolically or through a data file, and each of
         these can either be defined as a direct function of :math:`t, p(t)`, or a
