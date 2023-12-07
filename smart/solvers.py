@@ -6,7 +6,7 @@ import dolfin as d
 import petsc4py.PETSc as p
 
 from .common import Stopwatch
-from .model_assembly import Compartment
+from .model_assembly import Compartment, Form
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class smartSNESProblem:
         active_compartments: List[Compartment],
         all_compartments: List[Compartment],
         stopwatches: Dict[str, Stopwatch],
+        model,
     ):
         self.u = u
         self.Fforms = Fforms
@@ -55,6 +56,8 @@ class smartSNESProblem:
         # for convenience, the mixed function space (model.V)
         self.W = [usub.function_space() for usub in u._functions]
         self.dim = len(self.Fforms)
+
+        self.model = model
 
         assert len(self.Jforms_all) == self.dim**2
 
@@ -246,10 +249,13 @@ class smartSNESProblem:
 
 
         """
+
         logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
+        # forms are updated for mass conservation and/or ODE solutions in
+        # assemble_Fnest, as that is executed first
         Jform = self.Jforms_all
 
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using
@@ -327,6 +333,35 @@ class smartSNESProblem:
         dim = self.dim
         logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
+
+        # update forms here for odes and/or mass conservation -
+        # currently projecting volume species onto surface for "surface_to_volume"
+        # and "volume_to_surface" reactions to fix mass conservation
+        u = self.model.u["u"]._functions
+        for fname, f in self.model.fc.items:
+            if f.topology in ["surface_to_volume", "volume_to_surface"]:
+                form_type = "boundary_reaction" if f.is_boundary_condition else "domain_reaction"
+                flux_form_units = f.equation_units * f.measure_units
+                linearity_dict = {
+                    k: f.is_linear_wrt_comp.setdefault(k, True) for k in self.model.cc.keys
+                }
+                # note that "add" here updates existing form
+                self.model.forms.add(
+                    Form(
+                        fname,
+                        f.form,
+                        f.destination_species,
+                        form_type,
+                        flux_form_units,
+                        True,
+                        linearity_dict,
+                    )
+                )
+        # self.model._init_5_2_create_variational_forms()
+        self.Fsum_all = sum([f.lhs for f in self.model.forms])  # Sum of all forms
+        # get updated blocks for residual and Jacobian
+        self.Fforms = self.model.get_block_F(self.Fsum_all, u)
+        self.Jforms_all = self.model.get_block_J(self.Fsum_all, u)
 
         if self.is_single_domain:
             Fj_petsc = [Fnest]

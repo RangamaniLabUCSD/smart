@@ -1148,6 +1148,7 @@ class Model:
         # if use snes
         if self.config.solver["use_snes"]:
             logger.debug("Using SNES solver", extra=dict(format_type="log"))
+            # Does passing the entire model object to smartSNESProblem slow down execution?
             self.problem = smartSNESProblem(
                 self.u["u"],
                 self.Fblocks_all,
@@ -1155,6 +1156,7 @@ class Model:
                 self._active_compartments,
                 self._all_compartments,
                 self.stopwatches,
+                self,
             )
 
             self.problem.init_petsc_matnest()
@@ -1602,6 +1604,9 @@ class Model:
         if self.dt <= 0:
             raise ValueError("dt is <= 0")
 
+        # update equation variables (necessary for mass conservation workaround)
+        for fname, f in self.fc.items:
+            f.equation_variables.update()
         # Take a step forward in time and update time-dependent parameters
         # update time-dependent parameters
 

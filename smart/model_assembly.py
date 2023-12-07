@@ -1454,6 +1454,14 @@ class Flux(ObjectInstance):
         else:
             raise AssertionError()
 
+        # if necessary, project some volume variables onto surface
+        if self.topology in ["surface_to_volume", "volume_to_surface"]:
+            self.proj_var = {}
+            for sname, s in self.species.items():
+                if not s.compartment.mesh.is_surface:
+                    surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
+                    self.proj_var.update({sname: d.interpolate(s._usplit["u"], surf_space)})
+
     def _post_init_get_flux_units(self):
         """
         Check that flux units match expected type of units.
@@ -1564,6 +1572,13 @@ class Flux(ObjectInstance):
             variable.name: variable.dolfin_quantity
             for variable in {**self.parameters, **self.species}.values()
         }
+        # interpolate certain volume variables onto surface
+        if self.topology in ["surface_to_volume", "volume_to_surface"]:
+            for sname, s in self.species.items():
+                if not s.compartment.mesh.is_surface:
+                    surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
+                    self.proj_var[sname].assign(d.interpolate(s._usplit["u"], surf_space))
+                    variables[sname] = self.proj_var[sname] * variables[sname].units
         variables.update({"unit_scale_factor": self.unit_scale_factor})
         free_symbols = [str(x) for x in self.equation.free_symbols]
         if "curv" in free_symbols:
@@ -1596,6 +1611,9 @@ class Flux(ObjectInstance):
         """-1 factor because terms are defined as if they were on the
         lhs of the equation :math:`F(u;v)=0`"""
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        # if self.name == "r1 [B (f)]":
+        #     self.equation_variables["A"] = d.interpolate(
+        #         self.species["A"].u["u"], self.surface.V)*self.species["A"].concentration_units
         if self.axisymm:
             return (
                 d.Constant(-1)
