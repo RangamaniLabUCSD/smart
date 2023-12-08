@@ -337,18 +337,23 @@ class smartSNESProblem:
         # update forms here for odes and/or mass conservation -
         # currently projecting volume species onto surface for "surface_to_volume"
         # and "volume_to_surface" reactions to fix mass conservation
+        fNames = []
+        if self.model.config.flags["enforce_mass_conservation"]:
+            for f in self.model.fc:
+                if f.topology in ["surface_to_volume", "volume_to_surface"]:
+                    fNames.append(f.name)
         u = self.model.u["u"]._functions
-        for fname, f in self.model.fc.items:
-            if f.topology in ["surface_to_volume", "volume_to_surface"]:
+        for f in self.model.fc:
+            if f.name in fNames:
                 form_type = "boundary_reaction" if f.is_boundary_condition else "domain_reaction"
                 flux_form_units = f.equation_units * f.measure_units
                 linearity_dict = {
                     k: f.is_linear_wrt_comp.setdefault(k, True) for k in self.model.cc.keys
                 }
-                # note that "add" here updates existing form
+                # note that "add" here just updates existing form
                 self.model.forms.add(
                     Form(
-                        fname,
+                        f.name,
                         f.form,
                         f.destination_species,
                         form_type,

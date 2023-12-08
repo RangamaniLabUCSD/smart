@@ -1170,6 +1170,8 @@ class Reaction(ObjectInstance):
     eqn_f_str: str = ""
     eqn_r_str: str = ""
     group: str = ""
+    axisymm: bool = False
+    mass_cons: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1186,6 +1188,8 @@ class Reaction(ObjectInstance):
             "eqn_f_str",
             "eqn_r_str",
             "group",
+            "axisymm",
+            "mass_cons",
         ]
         return {key: self.__dict__[key] for key in keys_to_keep}
 
@@ -1255,14 +1259,13 @@ class Reaction(ObjectInstance):
         reaction_expr = reaction_expr.subs(self.species_map)
         return str(reaction_expr)
 
-    def reaction_to_fluxes(self, axisymm):
+    def reaction_to_fluxes(self):
         """
         Convert reactions to fluxes -
         in general, for each product and each reactant there are two fluxes,
         one forward flux (dictated by :code:`self.eqn_f_str`)
         and one reverse flux (dictated by :code:`self.eqn_r_str`),
         stoichiometry is dictated by the number of times a given species occurs on the lhs or rhs
-        If axisymm is true, this is a 2D mesh representing a 3D axisymmetric geometry
         """
         logger.debug(f"Getting fluxes for reaction {self.name}", extra=dict(format_type="log"))
         # set of 2-tuples. (species_name, signed stoichiometry)
@@ -1289,11 +1292,15 @@ class Reaction(ObjectInstance):
             if self.eqn_f_str:
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, axisymm)})
+                self.fluxes.update(
+                    {flux_name: Flux(flux_name, species, eqn, self, self.axisymm, self.mass_cons)}
+                )
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, axisymm)})
+                self.fluxes.update(
+                    {flux_name: Flux(flux_name, species, eqn, self, self.axisymm, self.mass_cons)}
+                )
 
 
 class FluxContainer(ObjectContainer):
@@ -1331,6 +1338,7 @@ class Flux(ObjectInstance):
     * equation: directionality * stoichiometry * reaction string
     * reaction: reaction object this flux comes from
     * axisymm: True if axisymmetric shape is being represented
+    * enforce_mass_conservation: True if adding extra mass conservation enforcement
     """
 
     name: str
@@ -1338,6 +1346,7 @@ class Flux(ObjectInstance):
     equation: sym.Expr
     reaction: Reaction
     axisymm: bool = False
+    enforce_mass_conservation: bool = False
 
     def check_validity(self):
         "No validity checks for flux objects currently"
@@ -1455,12 +1464,14 @@ class Flux(ObjectInstance):
             raise AssertionError()
 
         # if necessary, project some volume variables onto surface
-        if self.topology in ["surface_to_volume", "volume_to_surface"]:
-            self.proj_var = {}
-            for sname, s in self.species.items():
-                if not s.compartment.mesh.is_surface:
-                    surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
-                    self.proj_var.update({sname: d.interpolate(s._usplit["u"], surf_space)})
+        if self.enforce_mass_conservation:
+            if self.topology in ["surface_to_volume", "volume_to_surface"]:
+                self.proj_var = {}
+                for sname, s in self.species.items():
+                    if not s.compartment.mesh.is_surface:
+                        surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
+                        # u or usplit?
+                        self.proj_var.update({sname: d.interpolate(s.u["u"], surf_space)})
 
     def _post_init_get_flux_units(self):
         """
@@ -1572,13 +1583,15 @@ class Flux(ObjectInstance):
             variable.name: variable.dolfin_quantity
             for variable in {**self.parameters, **self.species}.values()
         }
-        # interpolate certain volume variables onto surface
-        if self.topology in ["surface_to_volume", "volume_to_surface"]:
-            for sname, s in self.species.items():
-                if not s.compartment.mesh.is_surface:
-                    surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
-                    self.proj_var[sname].assign(d.interpolate(s._usplit["u"], surf_space))
-                    variables[sname] = self.proj_var[sname] * variables[sname].units
+        if self.enforce_mass_conservation:
+            # interpolate certain volume variables onto surface
+            if self.topology in ["surface_to_volume", "volume_to_surface"]:
+                for sname, s in self.species.items():
+                    if not s.compartment.mesh.is_surface:
+                        surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
+                        # u or usplit?
+                        self.proj_var[sname].assign(d.interpolate(s.u["u"], surf_space))
+                        variables[sname] = self.proj_var[sname] * variables[sname].units
         variables.update({"unit_scale_factor": self.unit_scale_factor})
         free_symbols = [str(x) for x in self.equation.free_symbols]
         if "curv" in free_symbols:

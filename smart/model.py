@@ -961,7 +961,9 @@ class Model:
         """Convert reactions to flux objects"""
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
         for reaction in self.rc:
-            reaction.reaction_to_fluxes(self.config.flags["axisymmetric_model"])
+            reaction.axisymm = self.config.flags["axisymmetric_model"]
+            reaction.mass_cons = self.config.flags["enforce_mass_conservation"]
+            reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
 
     def _init_5_2_create_variational_forms(self):
