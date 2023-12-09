@@ -1381,6 +1381,7 @@ class Flux(ObjectInstance):
         # Check if flux is linear with respect to different components
         self.is_linear_wrt_comp = dict()
         self._post_init_get_is_linear_comp()
+        self._post_init_incl_ode_vars()
 
     def _post_init_get_involved_species_parameters_compartments(self):
         "Find species, parameters, and compartments involved in this flux"
@@ -1574,6 +1575,10 @@ class Flux(ObjectInstance):
             )
             self.measure = self.surface.mesh.dx
             self.measure_units = self.surface.compartment_units**self.surface.dimensionality
+
+    def _post_init_incl_ode_vars(self):
+        """Determine if current flux includes ODE variables"""
+        self.ode_coupled = False
 
     # We define this as a property so that it is automatically updated
 

@@ -184,6 +184,9 @@ class Model:
                 extra=dict(format_type="log_urgent"),
             )
 
+        # check if there are ode variables to solve for
+        self.couple_odes = False
+
     @property
     def mpi_am_i_root(self):
         """Returns True if current process is root"""
@@ -2138,3 +2141,10 @@ class Model:
         dfunc.vector().set_local(values)
         dfunc.vector().apply("insert")
         return dfunc
+
+    def ode_update(self):
+        """
+        Function for updating ODE (0-dimensional) variables
+        Executed at each Newton iteration
+        """
+        print("add code here")

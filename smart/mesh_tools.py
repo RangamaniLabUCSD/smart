@@ -833,6 +833,7 @@ def compute_curvature(
     facet_marker_vec: list,
     cell_marker_vec: list,
     half_mesh_data: Tuple[d.Mesh, d.MeshFunction] = "",
+    axisymm: bool = False,
 ):
     """
     Use dolfin functions to estimate curvature on boundary mesh.
@@ -887,7 +888,7 @@ def compute_curvature(
 
         A.ident_zeros()
         nh = d.Function(V)
-        d.solve(A, nh.vector(), L)  # project facet normals onto CG1
+        d.solve(A, nh.vector(), L)  # project facet normals
 
         Vb = d.FunctionSpace(bmesh, "CG", 1)
         Vb_vec = d.VectorFunctionSpace(bmesh, "CG", 1)
@@ -902,9 +903,25 @@ def compute_curvature(
         kappab = d.Function(Vb)
         d.solve(A, kappab.vector(), L)
 
+        if axisymm:  # then include out of plane (parallel) curvature as well
+            kappab_vec = kappab.vector().get_local()
+            nb_vec = nb.vector().get_local()
+            nb_vec = nb_vec.reshape((int(len(nb_vec) / 3), 3))
+            normal_angle = np.arctan2(nb_vec[:, 0], nb_vec[:, 2])
+            x = Vb.tabulate_dof_coordinates()
+            parallel_curv = np.sin(normal_angle) / x[:, 0]
+            inf_logic = np.isinf(parallel_curv)
+            parallel_curv[inf_logic] = kappab_vec[inf_logic]
+            kappab.vector().set_local((kappab_vec + parallel_curv) / 2.0)
+            kappab.vector().apply("insert")
+        elif ref_mesh.topology().dim() == 3:
+            kappab_vec = kappab.vector().get_local()
+            kappab.vector().set_local(kappab_vec / 2)
+            kappab.vector().apply("insert")
+
         # map kappab to mesh function
         if half_mesh_data == "":
-            store_map_b = bmesh.topology().mapping()[0].vertex_map()
+            store_map_b = bmesh.topology().mapping()[ref_mesh.id()].vertex_map()
             for j in range(len(store_map_b)):
                 cur_sub_idx = d.vertex_to_dof_map(Vb)[j]
                 kappa_mf.set_value(store_map_b[j], kappab.vector().get_local()[cur_sub_idx])
@@ -958,10 +975,10 @@ def compute_curvature(
                     if not assigned_val:
                         ValueError("Mapping curvatures onto half domain failed")
             # store values in mesh function
-            store_map_pm = bmesh_half.topology().mapping()[dmesh_half.id()].vertex_map()
-            for j in range(len(store_map_pm)):
+            store_map_b = bmesh_half.topology().mapping()[dmesh_half.id()].vertex_map()
+            for j in range(len(store_map_b)):
                 cur_sub_idx = d.vertex_to_dof_map(Vb_half)[j]
-                kappa_mf.set_value(store_map_pm[j], kappab_half_vals[cur_sub_idx])
+                kappa_mf.set_value(store_map_b[j], kappab_half_vals[cur_sub_idx])
     return kappa_mf
 
 
@@ -978,6 +995,7 @@ def create_2Dcell(
     verbose: bool = False,
     half_cell: bool = True,
     return_curvature: bool = False,
+    axisymm: bool = True,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 2D mesh of a cell profile, with the bounding curve defined in
@@ -1240,11 +1258,17 @@ def create_2Dcell(
                 return_curvature=False,
             )
             kappa_mf = compute_curvature(
-                dmesh, mf2, mf3, facet_list, cell_list, half_mesh_data=(dmesh_half, mf2_half)
+                dmesh,
+                mf2,
+                mf3,
+                facet_list,
+                cell_list,
+                half_mesh_data=(dmesh_half, mf2_half),
+                axisymm=axisymm,
             )
             (dmesh, mf2, mf3) = (dmesh_half, mf2_half, mf3_half)
         else:
-            kappa_mf = compute_curvature(dmesh, mf2, mf3, facet_list, cell_list)
+            kappa_mf = compute_curvature(dmesh, mf2, mf3, facet_list, cell_list, axisymm=axisymm)
         return (dmesh, mf2, mf3, kappa_mf)
     else:
         return (dmesh, mf2, mf3)

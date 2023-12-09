@@ -342,6 +342,11 @@ class smartSNESProblem:
             for f in self.model.fc:
                 if f.topology in ["surface_to_volume", "volume_to_surface"]:
                     fNames.append(f.name)
+        if self.model.couple_odes:
+            self.model.ode_vars = self.model.ode_update()
+            for f in self.model.fc:
+                if f.ode_coupled and f not in fNames:
+                    fNames.append(f.name)
         u = self.model.u["u"]._functions
         for f in self.model.fc:
             if f.name in fNames:
