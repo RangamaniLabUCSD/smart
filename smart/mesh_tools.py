@@ -833,6 +833,7 @@ def compute_curvature(
     facet_marker_vec: list,
     cell_marker_vec: list,
     half_mesh_data: Tuple[d.Mesh, d.MeshFunction] = "",
+    axisymm: bool = False,
 ):
     """
     Use dolfin functions to estimate curvature on boundary mesh.
@@ -901,10 +902,25 @@ def compute_curvature(
         A.ident_zeros()
         kappab = d.Function(Vb)
         d.solve(A, kappab.vector(), L)
+        if axisymm:  # then include out of plane (parallel) curvature as well
+            kappab_vec = kappab.vector().get_local()
+            nb_vec = nb.vector().get_local()
+            nb_vec = nb_vec.reshape((int(len(nb_vec) / 3), 3))
+            normal_angle = np.arctan2(nb_vec[:, 0], nb_vec[:, 2])
+            x = Vb.tabulate_dof_coordinates()
+            parallel_curv = np.sin(normal_angle) / x[:, 0]
+            inf_logic = np.isinf(parallel_curv)
+            parallel_curv[inf_logic] = kappab_vec[inf_logic]
+            kappab.vector().set_local((kappab_vec + parallel_curv) / 2.0)
+            kappab.vector().apply("insert")
+        elif ref_mesh.topology().dim() == 3:
+            kappab_vec = kappab.vector().get_local()
+            kappab.vector().set_local(kappab_vec / 2)
+            kappab.vector().apply("insert")
 
         # map kappab to mesh function
         if half_mesh_data == "":
-            store_map_b = bmesh.topology().mapping()[0].vertex_map()
+            store_map_b = bmesh.topology().mapping()[ref_mesh.id()].vertex_map()
             for j in range(len(store_map_b)):
                 cur_sub_idx = d.vertex_to_dof_map(Vb)[j]
                 kappa_mf.set_value(store_map_b[j], kappab.vector().get_local()[cur_sub_idx])
