@@ -1471,7 +1471,8 @@ class Flux(ObjectInstance):
                     if not s.compartment.mesh.is_surface:
                         surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
                         # u or usplit?
-                        self.proj_var.update({sname: d.interpolate(s.u["u"], surf_space)})
+                        cur_interp = d.interpolate(s.u["u"], surf_space)
+                        self.proj_var.update({sname: cur_interp})
 
     def _post_init_get_flux_units(self):
         """
@@ -1624,9 +1625,6 @@ class Flux(ObjectInstance):
         """-1 factor because terms are defined as if they were on the
         lhs of the equation :math:`F(u;v)=0`"""
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
-        # if self.name == "r1 [B (f)]":
-        #     self.equation_variables["A"] = d.interpolate(
-        #         self.species["A"].u["u"], self.surface.V)*self.species["A"].concentration_units
         if self.axisymm:
             return (
                 d.Constant(-1)

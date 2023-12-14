@@ -904,7 +904,7 @@ def compute_curvature(
 
         # map kappab to mesh function
         if half_mesh_data == "":
-            store_map_b = bmesh.topology().mapping()[0].vertex_map()
+            store_map_b = bmesh.topology().mapping()[ref_mesh.id()].vertex_map()
             for j in range(len(store_map_b)):
                 cur_sub_idx = d.vertex_to_dof_map(Vb)[j]
                 kappa_mf.set_value(store_map_b[j], kappab.vector().get_local()[cur_sub_idx])
