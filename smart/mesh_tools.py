@@ -22,7 +22,7 @@ from sympy.parsing.sympy_parser import parse_expr
 from sympy.solvers.solveset import solveset_real
 
 __all__ = [
-    "implicit_axisymm",
+    "implicit_curve",
     "facet_topology",
     "cube_condition",
     "create_cubes",
@@ -37,7 +37,20 @@ __all__ = [
 ]
 
 
-def implicit_axisymm(boundExpr):
+def implicit_curve(boundExpr):
+    """
+    Output (r,z) coordinates given a string expression in the r-z plane
+    Currently the function only outputs cell coordinates in the right half
+    of the plane (r > 0) for use in axisymmetric formulations.
+    If the shape extends to z <= 0, the curve is terminated at precisely z=0,
+    which corresponds to a substrate in most cases.
+    The (r,z) coordinates start at the maximum z value for r = 0
+    and end when either z = 0 or r = 0.
+
+    Examples:
+    * boundExpr = "r**2 + z**2 - 1": defines a quarter circle from (0, 1) to (1, 0)
+    * boundExpr = "r**2 + (z-2)**2 - 1": defines a half circle from (0, 3) to (1, 2) to (0, 1)
+    """
     outerExpr0 = parse_expr(boundExpr)
     r = sym.Symbol("r", real=True)
     z = sym.Symbol("z", real=True)
@@ -374,10 +387,10 @@ def create_axisymm(
     if outerExpr == "":
         ValueError("Outer surface is not defined")
 
-    rValsOuter, zValsOuter = implicit_axisymm(outerExpr)
+    rValsOuter, zValsOuter = implicit_curve(outerExpr)
 
     if not innerExpr == "":
-        rValsInner, zValsInner = implicit_axisymm(innerExpr)
+        rValsInner, zValsInner = implicit_curve(innerExpr)
         zMid = np.mean(zValsInner)
         ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
         RInnerVec = np.sqrt(rValsInner**2 + (zValsInner - zMid) ** 2)
@@ -856,10 +869,10 @@ def create_2Dcell(
     if outerExpr == "":
         ValueError("Outer surface is not defined")
 
-    rValsOuter, zValsOuter = implicit_axisymm(outerExpr)
+    rValsOuter, zValsOuter = implicit_curve(outerExpr)
 
     if not innerExpr == "":
-        rValsInner, zValsInner = implicit_axisymm(innerExpr)
+        rValsInner, zValsInner = implicit_curve(innerExpr)
         zMid = np.mean(zValsInner)
         ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
         RInnerVec = np.sqrt(rValsInner**2 + (zValsInner - zMid) ** 2)
@@ -905,7 +918,7 @@ def create_2Dcell(
     if innerExpr == "":
         # No inner shape in this case
         gmsh.model.occ.synchronize()
-        gmsh.model.add_physical_group(2, cell_plane_tag, tag=outer_tag)
+        gmsh.model.add_physical_group(2, [cell_plane_tag], tag=outer_tag)
         facets = gmsh.model.getBoundary([(2, cell_plane_tag)])
         facet_tag_list = []
         for i in range(len(facets)):
