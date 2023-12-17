@@ -1596,8 +1596,6 @@ class Model:
 
         are true.
         """
-        if self.config.flags["enforce_mass_conservation"]:
-            self.euler_update()
         self.idx += 1
         # start a timer for the total time step
         self.stopwatches["Total time step"].start()
@@ -2142,79 +2140,3 @@ class Model:
         dfunc.vector().set_local(values)
         dfunc.vector().apply("insert")
         return dfunc
-
-    def euler_update(self):
-        """
-        Update estimate for volume variables projected onto the boundary
-        at the next time step (should improve convergence of mass conservation
-        adjusted simulations)
-        """
-        ref_mesh = self.parent_mesh.dolfin_mesh
-        valsList = []
-        namesList = []
-        for f in self.fc:
-            # if f.topology in ["surface_to_volume", "volume_to_surface"]:
-            cur_sp = f.destination_species.name
-            cur_change = f.equation_lambda_eval("value")
-            if f.topology in ["surface", "volume"]:
-                continue
-                # cur_change = d.project(cur_change, self.sc[cur_sp].V)
-                # vals_vec = d.project(self.sc[cur_sp].u["u"], self.sc[cur_sp].V)
-                # vals_new = (vals_vec.vector().get_local() +
-                #             float(self.dt)*cur_change.vector().get_local())
-                # vals = self.sc[cur_sp].u["u"].vector().get_local()
-                # vals[self.sc[cur_sp].dof_map] = vals_new
-            else:
-                surf_dim = f.surface.dimensionality
-                if f.destination_species.dimensionality != surf_dim:  # only the 'volume' species
-                    surf_sp = list(f.surface.species.keys())[0]
-                    cur_change = d.project(cur_change, self.sc[surf_sp].V)
-                    vals_vec = d.project(self.sc[cur_sp].u["u"], self.sc[cur_sp].V)
-                    surf_map = (
-                        f.surface.dolfin_mesh.topology().mapping()[ref_mesh.id()].vertex_map()
-                    )
-                    domain_map = (
-                        f.destination_compartment.dolfin_mesh.topology()
-                        .mapping()[ref_mesh.id()]
-                        .vertex_map()
-                    )
-                    vals_new = vals_vec.vector().get_local()
-                    for j in range(len(surf_map)):
-                        j_domain = np.nonzero(np.equal(domain_map, surf_map[j]))
-                        j_domain = j_domain[0][0]
-                        cur_domain_idx = d.vertex_to_dof_map(self.sc[cur_sp].V)[j_domain]
-                        cur_surf_idx = d.vertex_to_dof_map(self.sc[surf_sp].V)[j]
-                        vals_new[cur_domain_idx] += (
-                            float(self.dt) * cur_change.vector().get_local()[cur_surf_idx]
-                        )
-                    vals = self.sc[cur_sp].u["u"].vector().get_local()
-                    vals[self.sc[cur_sp].dof_map] = vals_new
-                else:
-                    continue
-            if cur_sp in namesList:
-                for j in range(len(namesList)):
-                    if cur_sp == namesList[j]:
-                        valsList[j] = (
-                            valsList[j] + vals - self.sc[cur_sp].u["u"].vector().get_local()
-                        )
-            else:
-                valsList.append(vals)
-                namesList.append(cur_sp)
-
-        # each compartment has an associated vector of unknowns
-        for c in self.cc:
-            vals_cur = c.u["u"].vector().get_local()
-            for i in range(len(valsList)):
-                if namesList[i] in c.species:
-                    cur_dofmap = self.sc[namesList[i]].dof_map
-                    vals_cur[cur_dofmap] = valsList[i][cur_dofmap]
-            c.u["u"].vector().set_local(vals_cur)
-            c.u["u"].vector().apply("insert")
-
-        if len(self.problem.global_sizes) == 1:
-            self._ubackend = self.u["u"]._functions[0].vector().vec().copy()
-        else:
-            self._ubackend = PETSc.Vec().createNest(
-                [usub.vector().vec().copy() for usub in self.u["u"]._functions],
-                comm=self.mpi_comm_world,
-            )

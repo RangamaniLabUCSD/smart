@@ -363,7 +363,7 @@ def create_axisymm(
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates an axisymmetric mesh, with the bounding curve defined in
-    terms of r and z. (e.g. unit circle defined by "r**2 + (z-1)**2 == 1")
+    terms of r and z. (e.g. unit circle defined by "r**2 + (z-1)**2 - 1")
     It is assumed that substrate is present at z = 0, so if the curve extends
     below z = 0 , there is a sharp cutoff.
     Can include one compartment inside another compartment
@@ -981,7 +981,7 @@ def create_2Dcell(
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 2D mesh of a cell profile, with the bounding curve defined in
-    terms of r and z (e.g. unit circle would be "r**2 + (z-1)**2 == 1)
+    terms of r and z (e.g. unit circle would be "r**2 + (z-1)**2 - 1)
     It is assumed that substrate is present at z = 0, so if the curve extends
     below z = 0 , there is a sharp cutoff.
     If half_cell = True, only have of the contour is constructed, with a
