@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 import dolfin as d
+from dolfin.common.timer import timed
 import petsc4py.PETSc as p
 
 from .common import Stopwatch
@@ -40,6 +41,7 @@ class smartSNESProblem:
             and `snes initialize zero matrices`
     """
 
+    @timed("Initialize smartSNESProblem")
     def __init__(
         self,
         u: d.Function,
@@ -49,7 +51,6 @@ class smartSNESProblem:
         all_compartments: List[Compartment],
         stopwatches: Dict[str, Stopwatch],
     ):
-        timer = d.Timer("Initialize smartSNESProblem")
         self.u = u
         self.Fforms = Fforms
         self.Jforms_all = Jforms_all
@@ -113,10 +114,9 @@ class smartSNESProblem:
                 f"Forms {self.empty_forms} are empty. Skipping assembly.",
                 extra=dict(format_type="data"),
             )
-        timer.stop()
 
+    @timed("Initialize PETSc Nested Matrix")
     def init_petsc_matnest(self):
-        timer = d.Timer("Initialize PETSc Nested Matrix")
         Jforms = self.Jforms_all
         dim = self.dim
         Jpetsc = []
@@ -194,13 +194,12 @@ class smartSNESProblem:
             # self.Jpetsc_nest = self.d_to_p(d.PETScNestMatrix(Jpetsc))
         self.Jpetsc_nest.assemble()
         logger.info(f"Jpetsc_nest assembled, size = {self.Jpetsc_nest.size}")
-        timer.stop()
 
     def d_to_p(self, dolfin_matrix):
         return d.as_backend_type(dolfin_matrix).mat()
 
+    @timed("Initialize PETSc Nested Vector")
     def init_petsc_vecnest(self):
-        timer = d.Timer("Initialize PETSc Nested Vector")
         dim = self.dim
         logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
 
@@ -241,8 +240,8 @@ class smartSNESProblem:
         else:
             self.Fpetsc_nest = p.Vec().createNest(Fpetsc, comm=self.comm)
         self.Fpetsc_nest.assemble()
-        timer.stop()
 
+    @timed("SNES Assemble Jacobian Nested Matrix")
     def assemble_Jnest(self, Jnest):
         """Assemble Jacobian nest matrix.
 
@@ -252,7 +251,6 @@ class smartSNESProblem:
 
 
         """
-        timer = d.Timer("SNES Assemble Jacobian Nested Matrix")
         logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
@@ -322,8 +320,8 @@ class smartSNESProblem:
         Jnest.assemble()
 
         self.stopwatches["snes jacobian assemble"].pause()
-        timer.stop()
 
+    @timed("SNES Assemble Residual Nest Vector")
     def assemble_Fnest(self, Fnest):
         """
         Assemble residual nest vector
@@ -332,7 +330,6 @@ class smartSNESProblem:
             Fnest : petsc4py.Vec
                 PETSc nest vector representing the residual
         """
-        timer = d.Timer("SNES Assemble Residual Nest Vector")
         dim = self.dim
         logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
@@ -356,7 +353,6 @@ class smartSNESProblem:
 
         Fnest.assemble()
         self.stopwatches["snes residual assemble"].pause()
-        timer.stop()
 
     def copy_u(self, unest):
         if self.is_single_domain:
@@ -376,6 +372,7 @@ class smartSNESProblem:
         self.copy_u(u)
         self.assemble_Jnest(Jnest)
 
+    @timed("SNES Initialize Zero Matrices")
     def init_petsc_matrix(self, i, j, nnz_guess=None, set_lgmap=False, assemble=False):
         """
         Initialize a PETSc matrix with appropriate structure
@@ -385,7 +382,6 @@ class smartSNESProblem:
             nnz_guess : number of non-zeros (per row) to guess for the matrix
             assemble : whether to assemble the matrix or not (Boolean)
         """
-        timer = d.Timer("SNES Initialize Zero Matrices")
         self.stopwatches["snes initialize zero matrices"].start()
 
         M = p.Mat().create(comm=self.comm)
@@ -414,10 +410,10 @@ class smartSNESProblem:
         if assemble:
             M.assemble()
         self.stopwatches["snes initialize zero matrices"].pause()
-        timer.stop()
 
         return M
 
+    @timed("SNES Initialize Zero Vectors")
     def init_petsc_vector(self, j, assemble=False):
         """Initialize a dolfin wrapped PETSc vector with appropriate structure
 
@@ -425,7 +421,6 @@ class smartSNESProblem:
             j : index
             assemble : whether to assemble the vector or not (Boolean)
         """
-        timer = d.Timer("SNES Initialize Zero Vectors")
         V = p.Vec().create(comm=self.comm)
         V.setSizes((self.local_sizes[j], self.global_sizes[j]))
         V.setUp()
@@ -433,7 +428,6 @@ class smartSNESProblem:
 
         if assemble:
             V.assemble()
-        timer.stop()
 
         return V
 
