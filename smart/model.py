@@ -961,7 +961,7 @@ class Model:
         """Convert reactions to flux objects"""
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
         for reaction in self.rc:
-            reaction.reaction_to_fluxes()
+            reaction.reaction_to_fluxes(self.config.flags["axisymmetric_model"])
             self.fc.add(reaction.fluxes)
 
     def _init_5_2_create_variational_forms(self):
@@ -1004,6 +1004,7 @@ class Model:
             )
 
         for species in self.sc:
+            x = d.SpatialCoordinate(species.compartment.dolfin_mesh)
             u = species._usplit["u"]
             # ut = species.ut
             # un = species.u['n']
@@ -1019,7 +1020,10 @@ class Model:
                     extra=dict(format_type="log"),
                 )
             else:
-                Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
+                if self.config.flags["axisymmetric_model"]:
+                    Dform = x[0] * D * d.inner(d.grad(u), d.grad(v)) * dx
+                else:
+                    Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
                 Dform_units = (
                     species.diffusion_units
@@ -1039,7 +1043,10 @@ class Model:
                     )
                 )
             # mass (time derivative) terms
-            Muform = (u) * v / self.dT * dx
+            if self.config.flags["axisymmetric_model"]:
+                Muform = x[0] * (u) * v / self.dT * dx
+            else:
+                Muform = (u) * v / self.dT * dx
             mass_form_units = (
                 species.concentration_units
                 / unit.s
@@ -1056,7 +1063,10 @@ class Model:
                     linear_wrt_comp,
                 )
             )
-            Munform = (-un) * v / self.dT * dx
+            if self.config.flags["axisymmetric_model"]:
+                Munform = x[0] * (-un) * v / self.dT * dx
+            else:
+                Munform = (-un) * v / self.dT * dx
             self.forms.add(
                 Form(
                     f"mass_un_{species.name}",

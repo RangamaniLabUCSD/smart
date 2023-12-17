@@ -1249,13 +1249,14 @@ class Reaction(ObjectInstance):
         reaction_expr = reaction_expr.subs(self.species_map)
         return str(reaction_expr)
 
-    def reaction_to_fluxes(self):
+    def reaction_to_fluxes(self, axisymm):
         """
         Convert reactions to fluxes -
         in general, for each product and each reactant there are two fluxes,
         one forward flux (dictated by :code:`self.eqn_f_str`)
         and one reverse flux (dictated by :code:`self.eqn_r_str`),
         stoichiometry is dictated by the number of times a given species occurs on the lhs or rhs
+        If axisymm is true, this is a 2D mesh representing a 3D axisymmetric geometry
         """
         logger.debug(f"Getting fluxes for reaction {self.name}", extra=dict(format_type="log"))
         # set of 2-tuples. (species_name, signed stoichiometry)
@@ -1282,11 +1283,11 @@ class Reaction(ObjectInstance):
             if self.eqn_f_str:
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, axisymm)})
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, axisymm)})
 
 
 class FluxContainer(ObjectContainer):
@@ -1323,12 +1324,14 @@ class Flux(ObjectInstance):
     * destination_species: flux increases or decreases this species
     * equation: directionality * stoichiometry * reaction string
     * reaction: reaction object this flux comes from
+    * axisymm: True if axisymmetric shape is being represented
     """
 
     name: str
     destination_species: Species
     equation: sym.Expr
     reaction: Reaction
+    axisymm: bool = False
 
     def check_validity(self):
         "No validity checks for flux objects currently"
@@ -1457,8 +1460,6 @@ class Flux(ObjectInstance):
         (e.g. if we have a flux specified as nM/s, but concentration_units are defined as uM),
         then self.unit_scale_factor is set to the appropriate factor
         (1000 in the example where we need to convert nM -> uM)
-        NOTE: All unit checks are completed using pint, which may not be compatible with
-        certain functions such as sign().
         """
         concentration_units = self.destination_species.concentration_units
         compartment_units = self.destination_compartment.compartment_units
@@ -1584,12 +1585,22 @@ class Flux(ObjectInstance):
     def form(self):
         """-1 factor because terms are defined as if they were on the
         lhs of the equation :math:`F(u;v)=0`"""
-        return (
-            d.Constant(-1)
-            * self.equation_lambda_eval(input_type="value")
-            * self.destination_species.v
-            * self.measure
-        )
+        x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.axisymm:
+            return (
+                d.Constant(-1)
+                * x[0]
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.v
+                * self.measure
+            )
+        else:
+            return (
+                d.Constant(-1)
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.v
+                * self.measure
+            )
 
     @property
     def scalar_form(self):
@@ -1598,12 +1609,22 @@ class Flux(ObjectInstance):
         If the destination species is a vector function,
         the assembled form will be a vector of size NDOF.
         """
-        return (
-            d.Constant(-1)
-            * self.equation_lambda_eval(input_type="value")
-            * self.destination_species.vscalar
-            * self.measure
-        )
+        x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.axisymm:
+            return (
+                d.Constant(-1)
+                * x[0]
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.vscalar
+                * self.measure
+            )
+        else:
+            return (
+                d.Constant(-1)
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.vscalar
+                * self.measure
+            )
 
     @property
     def assembled_flux(self):

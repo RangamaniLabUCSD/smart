@@ -375,10 +375,12 @@ class FlagsConfig(BaseConfig):
         allow_unused_components: Allow parameters not defined in any reaction to be
             defined in any model.
         print_verbose_info: Print detailed information about a model
+        axisymmetric_model: 2D mesh describes an axisymmetric geometry about the axis r = 0
     """
 
     allow_unused_components: bool = False
     print_verbose_info: bool = True
+    axisymmetric_model: bool = False
 
 
 @dataclass
