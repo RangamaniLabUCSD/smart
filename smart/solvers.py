@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 import dolfin as d
+from dolfin.common.timer import timed
 import petsc4py.PETSc as p
 
 from .common import Stopwatch
@@ -40,6 +41,7 @@ class smartSNESProblem:
             and `snes initialize zero matrices`
     """
 
+    @timed("Initialize smartSNESProblem")
     def __init__(
         self,
         u: d.Function,
@@ -113,6 +115,7 @@ class smartSNESProblem:
                 extra=dict(format_type="data"),
             )
 
+    @timed("Initialize PETSc Nested Matrix")
     def init_petsc_matnest(self):
         Jforms = self.Jforms_all
         dim = self.dim
@@ -195,6 +198,7 @@ class smartSNESProblem:
     def d_to_p(self, dolfin_matrix):
         return d.as_backend_type(dolfin_matrix).mat()
 
+    @timed("Initialize PETSc Nested Vector")
     def init_petsc_vecnest(self):
         dim = self.dim
         logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
@@ -237,6 +241,7 @@ class smartSNESProblem:
             self.Fpetsc_nest = p.Vec().createNest(Fpetsc, comm=self.comm)
         self.Fpetsc_nest.assemble()
 
+    @timed("SNES Assemble Jacobian Nested Matrix")
     def assemble_Jnest(self, Jnest):
         """Assemble Jacobian nest matrix.
 
@@ -316,6 +321,7 @@ class smartSNESProblem:
 
         self.stopwatches["snes jacobian assemble"].pause()
 
+    @timed("SNES Assemble Residual Nest Vector")
     def assemble_Fnest(self, Fnest):
         """
         Assemble residual nest vector
@@ -366,6 +372,7 @@ class smartSNESProblem:
         self.copy_u(u)
         self.assemble_Jnest(Jnest)
 
+    @timed("SNES Initialize Zero Matrices")
     def init_petsc_matrix(self, i, j, nnz_guess=None, set_lgmap=False, assemble=False):
         """
         Initialize a PETSc matrix with appropriate structure
@@ -406,6 +413,7 @@ class smartSNESProblem:
 
         return M
 
+    @timed("SNES Initialize Zero Vectors")
     def init_petsc_vector(self, j, assemble=False):
         """Initialize a dolfin wrapped PETSc vector with appropriate structure
 
@@ -420,6 +428,7 @@ class smartSNESProblem:
 
         if assemble:
             V.assemble()
+
         return V
 
     def Jijk_name(self, i: int, j: int, k: Optional[int] = None):
