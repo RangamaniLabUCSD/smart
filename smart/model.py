@@ -24,7 +24,7 @@ except ImportError:
     from ufl.form import sub_forms_by_domain
 
 from .common import Stopwatch, sub
-from .config import Config, global_settings
+from .config import Config
 from .mesh import ChildMesh, ParentMesh
 from .model_assembly import (
     Compartment,
@@ -1971,9 +1971,8 @@ class Model:
             else:
                 x = d.SpatialCoordinate(sp.compartment.dolfin_mesh)
                 curv = sp.compartment.curv_func
-                d_expr = global_settings["dolfin_expressions"]
-                equation_lambda = sym.lambdify(["x", "curv"], sym_expr, modules=d_expr)
-                ufunc = d.project(equation_lambda(x, curv), sp.V)
+                full_expr = d.Expression(sym.printing.ccode(sym_expr), curv=curv, degree=1)
+                ufunc = d.interpolate(full_expr, sp.V)
                 d.assign(sp.u[ukey], ufunc)
         elif isinstance(unew, d.Expression):
             uinterp = d.interpolate(unew, sp.V)
