@@ -15,6 +15,7 @@ import sympy as sym
 from cached_property import cached_property
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
+from scipy.optimize import fsolve
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -2147,4 +2148,20 @@ class Model:
         Function for updating ODE (0-dimensional) variables
         Executed at each Newton iteration
         """
-        print("add code here")
+
+        def ode_equations(sp, self):
+            F = [None] * len(sp)
+            i = 0
+            for sp_orig in self.ode_vars:
+                F[i] += (sp[i] - sp_orig.value) / float(self.dt)
+                for f in sp_orig.fluxes:
+                    F[i] += f.equation_lambda(sp[i], *f.equation_variables)
+                i += 1
+            return F
+
+        sp0 = [sp.value for sp in self.ode_vars]
+        sp_new = fsolve(ode_equations, sp0)
+        i = 0
+        for sp in self.ode_vars:
+            sp.dolfin_constant.assign(sp_new[i])
+            i += 1
