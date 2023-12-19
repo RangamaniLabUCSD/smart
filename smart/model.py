@@ -24,8 +24,7 @@ except ImportError:
     from ufl.algorithms.ad import expand_derivatives
     from ufl.form import sub_forms_by_domain
 
-from .common import Stopwatch
-from .common import sub
+from .common import Stopwatch, sub
 from .config import Config
 from .mesh import ChildMesh, ParentMesh
 from .model_assembly import (
@@ -482,12 +481,20 @@ class Model:
                 var_set = {str(x) for x in eqn.free_symbols}
                 param_set = var_set.intersection(self.pc.keys)
                 species_set = var_set.intersection(self.sc.keys)
-                if len(param_set) + len(species_set) != len(var_set):
-                    diff_set = var_set.difference(param_set.union(species_set))
-                    raise NameError(
-                        f"Reaction {reaction.name} refers to a parameter or "
-                        f"species ({diff_set}) that is not in the model."
-                    )
+                if "curv" in var_set:
+                    if len(param_set) + len(species_set) + 1 != len(var_set):
+                        diff_set = var_set.difference(param_set.union(species_set))
+                        raise NameError(
+                            f"Reaction {reaction.name} refers to a parameter or "
+                            f"species ({diff_set}) that is not in the model."
+                        )
+                else:
+                    if len(param_set) + len(species_set) != len(var_set):
+                        diff_set = var_set.difference(param_set.union(species_set))
+                        raise NameError(
+                            f"Reaction {reaction.name} refers to a parameter or "
+                            f"species ({diff_set}) that is not in the model."
+                        )
 
     def _init_2_3_link_reaction_properties(self):
         """Link parameters, species, and compartments to reactions"""
@@ -795,6 +802,12 @@ class Model:
                     self.child_meshes[compartment.name].dolfin_mesh, "P", 1
                 )
 
+        if self.parent_mesh.curvature != "":
+            scalarFunctionSpace = d.FunctionSpace(
+                self.child_meshes[compartment.name].dolfin_mesh, "P", 1
+            )
+            compartment.curv_func = self.mf0_to_fun(self.parent_mesh.curvature, scalarFunctionSpace)
+
         self.V = [compartment.V for compartment in self._active_compartments]
         # Make the MixedFunctionSpace
         self.W = d.MixedFunctionSpace(*self.V)
@@ -1039,6 +1052,7 @@ class Model:
                         linear_wrt_comp,
                     )
                 )
+
             # mass (time derivative) terms
             if self.config.flags["axisymmetric_model"]:
                 Muform = x[0] * (u) * v / self.dT * dx
@@ -1812,7 +1826,7 @@ class Model:
         self.update_solution(ukeys=["u"], unew="n")
 
     def update_time_dependent_parameters(self):
-        r"""
+        """
         Updates all time dependent parameters. Time-dependent parameters are
         either defined either symbolically or through a data file, and each of
         these can either be defined as a direct function of :math:`t, p(t)`, or a
@@ -1955,7 +1969,22 @@ class Model:
         :code:`d.assign(uold, unew)` works when uold is a subfunction
         :code:`uold.assign(unew)` does not (it will replace the entire function)
         """
-        if isinstance(unew, d.Expression):
+        if isinstance(unew, str):
+            # then this still needs to have free symbols inserted
+            x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+            # Parse the given string to create a sympy expression
+            sym_expr = parse_expr(sp.initial_condition).subs({"x": x, "y": y, "z": z})
+            free_symbols = [str(x) for x in sym_expr.free_symbols]
+            if not {"x[0]", "x[1]", "x[2]", "curv"}.issuperset(free_symbols):
+                # could add other keywords for spatial dependence in the future
+                raise NotImplementedError
+            else:
+                x = d.SpatialCoordinate(sp.compartment.dolfin_mesh)
+                curv = sp.compartment.curv_func
+                full_expr = d.Expression(sym.printing.ccode(sym_expr), curv=curv, degree=1)
+                ufunc = d.interpolate(full_expr, sp.V)
+                d.assign(sp.u[ukey], ufunc)
+        elif isinstance(unew, d.Expression):
             uinterp = d.interpolate(unew, sp.V)
             d.assign(sp.u[ukey], uinterp)
         elif isinstance(unew, (float, int)):
@@ -2094,3 +2123,20 @@ class Model:
     def rounded_decimal(self, x):
         """Round time value to specified decimal point"""
         return Decimal(x).quantize(self._base_t)
+
+    def mf0_to_fun(self, mf0, V):
+        """
+        Convert vertex mesh function over parent mesh to a dolfin function
+        over a single compartment.
+        """
+        dfunc = d.Function(V)
+        mesh_ref = self.parent_mesh.dolfin_mesh
+        bmesh = V.mesh()
+        store_map = bmesh.topology().mapping()[mesh_ref.id()].vertex_map()
+        values = dfunc.vector().get_local()
+        for j in range(len(store_map)):
+            cur_sub_idx = d.vertex_to_dof_map(V)[j]
+            values[cur_sub_idx] = mf0.array()[store_map[j]]
+        dfunc.vector().set_local(values)
+        dfunc.vector().apply("insert")
+        return dfunc

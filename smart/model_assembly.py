@@ -838,13 +838,19 @@ class Species(ObjectInstance):
 
             # Check if expression is space dependent
             free_symbols = [str(x) for x in sym_expr.free_symbols]
-            if not {"x[0]", "x[1]", "x[2]"}.issuperset(free_symbols):
+            if "curv" in free_symbols:
+                # then keep as string to put in curvature dependence later after loading mesh
+                self.initial_condition_expression = self.initial_condition
+            elif not {"x[0]", "x[1]", "x[2]"}.issuperset(free_symbols):
                 raise NotImplementedError
-            logger.debug(
-                f"Creating dolfin object for space-dependent initial condition {self.name}",
-                extra=dict(format_type="log"),
-            )
-            self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), degree=1)
+            else:
+                logger.debug(
+                    f"Creating dolfin object for space-dependent initial condition {self.name}",
+                    extra=dict(format_type="log"),
+                )
+                self.initial_condition_expression = d.Expression(
+                    sym.printing.ccode(sym_expr), degree=1
+                )
         else:
             raise TypeError("initial_condition must be a float or string.")
 
@@ -1559,6 +1565,10 @@ class Flux(ObjectInstance):
             for variable in {**self.parameters, **self.species}.values()
         }
         variables.update({"unit_scale_factor": self.unit_scale_factor})
+        free_symbols = [str(x) for x in self.equation.free_symbols]
+        if "curv" in free_symbols:
+            self.curv = self.surface.curv_func * unit.dimensionless
+            variables.update({"curv": self.curv})
         return variables
 
     def equation_lambda_eval(self, input_type="quantity"):
@@ -1569,8 +1579,8 @@ class Flux(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
-        # note - throws an error when it doesn't return a float
-        # (happens when it returns 0 from sign function, for instance)
+        # note - for this eval to work, all variables in the expression must be defined
+        # dolfin quantities and all functions must match one in the list in the config module.
         self._equation_quantity = self.equation_lambda(**self.equation_variables)
         if input_type == "quantity":
             return self._equation_quantity

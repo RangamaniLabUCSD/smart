@@ -31,6 +31,7 @@ __all__ = [
     "create_axisymm",
     "create_cylinders",
     "create_ellipses",
+    "compute_curvature",
     "create_2Dcell",
     "gmsh_to_dolfin",
     "write_mesh",
@@ -825,6 +826,161 @@ def create_ellipses(
     return (dmesh, mf1, mf2)
 
 
+def compute_curvature(
+    ref_mesh: d.mesh,
+    mf_facet: d.MeshFunction,
+    mf_cell: d.MeshFunction,
+    facet_marker_vec: list,
+    cell_marker_vec: list,
+    half_mesh_data: Tuple[d.Mesh, d.MeshFunction] = "",
+    axisymm: bool = False,
+):
+    """
+    Use dolfin functions to estimate curvature on boundary mesh.
+    Boundary meshes are created by extracting the Meshview associated
+    with each facet marker value in facet_marker_vec.
+    The length of cell_marker_vec must be the same length as facet_marker_vec,
+    with each value in the list identifying the marker value for a domain that
+    contains the boundary identified by the associated facet_marker.
+    For instance, if facet_marker_vec=[10,12] and cell_marker_vec=[1,2], then
+    the domain over which mf_cell=1 must contain the domain mf_facet=10 on its boundary
+    and the domain mf_cell=2 must contain domain mf_facet=12 on its boundary.
+    Mean curvature is approximated by first projecting facet normals (n) onto a boundary
+    finite element space and then solving a variational form of kappa = -div(n).
+
+    Args:
+        ref_mesh: dolfin mesh describing the entire geometry (parent mesh)
+        mf_facet: facet mesh function with boundary domain markers
+        mf_cell: cell mesh function with cell domain markers
+        facet_marker_vec: list with values of facet markers to iterate over
+        cell_marker_vec: list with values of cell markers (see above)
+        half_mesh_data: tuple with dolfin mesh for half domain and
+                        facet mesh function over half domain. If not specified,
+                        this is empty and the curvature values are not mapped
+                        onto the half domain
+    Returns:
+        kappa_mf: Vertex mesh function containing mean curvature values
+    """
+
+    if len(facet_marker_vec) != len(cell_marker_vec):
+        ValueError("Each listed facet marker value must have an associated cell marker value")
+
+    if half_mesh_data == "":
+        kappa_mf = d.MeshFunction("double", ref_mesh, 0)
+    else:
+        (dmesh_half, mf2_half) = half_mesh_data
+        kappa_mf = d.MeshFunction("double", dmesh_half, 0)
+
+    for i in range(len(cell_marker_vec)):
+        mesh = d.MeshView.create(mf_cell, cell_marker_vec[i])
+        bmesh = d.MeshView.create(mf_facet, facet_marker_vec[i])
+
+        n = d.FacetNormal(mesh)
+        # estimate facet normals in CG2 for better accuracy
+        V = d.VectorFunctionSpace(mesh, "CG", 2)
+        u = d.TrialFunction(V)
+        v = d.TestFunction(V)
+        ds = d.Measure("ds", mesh)
+        a = d.inner(u, v) * ds
+        lform = d.inner(n, v) * ds
+        A = d.assemble(a, keep_diagonal=True)
+        L = d.assemble(lform)
+
+        A.ident_zeros()
+        nh = d.Function(V)
+        d.solve(A, nh.vector(), L)  # project facet normals onto CG1
+
+        Vb = d.FunctionSpace(bmesh, "CG", 1)
+        Vb_vec = d.VectorFunctionSpace(bmesh, "CG", 1)
+        nb = d.interpolate(nh, Vb_vec)
+        p, q = d.TrialFunction(Vb), d.TestFunction(Vb)
+        dx = d.Measure("dx", bmesh)
+        a = d.inner(p, q) * dx
+        lform = d.inner(d.div(nb), q) * dx
+        A = d.assemble(a, keep_diagonal=True)
+        L = d.assemble(lform)
+        A.ident_zeros()
+        kappab = d.Function(Vb)
+        d.solve(A, kappab.vector(), L)
+        if axisymm:  # then include out of plane (parallel) curvature as well
+            kappab_vec = kappab.vector().get_local()
+            nb_vec = nb.vector().get_local()
+            nb_vec = nb_vec.reshape((int(len(nb_vec) / 3), 3))
+            normal_angle = np.arctan2(nb_vec[:, 0], nb_vec[:, 2])
+            x = Vb.tabulate_dof_coordinates()
+            parallel_curv = np.sin(normal_angle) / x[:, 0]
+            inf_logic = np.isinf(parallel_curv)
+            parallel_curv[inf_logic] = kappab_vec[inf_logic]
+            kappab.vector().set_local((kappab_vec + parallel_curv) / 2.0)
+            kappab.vector().apply("insert")
+        elif ref_mesh.topology().dim() == 3:
+            kappab_vec = kappab.vector().get_local()
+            kappab.vector().set_local(kappab_vec / 2)
+            kappab.vector().apply("insert")
+
+        # map kappab to mesh function
+        if half_mesh_data == "":
+            store_map_b = bmesh.topology().mapping()[ref_mesh.id()].vertex_map()
+            for j in range(len(store_map_b)):
+                cur_sub_idx = d.vertex_to_dof_map(Vb)[j]
+                kappa_mf.set_value(store_map_b[j], kappab.vector().get_local()[cur_sub_idx])
+        else:
+            # extract coordinates and kappa values cell-wise from kappab and bmesh
+            bmesh_half = d.MeshView.create(mf2_half, facet_marker_vec[i])
+            Vb_half = d.FunctionSpace(bmesh_half, "CG", 1)
+            kappab_vals = kappab.vector().get_local()
+            kappab_cell_vals = []
+            kappab_cell_coords = []
+            cnum = 0
+            for c in d.cells(bmesh):
+                cur_idx = Vb.dofmap().cell_dofs(cnum)
+                kappab_cell_vals.append(kappab_vals[cur_idx])
+                kappab_cell_coords.append(c.get_coordinate_dofs())
+                cnum = cnum + 1
+            # convert to numpy arrays for interpolation
+            kappab_cell_coords = np.array(kappab_cell_coords)
+            kappab_cell_vals = np.array(kappab_cell_vals)
+            # initialize kappab_half data
+            kappab_half_vals = []
+            kappab_half_coords = np.array(Vb_half.tabulate_dof_coordinates())
+            dthresh1 = 1.5 * ref_mesh.hmax()
+            dthresh2 = ref_mesh.hmin() / 10
+
+            # linear interpolation onto half mesh
+            for j in range(len(kappab_half_coords)):
+                assigned_val = False
+                cur_coord = kappab_half_coords[j]
+                dxi = cur_coord[0] - kappab_cell_coords[:, 0]
+                dzi = cur_coord[2] - kappab_cell_coords[:, 2]
+                for k in range(len(dxi)):
+                    if np.sqrt(dxi[k] ** 2 + dzi[k] ** 2) > dthresh1:
+                        continue
+                    else:
+                        dx = kappab_cell_coords[k, 3] - kappab_cell_coords[k, 0]
+                        dz = kappab_cell_coords[k, 5] - kappab_cell_coords[k, 2]
+                        ds = np.sqrt(dx**2 + dz**2)
+                        alpha_cur = (dzi[k] * dz + dxi[k] * dx) / ds**2
+                        d_cur = np.sqrt(
+                            ((dzi[k] * dx * dz - dxi[k] * dz**2) / ds**2) ** 2
+                            + ((dxi[k] * dx * dz - dzi[k] * dx**2) / ds**2) ** 2
+                        )
+                        cur_vals = kappab_cell_vals[k]
+                        if alpha_cur >= 0 and alpha_cur <= 1 and d_cur < dthresh2:
+                            kappab_half_vals.append(
+                                cur_vals[0] + alpha_cur * (cur_vals[1] - cur_vals[0])
+                            )
+                            assigned_val = True
+                            break
+                    if not assigned_val:
+                        ValueError("Mapping curvatures onto half domain failed")
+            # store values in mesh function
+            store_map_pm = bmesh_half.topology().mapping()[dmesh_half.id()].vertex_map()
+            for j in range(len(store_map_pm)):
+                cur_sub_idx = d.vertex_to_dof_map(Vb_half)[j]
+                kappa_mf.set_value(store_map_pm[j], kappab_half_vals[cur_sub_idx])
+    return kappa_mf
+
+
 def create_2Dcell(
     outerExpr: str = "",
     innerExpr: str = "",
@@ -837,6 +993,7 @@ def create_2Dcell(
     comm: MPI.Comm = d.MPI.comm_world,
     verbose: bool = False,
     half_cell: bool = True,
+    return_curvature: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 2D mesh of a cell profile, with the bounding curve defined in
@@ -869,6 +1026,12 @@ def create_2Dcell(
     if outerExpr == "":
         ValueError("Outer surface is not defined")
 
+    if return_curvature:
+        # create full mesh for curvature analysis and then map onto half mesh
+        # if half_cell_with_curvature is True
+        half_cell_with_curvature = half_cell
+        half_cell = False
+
     rValsOuter, zValsOuter = implicit_curve(outerExpr)
 
     if not innerExpr == "":
@@ -896,6 +1059,12 @@ def create_2Dcell(
         cur_tag = gmsh.model.occ.add_point(rValsOuter[i], 0, zValsOuter[i])
         outer_tag_list.append(cur_tag)
     outer_spline_tag = gmsh.model.occ.add_spline(outer_tag_list)
+    if not half_cell:
+        outer_tag_list2 = []
+        for i in range(len(rValsOuter)):
+            cur_tag = gmsh.model.occ.add_point(-rValsOuter[i], 0, zValsOuter[i])
+            outer_tag_list2.append(cur_tag)
+        outer_spline_tag2 = gmsh.model.occ.add_spline(outer_tag_list2)
     if np.isclose(zValsOuter[-1], 0):  # then include substrate at z=0
         if half_cell:
             origin_tag = gmsh.model.occ.add_point(0, 0, 0)
@@ -905,14 +1074,16 @@ def create_2Dcell(
                 [outer_spline_tag, bottom_tag, symm_axis_tag]
             )
         else:
-            bottom_tag = gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1])
-            outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag, bottom_tag])
+            bottom_tag = gmsh.model.occ.add_line(outer_tag_list[-1], outer_tag_list2[-1])
+            outer_loop_tag = gmsh.model.occ.add_curve_loop(
+                [outer_spline_tag, outer_spline_tag2, bottom_tag]
+            )
     else:
         if half_cell:
             symm_axis_tag = gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1])
             outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag, symm_axis_tag])
         else:
-            outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag])
+            outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_tag, outer_spline_tag2])
     cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
 
     if innerExpr == "":
@@ -924,9 +1095,8 @@ def create_2Dcell(
         for i in range(len(facets)):
             facet_tag_list.append(facets[i][1])
         if half_cell:  # if half, set symmetry axis to 0 (no flux)
-            rRef = max(rValsOuter)
-            xmin, ymin, zmin = (-rRef / 10, -rRef / 10, -1)
-            xmax, ymax, zmax = (rRef / 10, rRef / 10, max(zValsOuter) + 1)
+            xmin, ymin, zmin = (-hInnerEdge / 10, -hInnerEdge / 10, -1)
+            xmax, ymax, zmax = (hInnerEdge / 10, hInnerEdge / 10, max(zValsOuter) + 1)
             all_symm_bound = gmsh.model.occ.get_entities_in_bounding_box(
                 xmin, ymin, zmin, xmax, ymax, zmax, dim=1
             )
@@ -946,47 +1116,64 @@ def create_2Dcell(
             symm_inner_tag = gmsh.model.occ.add_line(inner_tag_list[0], inner_tag_list[-1])
             inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, symm_inner_tag])
         else:
-            inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag])
+            inner_tag_list2 = []
+            for i in range(len(rValsInner)):
+                cur_tag = gmsh.model.occ.add_point(-rValsInner[i], 0, zValsInner[i])
+                inner_tag_list2.append(cur_tag)
+            inner_spline_tag2 = gmsh.model.occ.add_spline(inner_tag_list2)
+            inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, inner_spline_tag2])
         inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
+        cell_plane_list = [cell_plane_tag]
+        inner_plane_list = [inner_plane_tag]
 
-        # Create interface between 2 objects
-        two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
-            [(2, cell_plane_tag)], [(2, inner_plane_tag)]
-        )
-        gmsh.model.occ.synchronize()
-
-        # Get the outer boundary
-        outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
-        outer_marker_list = []
-        for i in range(len(outer_shell)):
-            outer_marker_list.append(outer_shell[i][1])
-        # Get the inner boundary
-        inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
+        outer_volume = []
+        inner_volume = []
+        all_volumes = []
         inner_marker_list = []
-        for i in range(len(inner_shell)):
-            inner_marker_list.append(inner_shell[i][1])
+        outer_marker_list = []
+        for i in range(len(cell_plane_list)):
+            cell_plane_tag = cell_plane_list[i]
+            inner_plane_tag = inner_plane_list[i]
+            # Create interface between 2 objects
+            two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
+                [(2, cell_plane_tag)], [(2, inner_plane_tag)]
+            )
+            gmsh.model.occ.synchronize()
+
+            # Get the outer boundary
+            outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
+            for i in range(len(outer_shell)):
+                outer_marker_list.append(outer_shell[i][1])
+            # Get the inner boundary
+            inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
+            for i in range(len(inner_shell)):
+                inner_marker_list.append(inner_shell[i][1])
+            for tag in outer_shape_map:
+                all_volumes.append(tag[1])
+            for tag in inner_shape_map:
+                inner_volume.append(tag[1])
+
+            for vol in all_volumes:
+                if vol not in inner_volume:
+                    outer_volume.append(vol)
+
         # Add physical markers for facets
         if half_cell:  # if half, set symmetry axis to 0 (no flux)
-            rRef = max(rValsInner)
-            xmin, ymin, zmin = (-rRef / 10, -rRef / 10, -1)
-            xmax, ymax, zmax = (rRef / 10, rRef / 10, max(zValsOuter) + 1)
+            xmin, ymin, zmin = (-hInnerEdge / 10, -hInnerEdge / 10, -1)
+            xmax, ymax, zmax = (hInnerEdge / 10, hInnerEdge / 10, max(zValsOuter) + 1)
             all_symm_bound = gmsh.model.occ.get_entities_in_bounding_box(
                 xmin, ymin, zmin, xmax, ymax, zmax, dim=1
             )
             symm_bound_markers = []
             for i in range(len(all_symm_bound)):
                 symm_bound_markers.append(all_symm_bound[i][1])
+            # note that this first call sets the symmetry axis to tag 0 and
+            # this is not overwritten by the next calls to add_physical_group
             gmsh.model.add_physical_group(1, symm_bound_markers, tag=0)
         gmsh.model.add_physical_group(1, outer_marker_list, tag=outer_marker)
         gmsh.model.add_physical_group(1, inner_marker_list, tag=interface_marker)
 
         # Physical markers for "volumes"
-        all_volumes = [tag[1] for tag in outer_shape_map]
-        inner_volume = [tag[1] for tag in inner_shape_map]
-        outer_volume = []
-        for vol in all_volumes:
-            if vol not in inner_volume:
-                outer_volume.append(vol)
         gmsh.model.add_physical_group(2, outer_volume, tag=outer_tag)
         gmsh.model.add_physical_group(2, inner_volume, tag=inner_tag)
 
@@ -1046,7 +1233,37 @@ def create_2Dcell(
     gmsh_file.unlink(missing_ok=False)
     tmp_folder.rmdir()
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
-    return (dmesh, mf2, mf3)
+    if return_curvature:
+        if innerExpr == "":
+            facet_list = [outer_marker]
+            cell_list = [outer_tag]
+        else:
+            facet_list = [outer_marker, interface_marker]
+            cell_list = [outer_tag, inner_tag]
+        if half_cell_with_curvature:  # will likely not work in parallel...
+            dmesh_half, mf2_half, mf3_half = create_2Dcell(
+                outerExpr,
+                innerExpr,
+                hEdge,
+                hInnerEdge,
+                interface_marker,
+                outer_marker,
+                inner_tag,
+                outer_tag,
+                comm,
+                verbose,
+                half_cell=True,
+                return_curvature=False,
+            )
+            kappa_mf = compute_curvature(
+                dmesh, mf2, mf3, facet_list, cell_list, half_mesh_data=(dmesh_half, mf2_half)
+            )
+            (dmesh, mf2, mf3) = (dmesh_half, mf2_half, mf3_half)
+        else:
+            kappa_mf = compute_curvature(dmesh, mf2, mf3, facet_list, cell_list)
+        return (dmesh, mf2, mf3, kappa_mf)
+    else:
+        return (dmesh, mf2, mf3)
 
 
 def gmsh_to_dolfin(

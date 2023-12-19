@@ -154,6 +154,7 @@ class ParentMesh(_Mesh):
     child_meshes: Dict[str, "ChildMesh"]
     parent_mesh: "ParentMesh"
     use_partition: bool
+    curvature: d.MeshFunction
 
     def __init__(
         self,
@@ -162,6 +163,7 @@ class ParentMesh(_Mesh):
         name,
         use_partition=False,
         mpi_comm=d.MPI.comm_world,
+        curvature="",
     ):
         super().__init__(name)
         self.use_partition = use_partition
@@ -175,6 +177,7 @@ class ParentMesh(_Mesh):
 
         self.child_meshes = dict()
         self.parent_mesh = self
+        self.curvature = curvature
 
     def get_mesh_from_id(self, id):
         "Find the mesh that has the matching id."
