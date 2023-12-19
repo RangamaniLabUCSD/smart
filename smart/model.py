@@ -8,6 +8,7 @@ from itertools import chain
 import logging
 
 import dolfin as d
+from dolfin.common.timer import timed
 import numpy as np
 import pandas
 import petsc4py.PETSc as PETSc
@@ -24,7 +25,7 @@ except ImportError:
     from ufl.form import sub_forms_by_domain
 
 from .common import Stopwatch, sub
-from .config import Config, global_settings
+from .config import Config
 from .mesh import ChildMesh, ParentMesh
 from .model_assembly import (
     Compartment,
@@ -209,6 +210,7 @@ class Model:
         self.parent_mesh.max_dim = dim
         return dim
 
+    @timed("Initialize Model")
     def initialize(self, initialize_solver=True):
         """Main model initialization function, split into 5 subfunctions"""
 
@@ -238,8 +240,10 @@ class Model:
             self.print_meshes()
             self.rc.print()
 
+    @timed("Initialize model step 1")
     def _init_1(self):
         """Checking validity of model"""
+
         logger.debug("Checking validity of model (step 1 of ZZ)", extra=dict(format_type="title"))
         self._init_1_1_check_mesh_dimensionality()
         self._init_1_2_check_namespace_conflicts()
@@ -249,9 +253,11 @@ class Model:
             extra=dict(text_color="magenta"),
         )
 
+    @timed("Initialize model step 2")
     def _init_2(self):
         """Cross-container dependent initializations
         (requires information from multiple containers)"""
+
         logger.debug(
             "Cross-Container Dependent Initializations (step 2 of ZZ)",
             extra=dict(
@@ -270,6 +276,7 @@ class Model:
             extra=dict(text_color="magenta"),
         )
 
+    @timed("Initialize model step 3")
     def _init_3(self):
         """Mesh-related initializations"""
         logger.debug(
@@ -289,8 +296,10 @@ class Model:
             extra=dict(format_type="log_important"),
         )
 
+    @timed("Initialize model step 4")
     def _init_4(self):
         """Dolfin function initializations"""
+
         logger.debug("Dolfin Initializations (step 4 of ZZ)", extra=dict(format_type="title"))
         self._init_4_0_initialize_dolfin_parameters()
         self._init_4_1_get_active_compartments()
@@ -301,6 +310,7 @@ class Model:
         self._init_4_6_check_dolfin_function_validity()
         self._init_4_7_set_initial_conditions()
 
+    @timed("Initialize model step 5")
     def _init_5(self, initialize_solver):
         """Convert reactions to fluxes and define variational form.
         If initialize_solver is true, also initialize solver.
@@ -1980,9 +1990,8 @@ class Model:
             else:
                 x = d.SpatialCoordinate(sp.compartment.dolfin_mesh)
                 curv = sp.compartment.curv_func
-                d_expr = global_settings["dolfin_expressions"]
-                equation_lambda = sym.lambdify(["x", "curv"], sym_expr, modules=d_expr)
-                ufunc = d.project(equation_lambda(x, curv), sp.V)
+                full_expr = d.Expression(sym.printing.ccode(sym_expr), curv=curv, degree=1)
+                ufunc = d.interpolate(full_expr, sp.V)
                 d.assign(sp.u[ukey], ufunc)
         elif isinstance(unew, d.Expression):
             uinterp = d.interpolate(unew, sp.V)
