@@ -2155,7 +2155,7 @@ class Model:
             for sp_orig in self.ode_vars:
                 F[i] += (sp[i] - sp_orig.value) / float(self.dt)
                 for f in sp_orig.fluxes:
-                    F[i] += f.equation_lambda(sp[i], *f.equation_variables)
+                    F[i] -= f.equation_lambda(sp[i], *f.equation_variables)
                 i += 1
             return F
 
