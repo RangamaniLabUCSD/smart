@@ -179,7 +179,7 @@ class ParentMesh(_Mesh):
         self.parent_mesh = self
         if isinstance(curvature, (str, Path)) and Path(curvature).is_file():
             # Load curvature from file
-            self.curvature =  d.MeshFunction("double", self.dolfin_mesh, 0)
+            self.curvature = d.MeshFunction("double", self.dolfin_mesh, 0)
             with d.XDMFFile(str(curvature)) as curv_file:
                 curv_file.read(self.curvature)
         else:
