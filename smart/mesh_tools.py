@@ -875,7 +875,7 @@ def compute_curvature(
         bmesh = d.MeshView.create(mf_facet, facet_marker_vec[i])
 
         n = d.FacetNormal(mesh)
-        # estimate facet normals in CG2 for better accuracy
+        # estimate facet normals in CG2 for better smoothness and accuracy
         V = d.VectorFunctionSpace(mesh, "CG", 2)
         u = d.TrialFunction(V)
         v = d.TestFunction(V)
