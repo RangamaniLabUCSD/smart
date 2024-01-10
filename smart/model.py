@@ -802,7 +802,7 @@ class Model:
                     self.child_meshes[compartment.name].dolfin_mesh, "P", 1
                 )
 
-            if self.parent_mesh.curvature != "":
+            if self.parent_mesh.curvature is not None:
                 scalarFunctionSpace = d.FunctionSpace(
                     self.child_meshes[compartment.name].dolfin_mesh, "P", 1
                 )
@@ -2149,3 +2149,23 @@ class Model:
         dfunc.vector().set_local(values)
         dfunc.vector().apply("insert")
         return dfunc
+
+    def adjust_dt(self):
+        if self.idx_nl[-1] in [0, 1]:
+            dt_scale = 1.2
+        elif self.idx_nl[-1] in [2, 3, 4]:
+            dt_scale = 1.05
+        elif self.idx_nl[-1] in [5, 6, 7, 8, 9, 10]:
+            dt_scale = 1.0
+        # decrease time step
+        elif self.idx_nl[-1] in [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]:
+            dt_scale = 0.8
+        elif self.idx_nl[-1] >= 20:
+            dt_scale = 0.5
+        # further adjustments depending on linear iterations
+        if self.idx_l[-1] <= 5 and dt_scale >= 1.0:
+            dt_scale *= 1.05
+        if self.idx_l[-1] >= 10:
+            dt_scale = min(dt_scale * 0.8, 0.8)
+        dt_cur = float(self.dt) * dt_scale
+        self.set_dt(dt_cur)
