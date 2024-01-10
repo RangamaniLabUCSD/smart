@@ -12,7 +12,7 @@ dolfin meshes using :func:`gmsh_to_dolfin`
 facet markers ``mf2`` to hdf5 and pvd files.
 """
 
-from typing import Tuple
+from typing import Tuple, NamedTuple, Optional, Union
 import pathlib
 import numpy as np
 import sympy as sym
@@ -833,6 +833,7 @@ def compute_curvature(
     facet_marker_vec: list,
     cell_marker_vec: list,
     half_mesh_data: Tuple[d.Mesh, d.MeshFunction] = "",
+    axisymm: bool = False,
 ):
     """
     Use dolfin functions to estimate curvature on boundary mesh.
@@ -901,6 +902,21 @@ def compute_curvature(
         A.ident_zeros()
         kappab = d.Function(Vb)
         d.solve(A, kappab.vector(), L)
+        if axisymm:  # then include out of plane (parallel) curvature as well
+            kappab_vec = kappab.vector().get_local()
+            nb_vec = nb.vector().get_local()
+            nb_vec = nb_vec.reshape((int(len(nb_vec) / 3), 3))
+            normal_angle = np.arctan2(nb_vec[:, 0], nb_vec[:, 2])
+            x = Vb.tabulate_dof_coordinates()
+            parallel_curv = np.sin(normal_angle) / x[:, 0]
+            inf_logic = np.isinf(parallel_curv)
+            parallel_curv[inf_logic] = kappab_vec[inf_logic]
+            kappab.vector().set_local((kappab_vec + parallel_curv) / 2.0)
+            kappab.vector().apply("insert")
+        elif ref_mesh.topology().dim() == 3:
+            kappab_vec = kappab.vector().get_local()
+            kappab.vector().set_local(kappab_vec / 2)
+            kappab.vector().apply("insert")
 
         # map kappab to mesh function
         if half_mesh_data == "":
@@ -1347,22 +1363,54 @@ def write_mesh(
     cell_dim = mf_cell.dim()
     facet_dim = mf_facet.dim()
     # Write mesh and meshfunctions to file
-    hdf5 = d.HDF5File(comm, str(filename.with_suffix(".h5")), "w")
-    hdf5.write(mesh, "/mesh")
-    hdf5.write(mf_cell, f"/mf{cell_dim}")
-    hdf5.write(mf_facet, f"/mf{facet_dim}")
-    # For visualization of domains
-    (
-        d.File(
-            mesh.mpi_comm(),
-            str(filename.with_stem(filename.stem + f"_mf{cell_dim}").with_suffix(".pvd")),
-        )
-        << mf_cell
-    )
-    (
-        d.File(
-            mesh.mpi_comm(),
-            str(filename.with_stem(filename.stem + f"_mf{facet_dim}").with_suffix(".pvd")),
-        )
-        << mf_facet
-    )
+    with d.HDF5File(comm, str(filename.with_suffix(".h5")), "w") as hdf5:
+        hdf5.write(mesh, "/mesh")
+        hdf5.write(mf_cell, f"/mf{cell_dim}")
+        hdf5.write(mf_facet, f"/mf{facet_dim}")
+
+
+class LoadedMesh(NamedTuple):
+    mesh: d.Mesh
+    mf_cell: d.MeshFunction
+    mf_facet: d.MeshFunction
+    filename: pathlib.Path
+
+
+def load_mesh(
+    filename: Union[pathlib.Path, str],
+    comm: MPI.Intracomm = MPI.COMM_WORLD,
+    mesh: Optional[d.Mesh] = None,
+) -> LoadedMesh:
+    """Load mesh and mesh functions from file
+
+
+    Args:
+        filename : Path to the file with the mesh
+        comm : MPI communicator, by default MPI.COMM_WORLD
+        mesh : The mesh, by default None. If provided, only the meshfunctions
+            will be loaded from the file assuming that the given mesh is the
+            mesh used for the mesh functions
+
+    Returns: A named tuple with the mesh, cell function, facet function
+        and the filename
+
+    """
+
+    if not pathlib.Path(filename).is_file():
+        raise FileNotFoundError(f"File {filename} does not exists")
+
+    if mesh is None:
+        mesh = d.Mesh(comm)
+
+        with d.HDF5File(comm, pathlib.Path(filename).with_suffix(".h5").as_posix(), "r") as hdf5:
+            hdf5.read(mesh, "/mesh", False)
+
+    dim = mesh.geometric_dimension()
+    mf_cell = d.MeshFunction("size_t", mesh, dim)
+    mf_facet = d.MeshFunction("size_t", mesh, dim - 1)
+
+    with d.HDF5File(mesh.mpi_comm(), str(filename.with_suffix(".h5")), "r") as hdf5:
+        hdf5.read(mf_cell, f"/mf{dim}")
+        hdf5.read(mf_facet, f"/mf{dim-1}")
+
+    return LoadedMesh(mesh=mesh, mf_cell=mf_cell, mf_facet=mf_facet, filename=filename)

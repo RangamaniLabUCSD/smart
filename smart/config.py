@@ -275,6 +275,7 @@ LOGGING_CONFIG = {
         "pint": {"level": "ERROR"},
         "FFC": {"level": "WARNING"},
         "UFL": {"level": "WARNING"},
+        "UFL_LEGACY": {"level": "WARNING"},
         "dolfin": {"level": "INFO"},
         "dijitso": {"level": "INFO"},
     },
