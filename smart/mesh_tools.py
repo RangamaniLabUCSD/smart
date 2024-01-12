@@ -20,6 +20,7 @@ import dolfin as d
 from mpi4py import MPI
 from sympy.parsing.sympy_parser import parse_expr
 from sympy.solvers.solveset import solveset_real
+import h5py
 
 __all__ = [
     "implicit_curve",
@@ -1351,6 +1352,7 @@ def write_mesh(
     mf_facet: d.MeshFunction,
     mf_cell: d.MeshFunction,
     filename: pathlib.Path = pathlib.Path("DemoMesh.h5"),
+    subdomains=None,
 ):
     """
     Write 3D mesh, with cell markers (mf_cell)
@@ -1367,12 +1369,17 @@ def write_mesh(
         hdf5.write(mesh, "/mesh")
         hdf5.write(mf_cell, f"/mf{cell_dim}")
         hdf5.write(mf_facet, f"/mf{facet_dim}")
+        if subdomains is not None:
+            for i in range(len(subdomains)):
+                cur_dim = subdomains[i].dim()
+                hdf5.write(subdomains[i], f"/subdomain{i}_{cur_dim}")
 
 
 class LoadedMesh(NamedTuple):
     mesh: d.Mesh
     mf_cell: d.MeshFunction
     mf_facet: d.MeshFunction
+    subdomains: list
     filename: pathlib.Path
 
 
@@ -1408,9 +1415,20 @@ def load_mesh(
     dim = mesh.geometric_dimension()
     mf_cell = d.MeshFunction("size_t", mesh, dim)
     mf_facet = d.MeshFunction("size_t", mesh, dim - 1)
+    subdomains = []
 
     with d.HDF5File(mesh.mpi_comm(), str(filename.with_suffix(".h5")), "r") as hdf5:
         hdf5.read(mf_cell, f"/mf{dim}")
         hdf5.read(mf_facet, f"/mf{dim-1}")
+        h = h5py.File(str(filename.with_suffix(".h5")), "r")
+        all_keys = list(h.keys())
+        if len(all_keys) > 3:
+            for key in all_keys[3:]:
+                cur_dim = int(key[-1])
+                mf_cur = d.MeshFunction("size_t", mesh, cur_dim)
+                hdf5.read(mf_cur, f"/{key}")
+                subdomains.append(mf_cur)
 
-    return LoadedMesh(mesh=mesh, mf_cell=mf_cell, mf_facet=mf_facet, filename=filename)
+    return LoadedMesh(
+        mesh=mesh, mf_cell=mf_cell, mf_facet=mf_facet, filename=filename, subdomains=subdomains
+    )

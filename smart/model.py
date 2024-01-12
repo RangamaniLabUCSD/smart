@@ -16,6 +16,8 @@ import sympy as sym
 from cached_property import cached_property
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
+from scipy import integrate
+from sympy.utilities.lambdify import lambdify
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -1901,8 +1903,15 @@ class Model:
 
             if parameter.use_preintegration:
                 if parameter.type == ParameterType.expression:
-                    a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
-                    b = parameter.preint_sym_expr.subs({"t": t}).evalf()
+                    if parameter.preint_sym_expr is None:  # then numerically approximate integral
+                        a = parameter.int_vec[-1]
+                        tsym = sym.symbols("t")
+                        intval, err = integrate.quad(lambdify(tsym, parameter.sym_expr), tn, t)
+                        b = a + intval
+                        parameter.int_vec.append(b)
+                    else:
+                        a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
+                        b = parameter.preint_sym_expr.subs({"t": t}).evalf()
                     new_value = float((b - a) / dt)
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by "
@@ -1982,7 +1991,7 @@ class Model:
             # then this still needs to have free symbols inserted
             x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
             # Parse the given string to create a sympy expression
-            sym_expr = parse_expr(sp.initial_condition).subs({"x": x, "y": y, "z": z})
+            sym_expr = parse_expr(unew).subs({"x": x, "y": y, "z": z})
             free_symbols = [str(x) for x in sym_expr.free_symbols]
             if not {"x[0]", "x[1]", "x[2]", "curv"}.issuperset(free_symbols):
                 # could add other keywords for spatial dependence in the future

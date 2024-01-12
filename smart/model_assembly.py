@@ -597,6 +597,7 @@ class Parameter(ObjectInstance):
         group="",
         notes="",
         use_preintegration=False,
+        numerical_int=False,
     ):
         """
         Use sympy to parse time-dependent expression for parameter
@@ -647,6 +648,9 @@ class Parameter(ObjectInstance):
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
                 preint_sym_expr = preint_sym_expr.subs({"x": x, "y": y, "z": z})
+            elif numerical_int:
+                preint_sym_expr = None
+                parameter.int_vec = [0.0]
             else:
                 # try to integrate
                 t = Symbol("t")
