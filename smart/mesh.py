@@ -179,15 +179,15 @@ class ParentMesh(_Mesh):
         self.parent_mesh = self
         if isinstance(curvature, (str, Path)) and Path(curvature).is_file():
             # Load curvature from file
-            if curvature.suffix == ".xdmf":
+            if Path(curvature).suffix == ".xdmf":
                 self.curvature = d.MeshFunction("double", self.dolfin_mesh, 0)
                 with d.XDMFFile(str(curvature)) as curv_file:
                     curv_file.read(self.curvature)
-            elif curvature.suffix == ".xml":
+            elif Path(curvature).suffix == ".xml":
                 self.curvature = d.MeshFunction("double", self.dolfin_mesh, str(curvature))
                 self.curvature.array()[np.where(self.curvature.array() > 1e9)[0]] = 0
             else:
-                raise TypeError(f"Unable to read curvatures from {curvature.suffix} file")
+                raise TypeError(f"Unable to read curvatures from {Path(curvature).suffix} file")
         else:
             # Otherwise just take what we got
             self.curvature = curvature
