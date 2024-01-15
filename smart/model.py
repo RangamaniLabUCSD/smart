@@ -2161,7 +2161,7 @@ class Model:
 
     def adjust_dt(self):
         if self.idx_nl[-1] in [0, 1]:
-            dt_scale = 1.2
+            dt_scale = 1.1
         elif self.idx_nl[-1] in [2, 3, 4]:
             dt_scale = 1.05
         elif self.idx_nl[-1] in [5, 6, 7, 8, 9, 10]:
@@ -2172,9 +2172,9 @@ class Model:
         elif self.idx_nl[-1] >= 20:
             dt_scale = 0.5
         # further adjustments depending on linear iterations
-        if self.idx_l[-1] <= 5 and dt_scale >= 1.0:
-            dt_scale *= 1.05
-        if self.idx_l[-1] >= 10:
-            dt_scale = min(dt_scale * 0.8, 0.8)
+        # if self.idx_l[-1] <= 5 and dt_scale >= 1.0:
+        #     dt_scale *= 1.05
+        # if self.idx_l[-1] >= 10:
+        #     dt_scale = min(dt_scale * 0.8, 0.8)
         dt_cur = float(self.dt) * dt_scale
         self.set_dt(dt_cur)

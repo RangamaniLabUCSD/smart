@@ -20,7 +20,6 @@ import dolfin as d
 from mpi4py import MPI
 from sympy.parsing.sympy_parser import parse_expr
 from sympy.solvers.solveset import solveset_real
-import h5py
 
 __all__ = [
     "implicit_curve",
@@ -1387,6 +1386,7 @@ def load_mesh(
     filename: Union[pathlib.Path, str],
     comm: MPI.Intracomm = MPI.COMM_WORLD,
     mesh: Optional[d.Mesh] = None,
+    extra_keys: Optional[list[str]] = None,
 ) -> LoadedMesh:
     """Load mesh and mesh functions from file
 
@@ -1402,6 +1402,8 @@ def load_mesh(
         and the filename
 
     """
+    if extra_keys is None:
+        extra_keys = []
 
     if not pathlib.Path(filename).is_file():
         raise FileNotFoundError(f"File {filename} does not exists")
@@ -1420,14 +1422,11 @@ def load_mesh(
     with d.HDF5File(mesh.mpi_comm(), str(filename.with_suffix(".h5")), "r") as hdf5:
         hdf5.read(mf_cell, f"/mf{dim}")
         hdf5.read(mf_facet, f"/mf{dim-1}")
-        h = h5py.File(str(filename.with_suffix(".h5")), "r")
-        all_keys = list(h.keys())
-        if len(all_keys) > 3:
-            for key in all_keys[3:]:
-                cur_dim = int(key[-1])
-                mf_cur = d.MeshFunction("size_t", mesh, cur_dim)
-                hdf5.read(mf_cur, f"/{key}")
-                subdomains.append(mf_cur)
+        for key in extra_keys:
+            cur_dim = int(key[-1])
+            mf_cur = d.MeshFunction("size_t", mesh, cur_dim)
+            hdf5.read(mf_cur, f"/{key}")
+            subdomains.append(mf_cur)
 
     return LoadedMesh(
         mesh=mesh, mf_cell=mf_cell, mf_facet=mf_facet, filename=filename, subdomains=subdomains
