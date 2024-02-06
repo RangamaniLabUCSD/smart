@@ -27,6 +27,7 @@ from cached_property import cached_property
 from sympy import Symbol, integrate
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
+from pathlib import Path
 
 from . import common
 from .config import global_settings as gset
@@ -855,6 +856,8 @@ class Species(ObjectInstance):
                 self.initial_condition_expression = d.Expression(
                     sym.printing.ccode(sym_expr), degree=1
                 )
+        elif isinstance(self.initial_condition, Path):
+            pass  # keep as path
         else:
             raise TypeError("initial_condition must be a float or string.")
 

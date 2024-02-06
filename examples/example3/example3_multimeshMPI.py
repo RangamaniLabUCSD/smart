@@ -210,11 +210,11 @@ if rank == 0:
     np.savetxt("ss_vec_MPI.txt", ss_vec)
     plt.plot(radiusVec, ss_vec, "ro")
     radiusTest = np.logspace(0, 1, 100)
-    thieleMod = radiusTest / 1.0
-    k_kin = 50
-    k_p = 10
-    cT = 1
-    D = 10
+    k_kin = kkin.value
+    k_p = kp.value
+    cT = Atot.value
+    D = Aphos.D
+    thieleMod = radiusTest / np.sqrt(D / k_p)
     C1 = (
         k_kin
         * cT
@@ -235,11 +235,7 @@ if rank == 0:
     plt.show()
 
     # quantify percent error
-    thieleMod = radiusVec / 1.0
-    k_kin = 50
-    k_p = 10
-    cT = 1
-    D = 10
+    thieleMod = radiusVec / np.sqrt(D / k_p)
     C1 = (
         k_kin
         * cT
