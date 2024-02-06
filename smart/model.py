@@ -2013,7 +2013,10 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
-        elif isinstance(unew, Path) and Path(unew).is_file():
+        elif isinstance(unew, Path):
+            assert Path(
+                unew
+            ).is_file(), f"{str(unew)} could not be found for loading initial conditions"
             logger.debug(f"Loading initial condition for {sp.name} from file")
             if unew.suffix == ".h5":
                 h5Cur = str(unew)
@@ -2061,6 +2064,8 @@ class Model:
             vec = self.cc[sp.compartment_name].u[ukey].vector()
             orig_vals = vec.get_local()
             start_vals = start_vec.get_local()
+            mesh_map = d.dof_to_vertex_map(sp.V)[:]
+            start_vals = start_vals[mesh_map]  # reorder to match dof ordering
             if len(start_vals) != len(sp.dof_map):
                 raise ValueError(
                     f"Vector from {str(unew)} does not match function space for {sp.name}"
