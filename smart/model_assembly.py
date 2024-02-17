@@ -269,7 +269,7 @@ class ObjectContainer:
         # add new lines to df entries (type str) that exceed max col width
         if max_col_width:
             for col in df.columns:
-                if isinstance(df[col][0], str):
+                if isinstance(df[col].iloc[0], str):
                     df[col] = df[col].apply(lambda x: "\n".join(wrap(x, max_col_width)))
 
         # remove leading underscores from df column names (used for cached properties)
@@ -299,7 +299,7 @@ class ObjectContainer:
         # # Change certain df entries to best format for printing
         for col in df.columns:
             # Convert quantity objects to unit
-            if isinstance(df[col][0], pint.Quantity):
+            if isinstance(df[col].iloc[0], pint.Quantity):
                 # if tablefmt=='latex':
                 df[col] = df[col].apply(lambda x: f"{x:0.{sig_figs}e~P}")
 
