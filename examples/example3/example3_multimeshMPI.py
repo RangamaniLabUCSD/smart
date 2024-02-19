@@ -195,8 +195,8 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
 
     # compute steady state solution at the end of each run
     dx = d.Measure("dx", domain=modelCur.cc["Cyto"].dolfin_mesh)
-    int_val = d.assemble(modelCur.sc["Aphos"].u["u"] * dx)
-    volume = d.assemble(1.0 * dx)
+    int_val = d.assemble_mixed(modelCur.sc["Aphos"].u["u"] * dx)
+    volume = d.assemble_mixed(1.0 * dx)
     ss_vec_cur[i] = int_val / volume
 
 d.MPI.comm_world.Barrier()
