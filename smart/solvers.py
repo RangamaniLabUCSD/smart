@@ -3,10 +3,11 @@ import logging
 from typing import Dict, List, Optional
 
 import dolfin as d
+from dolfin.common.timer import timed
 import petsc4py.PETSc as p
 
 from .common import Stopwatch
-from .model_assembly import Compartment
+from .model_assembly import Compartment, Form
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class smartSNESProblem:
             and `snes initialize zero matrices`
     """
 
+    @timed("Initialize smartSNESProblem")
     def __init__(
         self,
         u: d.Function,
@@ -48,6 +50,7 @@ class smartSNESProblem:
         active_compartments: List[Compartment],
         all_compartments: List[Compartment],
         stopwatches: Dict[str, Stopwatch],
+        model,
     ):
         self.u = u
         self.Fforms = Fforms
@@ -55,6 +58,8 @@ class smartSNESProblem:
         # for convenience, the mixed function space (model.V)
         self.W = [usub.function_space() for usub in u._functions]
         self.dim = len(self.Fforms)
+
+        self.model = model
 
         assert len(self.Jforms_all) == self.dim**2
 
@@ -113,6 +118,7 @@ class smartSNESProblem:
                 extra=dict(format_type="data"),
             )
 
+    @timed("Initialize PETSc Nested Matrix")
     def init_petsc_matnest(self):
         Jforms = self.Jforms_all
         dim = self.dim
@@ -195,6 +201,7 @@ class smartSNESProblem:
     def d_to_p(self, dolfin_matrix):
         return d.as_backend_type(dolfin_matrix).mat()
 
+    @timed("Initialize PETSc Nested Vector")
     def init_petsc_vecnest(self):
         dim = self.dim
         logger.info("Initializing block residual vector", extra=dict(format_type="assembly"))
@@ -237,6 +244,7 @@ class smartSNESProblem:
             self.Fpetsc_nest = p.Vec().createNest(Fpetsc, comm=self.comm)
         self.Fpetsc_nest.assemble()
 
+    @timed("SNES Assemble Jacobian Nested Matrix")
     def assemble_Jnest(self, Jnest):
         """Assemble Jacobian nest matrix.
 
@@ -246,10 +254,13 @@ class smartSNESProblem:
 
 
         """
+
         logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
+        # forms are updated for mass conservation and/or ODE solutions in
+        # assemble_Fnest, as that is executed first
         Jform = self.Jforms_all
 
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using
@@ -316,6 +327,7 @@ class smartSNESProblem:
 
         self.stopwatches["snes jacobian assemble"].pause()
 
+    @timed("SNES Assemble Residual Nest Vector")
     def assemble_Fnest(self, Fnest):
         """
         Assemble residual nest vector
@@ -327,6 +339,40 @@ class smartSNESProblem:
         dim = self.dim
         logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
+
+        # update forms here for odes and/or mass conservation -
+        # currently projecting volume species onto surface for "surface_to_volume"
+        # and "volume_to_surface" reactions to fix mass conservation
+        fNames = []
+        if self.model.config.flags["enforce_mass_conservation"]:
+            for f in self.model.fc:
+                if f.topology in ["surface_to_volume", "volume_to_surface"]:
+                    fNames.append(f.name)
+        u = self.model.u["u"]._functions
+        for f in self.model.fc:
+            if f.name in fNames:
+                form_type = "boundary_reaction" if f.is_boundary_condition else "domain_reaction"
+                flux_form_units = f.equation_units * f.measure_units
+                linearity_dict = {
+                    k: f.is_linear_wrt_comp.setdefault(k, True) for k in self.model.cc.keys
+                }
+                # note that "add" here just updates existing form
+                self.model.forms.add(
+                    Form(
+                        f.name,
+                        f.form,
+                        f.destination_species,
+                        form_type,
+                        flux_form_units,
+                        True,
+                        linearity_dict,
+                    )
+                )
+        # self.model._init_5_2_create_variational_forms()
+        self.Fsum_all = sum([f.lhs for f in self.model.forms])  # Sum of all forms
+        # get updated blocks for residual and Jacobian
+        self.Fforms = self.model.get_block_F(self.Fsum_all, u)
+        self.Jforms_all = self.model.get_block_J(self.Fsum_all, u)
 
         if self.is_single_domain:
             Fj_petsc = [Fnest]
@@ -366,6 +412,7 @@ class smartSNESProblem:
         self.copy_u(u)
         self.assemble_Jnest(Jnest)
 
+    @timed("SNES Initialize Zero Matrices")
     def init_petsc_matrix(self, i, j, nnz_guess=None, set_lgmap=False, assemble=False):
         """
         Initialize a PETSc matrix with appropriate structure
@@ -406,6 +453,7 @@ class smartSNESProblem:
 
         return M
 
+    @timed("SNES Initialize Zero Vectors")
     def init_petsc_vector(self, j, assemble=False):
         """Initialize a dolfin wrapped PETSc vector with appropriate structure
 
@@ -420,6 +468,7 @@ class smartSNESProblem:
 
         if assemble:
             V.assemble()
+
         return V
 
     def Jijk_name(self, i: int, j: int, k: Optional[int] = None):

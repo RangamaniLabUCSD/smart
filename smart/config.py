@@ -275,6 +275,7 @@ LOGGING_CONFIG = {
         "pint": {"level": "ERROR"},
         "FFC": {"level": "WARNING"},
         "UFL": {"level": "WARNING"},
+        "UFL_LEGACY": {"level": "WARNING"},
         "dolfin": {"level": "INFO"},
         "dijitso": {"level": "INFO"},
     },
@@ -302,9 +303,9 @@ global_settings = {
         "atan": d.atan,
         "atan2": ufl.atan_2,
         "sqrt": d.sqrt,
-        "ln": d.ln,
+        "log": d.ln,
         "abs": ufl.algebra.Abs,
-        "sign": ufl.sign,
+        "dsign": ufl.sign,
         "pi": d.pi,
         "erf": d.erf,
     },
@@ -374,10 +375,13 @@ class FlagsConfig(BaseConfig):
         allow_unused_components: Allow parameters not defined in any reaction to be
             defined in any model.
         print_verbose_info: Print detailed information about a model
+        axisymmetric_model: 2D mesh describes an axisymmetric geometry about the axis r = 0
     """
 
     allow_unused_components: bool = False
     print_verbose_info: bool = True
+    axisymmetric_model: bool = False
+    enforce_mass_conservation: bool = False
 
 
 @dataclass

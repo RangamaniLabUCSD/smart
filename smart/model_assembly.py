@@ -27,6 +27,7 @@ from cached_property import cached_property
 from sympy import Symbol, integrate
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
+from pathlib import Path
 
 from . import common
 from .config import global_settings as gset
@@ -597,8 +598,23 @@ class Parameter(ObjectInstance):
         group="",
         notes="",
         use_preintegration=False,
+        numerical_int=False,
     ):
-        """Use sympy to parse time-dependent expression for parameter"""
+        """
+        Use sympy to parse time-dependent expression for parameter
+        Note that the user can provide a symbolic expression for preintegration
+        There was previously a concern that the preintegration expression would no longer be valid
+        if the parameter appears in another time-dependent expression.
+        However, in the current version of SMART, there is no way to include a time-dependent
+        parameter in the definition of another time-dependent parameter, so this is not applicable.
+        This should be kept in mind for future versions of SMART. The associated warning was:
+        #     logger.warning(
+        #         f"Warning! Pre-integrating parameter {self.name}. Make sure that "
+        #         f"expressions {self.name} appears in have no other time-dependent variables,"
+        #         "else this preintegration expression may be invalid",
+        #         extra=dict(format_type="warning"),
+        #     )
+        """
         # Parse the given string to create a sympy expression
         if isinstance(sym_expr, str):
             sym_expr = parse_expr(sym_expr)
@@ -633,6 +649,9 @@ class Parameter(ObjectInstance):
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
                 preint_sym_expr = preint_sym_expr.subs({"x": x, "y": y, "z": z})
+            elif numerical_int:
+                preint_sym_expr = None
+                parameter.int_vec = [0.0]
             else:
                 # try to integrate
                 t = Symbol("t")
@@ -659,13 +678,6 @@ class Parameter(ObjectInstance):
             self.is_time_dependent = False
         if not hasattr(self, "is_space_dependent"):
             self.is_space_dependent = False
-
-        if self.use_preintegration:
-            logger.warning(
-                f"Warning! Pre-integrating parameter {self.name}. Make sure that "
-                f"expressions {self.name} appears in have no other time-dependent variables.",
-                extra=dict(format_type="warning"),
-            )
 
         attributes = [
             "sym_expr",
@@ -831,13 +843,21 @@ class Species(ObjectInstance):
 
             # Check if expression is space dependent
             free_symbols = [str(x) for x in sym_expr.free_symbols]
-            if not {"x[0]", "x[1]", "x[2]"}.issuperset(free_symbols):
+            if "curv" in free_symbols:
+                # then keep as string to put in curvature dependence later after loading mesh
+                self.initial_condition_expression = self.initial_condition
+            elif not {"x[0]", "x[1]", "x[2]"}.issuperset(free_symbols):
                 raise NotImplementedError
-            logger.debug(
-                f"Creating dolfin object for space-dependent initial condition {self.name}",
-                extra=dict(format_type="log"),
-            )
-            self.initial_condition_expression = d.Expression(sym.printing.ccode(sym_expr), degree=1)
+            else:
+                logger.debug(
+                    f"Creating dolfin object for space-dependent initial condition {self.name}",
+                    extra=dict(format_type="log"),
+                )
+                self.initial_condition_expression = d.Expression(
+                    sym.printing.ccode(sym_expr), degree=1
+                )
+        elif isinstance(self.initial_condition, Path):
+            pass  # keep as path
         else:
             raise TypeError("initial_condition must be a float or string.")
 
@@ -1157,6 +1177,8 @@ class Reaction(ObjectInstance):
     eqn_f_str: str = ""
     eqn_r_str: str = ""
     group: str = ""
+    axisymm: bool = False
+    mass_cons: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1173,6 +1195,8 @@ class Reaction(ObjectInstance):
             "eqn_f_str",
             "eqn_r_str",
             "group",
+            "axisymm",
+            "mass_cons",
         ]
         return {key: self.__dict__[key] for key in keys_to_keep}
 
@@ -1275,11 +1299,15 @@ class Reaction(ObjectInstance):
             if self.eqn_f_str:
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
+                self.fluxes.update(
+                    {flux_name: Flux(flux_name, species, eqn, self, self.axisymm, self.mass_cons)}
+                )
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self)})
+                self.fluxes.update(
+                    {flux_name: Flux(flux_name, species, eqn, self, self.axisymm, self.mass_cons)}
+                )
 
 
 class FluxContainer(ObjectContainer):
@@ -1316,12 +1344,16 @@ class Flux(ObjectInstance):
     * destination_species: flux increases or decreases this species
     * equation: directionality * stoichiometry * reaction string
     * reaction: reaction object this flux comes from
+    * axisymm: True if axisymmetric shape is being represented
+    * enforce_mass_conservation: True if adding extra mass conservation enforcement
     """
 
     name: str
     destination_species: Species
     equation: sym.Expr
     reaction: Reaction
+    axisymm: bool = False
+    enforce_mass_conservation: bool = False
 
     def check_validity(self):
         "No validity checks for flux objects currently"
@@ -1438,6 +1470,17 @@ class Flux(ObjectInstance):
         else:
             raise AssertionError()
 
+        # if necessary, project some volume variables onto surface
+        if self.enforce_mass_conservation:
+            if self.topology in ["surface_to_volume", "volume_to_surface"]:
+                self.proj_var = {}
+                for sname, s in self.species.items():
+                    if not s.compartment.mesh.is_surface:
+                        surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
+                        # u or usplit?
+                        cur_interp = d.interpolate(s.u["u"], surf_space)
+                        self.proj_var.update({sname: cur_interp})
+
     def _post_init_get_flux_units(self):
         """
         Check that flux units match expected type of units.
@@ -1450,8 +1493,6 @@ class Flux(ObjectInstance):
         (e.g. if we have a flux specified as nM/s, but concentration_units are defined as uM),
         then self.unit_scale_factor is set to the appropriate factor
         (1000 in the example where we need to convert nM -> uM)
-        NOTE: All unit checks are completed using pint, which may not be compatible with
-        certain functions such as sign().
         """
         concentration_units = self.destination_species.concentration_units
         compartment_units = self.destination_compartment.compartment_units
@@ -1550,7 +1591,20 @@ class Flux(ObjectInstance):
             variable.name: variable.dolfin_quantity
             for variable in {**self.parameters, **self.species}.values()
         }
+        if self.enforce_mass_conservation:
+            # interpolate certain volume variables onto surface
+            if self.topology in ["surface_to_volume", "volume_to_surface"]:
+                for sname, s in self.species.items():
+                    if not s.compartment.mesh.is_surface:
+                        surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
+                        # u or usplit?
+                        self.proj_var[sname].assign(d.interpolate(s.u["u"], surf_space))
+                        variables[sname] = self.proj_var[sname] * variables[sname].units
         variables.update({"unit_scale_factor": self.unit_scale_factor})
+        free_symbols = [str(x) for x in self.equation.free_symbols]
+        if "curv" in free_symbols:
+            self.curv = self.surface.curv_func * unit.dimensionless
+            variables.update({"curv": self.curv})
         return variables
 
     def equation_lambda_eval(self, input_type="quantity"):
@@ -1561,8 +1615,8 @@ class Flux(ObjectInstance):
         with pint quantity types.
         """
         # This is an attempt to make the equation lambda work with pint quantities
-        # note - throws an error when it doesn't return a float
-        # (happens when it returns 0 from sign function, for instance)
+        # note - for this eval to work, all variables in the expression must be defined
+        # dolfin quantities and all functions must match one in the list in the config module.
         self._equation_quantity = self.equation_lambda(**self.equation_variables)
         if input_type == "quantity":
             return self._equation_quantity
@@ -1577,12 +1631,22 @@ class Flux(ObjectInstance):
     def form(self):
         """-1 factor because terms are defined as if they were on the
         lhs of the equation :math:`F(u;v)=0`"""
-        return (
-            d.Constant(-1)
-            * self.equation_lambda_eval(input_type="value")
-            * self.destination_species.v
-            * self.measure
-        )
+        x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.axisymm:
+            return (
+                d.Constant(-1)
+                * x[0]
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.v
+                * self.measure
+            )
+        else:
+            return (
+                d.Constant(-1)
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.v
+                * self.measure
+            )
 
     @property
     def scalar_form(self):
@@ -1591,12 +1655,22 @@ class Flux(ObjectInstance):
         If the destination species is a vector function,
         the assembled form will be a vector of size NDOF.
         """
-        return (
-            d.Constant(-1)
-            * self.equation_lambda_eval(input_type="value")
-            * self.destination_species.vscalar
-            * self.measure
-        )
+        x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.axisymm:
+            return (
+                d.Constant(-1)
+                * x[0]
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.vscalar
+                * self.measure
+            )
+        else:
+            return (
+                d.Constant(-1)
+                * self.equation_lambda_eval(input_type="value")
+                * self.destination_species.vscalar
+                * self.measure
+            )
 
     @property
     def assembled_flux(self):

@@ -1,4 +1,4 @@
-FROM ghcr.io/scientificcomputing/fenics-gmsh:2023-04-21 as smart_base
+FROM ghcr.io/scientificcomputing/fenics-gmsh:2023-08-16 as smart_base
 
 ENV PYVISTA_JUPYTER_BACKEND="panel"
 

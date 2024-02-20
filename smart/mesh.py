@@ -3,7 +3,7 @@ Wrapper around dolfin mesh class to define parent and child meshes for SMART sim
 """
 from typing import Dict, FrozenSet
 import logging
-
+from pathlib import Path
 import dolfin as d
 import numpy as np
 from cached_property import cached_property
@@ -155,6 +155,7 @@ class ParentMesh(_Mesh):
     child_meshes: Dict[str, "ChildMesh"]
     parent_mesh: "ParentMesh"
     use_partition: bool
+    curvature: d.MeshFunction
 
     def __init__(
         self,
@@ -163,6 +164,7 @@ class ParentMesh(_Mesh):
         name,
         use_partition=False,
         mpi_comm=d.MPI.comm_world,
+        curvature=None,
     ):
         super().__init__(name)
         self.use_partition = use_partition
@@ -176,6 +178,20 @@ class ParentMesh(_Mesh):
 
         self.child_meshes = dict()
         self.parent_mesh = self
+        if isinstance(curvature, (str, Path)) and Path(curvature).is_file():
+            # Load curvature from file
+            if Path(curvature).suffix == ".xdmf":
+                self.curvature = d.MeshFunction("double", self.dolfin_mesh, 0)
+                with d.XDMFFile(str(curvature)) as curv_file:
+                    curv_file.read(self.curvature)
+            elif Path(curvature).suffix == ".xml":
+                self.curvature = d.MeshFunction("double", self.dolfin_mesh, str(curvature))
+                self.curvature.array()[np.where(self.curvature.array() > 1e9)[0]] = 0
+            else:
+                raise TypeError(f"Unable to read curvatures from {Path(curvature).suffix} file")
+        else:
+            # Otherwise just take what we got
+            self.curvature = curvature
 
     def get_mesh_from_id(self, id):
         "Find the mesh that has the matching id."
