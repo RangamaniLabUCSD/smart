@@ -18,7 +18,11 @@ import numpy as np
 import pandas
 import pint
 import sympy as sym
-import ufl
+
+try:
+    import ufl_legacy as ufl
+except ImportError:
+    import ufl
 from cached_property import cached_property
 from sympy import Symbol, integrate
 from sympy.parsing.sympy_parser import parse_expr

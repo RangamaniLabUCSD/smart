@@ -10,7 +10,11 @@ from typing import Any, Dict, Optional, Tuple, NamedTuple
 
 from termcolor import colored
 import dolfin as d
-import ufl
+
+try:
+    import ufl_legacy as ufl
+except ImportError:
+    import ufl
 
 
 __all__ = [
