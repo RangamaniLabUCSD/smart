@@ -15,11 +15,9 @@ dependencies = [
     "Pint",
     "scipy>=1.1.0",
     "sympy",
-    "dataclasses",
     "cached-property",
     "tabulate",
     "termcolor",
-    "termplotlib",
 ]
 
 
