@@ -244,7 +244,6 @@ def create_ellipsoids(
         Tuple (mesh, facet_marker, cell_marker)
     """
 
-
     def meshSizeCallback(dim, tag, x, y, z, lc):
         # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
         # or set when calling function) and hInnerEdge at the ERM
@@ -279,6 +278,7 @@ def create_ellipsoids(
         return lcTest
 
     import gmsh
+
     # Create temporary path for mesh (dependent on number of processes)
     # Only generate mesh on rank 0
     rank = MPI.COMM_WORLD.rank
@@ -294,7 +294,9 @@ def create_ellipsoids(
         if np.isclose(hEdge, 0):
             hEdge = 0.1 * max(outerRad)
         if np.isclose(hInnerEdge, 0):
-            hInnerEdge = 0.2 * max(outerRad) if np.any(np.isclose(innerRad, 0)) else 0.2 * max(innerRad)
+            hInnerEdge = (
+                0.2 * max(outerRad) if np.any(np.isclose(innerRad, 0)) else 0.2 * max(innerRad)
+            )
         if innerRad[0] > outerRad[0] or innerRad[1] > outerRad[1] or innerRad[2] > outerRad[2]:
             ValueError("Inner ellipsoid does not fit inside outer ellipsoid")
         # Create the two ellipsoid mesh using gmsh
@@ -304,7 +306,9 @@ def create_ellipsoids(
         gmsh.model.add("twoellipsoids")
         # first add ellipsoid 1 of radius outerRad and center (0,0,0)
         outer_ellipsoid = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
-        gmsh.model.occ.dilate([(3, outer_ellipsoid)], 0, 0, 0, outerRad[0], outerRad[1], outerRad[2])
+        gmsh.model.occ.dilate(
+            [(3, outer_ellipsoid)], 0, 0, 0, outerRad[0], outerRad[1], outerRad[2]
+        )
         if np.any(np.isclose(innerRad, 0)):
             # Use outer_ellipsoid only
             gmsh.model.occ.synchronize()
@@ -332,7 +336,9 @@ def create_ellipsoids(
             assert len(inner_shell) == 1
             # Add physical markers for facets
             gmsh.model.add_physical_group(outer_shell[0][0], [outer_shell[0][1]], tag=outer_marker)
-            gmsh.model.add_physical_group(inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker)
+            gmsh.model.add_physical_group(
+                inner_shell[0][0], [inner_shell[0][1]], tag=interface_marker
+            )
 
             # Physical markers for
             all_volumes = [tag[1] for tag in outer_ellipsoid_map]
@@ -363,7 +369,7 @@ def create_ellipsoids(
     if rank == 0:
         gmsh_file.unlink(missing_ok=False)
         tmp_folder.rmdir()
-    
+
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     return (dmesh, mf2, mf3)
 
@@ -1307,6 +1313,7 @@ def gmsh_to_dolfin(
             mf_cell: markers for cells
     """
     import meshio
+
     tmp_file_cell = tmp_folder / "tempmesh_cell.xdmf"
     tmp_file_facet = tmp_folder / "tempmesh_facet.xdmf"
 
