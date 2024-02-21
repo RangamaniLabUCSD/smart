@@ -18,6 +18,8 @@ from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
 from scipy import integrate
 from sympy.utilities.lambdify import lambdify
+from pathlib import Path
+import re
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -186,6 +188,9 @@ class Model:
                 f"has been parallelized (size={self.mpi_size}).",
                 extra=dict(format_type="log_urgent"),
             )
+
+        # Initialize load_init_time for use in loading initial conditions from file
+        self.load_init_time = None
 
     @property
     def mpi_am_i_root(self):
@@ -2008,6 +2013,66 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
+        elif isinstance(unew, Path):
+            assert Path(
+                unew
+            ).is_file(), f"{str(unew)} could not be found for loading initial conditions"
+            logger.debug(f"Loading initial condition for {sp.name} from file")
+            if unew.suffix == ".h5":
+                h5Cur = str(unew)
+                xdmfCur = h5Cur[0:-2] + "xdmf"
+            elif unew.suffix == ".xdmf":
+                xdmfCur = str(unew)
+                h5Cur = xdmfCur[0:-4] + "h5"
+            else:
+                raise TypeError(
+                    f"{str(unew)} is an unrecognized file type for loading initial conditions"
+                )
+
+            # load the time vec from xdmf file
+            xdmf_file = open(xdmfCur, "r")
+            xdmf_string = xdmf_file.read()
+            found_pattern = re.findall(r"Time Value=\"?[^\s]+", xdmf_string)
+            tVec = []
+            for i in range(len(found_pattern)):
+                tVec.append(float(found_pattern[i][12:-1]))
+            if self.load_init_time is None:
+                if len(tVec) == 0:
+                    raise ValueError(f"Could not load time from {xdmfCur}")
+                elif len(tVec) == 1:
+                    self.load_init_time = tVec[0]
+                    self.load_init_idx = 0
+                else:
+                    self.load_init_time = tVec[-2]
+                    self.load_init_idx = len(tVec) - 2
+                # set to current time
+                self.t = self.rounded_decimal(self.load_init_time)
+                self.T.assign(self.t)
+
+            assert np.isclose(
+                tVec[self.load_init_idx], self.load_init_time
+            ), "Time value does not match load in value"
+
+            cur_file = d.HDF5File(self.parent_mesh.mpi_comm, h5Cur, "r")
+            if not cur_file.has_dataset(f"VisualisationVector/{self.load_init_idx}"):
+                raise TypeError(
+                    f"Unable to read initial condition for {sp.name} from file {str(unew)}"
+                )
+            start_vec = d.Vector()
+            cur_file.read(start_vec, f"VisualisationVector/{self.load_init_idx}", True)
+            cur_file.close()
+            vec = self.cc[sp.compartment_name].u[ukey].vector()
+            orig_vals = vec.get_local()
+            start_vals = start_vec.get_local()
+            mesh_map = d.dof_to_vertex_map(sp.V)[:]
+            start_vals = start_vals[mesh_map]  # reorder to match dof ordering
+            if len(start_vals) != len(sp.dof_map):
+                raise ValueError(
+                    f"Vector from {str(unew)} does not match function space for {sp.name}"
+                )
+            orig_vals[sp.dof_map] = start_vals
+            vec.set_local(orig_vals)
+            vec.apply("insert")
         elif len(sp.dof_map) == len(unew):
             # unew must be an N x 4 array: [X, Y, Z, function_values]
             u = self.cc[sp.compartment_name].u[ukey]
