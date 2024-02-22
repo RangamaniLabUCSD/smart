@@ -381,6 +381,7 @@ class FlagsConfig(BaseConfig):
     allow_unused_components: bool = False
     print_verbose_info: bool = True
     axisymmetric_model: bool = False
+    enforce_mass_conservation: bool = False
 
 
 @dataclass
