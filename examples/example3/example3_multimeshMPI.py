@@ -177,8 +177,8 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     result_folder.mkdir(exist_ok=True)
     for species_name, species in modelCur.sc.items:
         results[species_name] = d.XDMFFile(
-            modelCur.mpi_comm_world, str(result_folder / f"{species_name}.xdmf")
-        )
+            d.MPI.comm_self, str(result_folder / f"{species_name}.xdmf"))
+        
         results[species_name].parameters["flush_output"] = True
         results[species_name].write(modelCur.sc[species_name].u["u"], modelCur.t)
 

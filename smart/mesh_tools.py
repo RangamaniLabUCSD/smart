@@ -362,7 +362,7 @@ def create_ellipsoids(
         gmsh.model.mesh.generate(3)
         gmsh.write(str(gmsh_file))
         gmsh.finalize()
-    MPI.COMM_WORLD.Barrier()
+    comm.Barrier()
     # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
     dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
     # remove tmp mesh and tmp folder
