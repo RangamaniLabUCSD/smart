@@ -57,6 +57,7 @@ class _Mesh:
     # Number of entities
     def get_num_entities(self, dimension):
         "Get the number of entities in this mesh with a certain topological dimension"
+        self.dolfin_mesh.init(dimension)
         return self.dolfin_mesh.topology().size(dimension)
 
     @cached_property
