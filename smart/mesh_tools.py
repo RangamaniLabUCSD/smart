@@ -281,8 +281,8 @@ def create_ellipsoids(
 
     # Create temporary path for mesh (dependent on number of processes)
     # Only generate mesh on rank 0
-    rank = MPI.COMM_WORLD.rank
-    size = MPI.COMM_WORLD.size
+    rank = comm.rank
+    size = comm.size
     tmp_folder = pathlib.Path(f"tmp_ellipsoid_{outerRad}_{innerRad}_{size}")
     if rank == 0:
         tmp_folder.mkdir(exist_ok=True)
