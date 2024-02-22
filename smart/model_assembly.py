@@ -1178,7 +1178,6 @@ class Reaction(ObjectInstance):
     eqn_r_str: str = ""
     group: str = ""
     axisymm: bool = False
-    mass_cons: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1196,7 +1195,6 @@ class Reaction(ObjectInstance):
             "eqn_r_str",
             "group",
             "axisymm",
-            "mass_cons",
         ]
         return {key: self.__dict__[key] for key in keys_to_keep}
 
@@ -1299,15 +1297,11 @@ class Reaction(ObjectInstance):
             if self.eqn_f_str:
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
-                self.fluxes.update(
-                    {flux_name: Flux(flux_name, species, eqn, self, self.axisymm, self.mass_cons)}
-                )
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
-                self.fluxes.update(
-                    {flux_name: Flux(flux_name, species, eqn, self, self.axisymm, self.mass_cons)}
-                )
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
 
 
 class FluxContainer(ObjectContainer):
@@ -1345,7 +1339,6 @@ class Flux(ObjectInstance):
     * equation: directionality * stoichiometry * reaction string
     * reaction: reaction object this flux comes from
     * axisymm: True if axisymmetric shape is being represented
-    * enforce_mass_conservation: True if adding extra mass conservation enforcement
     """
 
     name: str
@@ -1353,7 +1346,6 @@ class Flux(ObjectInstance):
     equation: sym.Expr
     reaction: Reaction
     axisymm: bool = False
-    enforce_mass_conservation: bool = False
 
     def check_validity(self):
         "No validity checks for flux objects currently"
@@ -1470,17 +1462,6 @@ class Flux(ObjectInstance):
         else:
             raise AssertionError()
 
-        # if necessary, project some volume variables onto surface
-        if self.enforce_mass_conservation:
-            if self.topology in ["surface_to_volume", "volume_to_surface"]:
-                self.proj_var = {}
-                for sname, s in self.species.items():
-                    if not s.compartment.mesh.is_surface:
-                        surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
-                        # u or usplit?
-                        cur_interp = d.interpolate(s.u["u"], surf_space)
-                        self.proj_var.update({sname: cur_interp})
-
     def _post_init_get_flux_units(self):
         """
         Check that flux units match expected type of units.
@@ -1591,15 +1572,6 @@ class Flux(ObjectInstance):
             variable.name: variable.dolfin_quantity
             for variable in {**self.parameters, **self.species}.values()
         }
-        if self.enforce_mass_conservation:
-            # interpolate certain volume variables onto surface
-            if self.topology in ["surface_to_volume", "volume_to_surface"]:
-                for sname, s in self.species.items():
-                    if not s.compartment.mesh.is_surface:
-                        surf_space = d.FunctionSpace(self.surface.dolfin_mesh, "CG", 1)
-                        # u or usplit?
-                        self.proj_var[sname].assign(d.interpolate(s.u["u"], surf_space))
-                        variables[sname] = self.proj_var[sname] * variables[sname].units
         variables.update({"unit_scale_factor": self.unit_scale_factor})
         free_symbols = [str(x) for x in self.equation.free_symbols]
         if "curv" in free_symbols:

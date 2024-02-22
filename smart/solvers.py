@@ -7,7 +7,7 @@ from dolfin.common.timer import timed
 import petsc4py.PETSc as p
 
 from .common import Stopwatch
-from .model_assembly import Compartment, Form
+from .model_assembly import Compartment
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ class smartSNESProblem:
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
-        # forms are updated for mass conservation and/or ODE solutions in
+        # forms are updated for ODE solutions in
         # assemble_Fnest, as that is executed first
         Jform = self.Jforms_all
 
@@ -339,40 +339,6 @@ class smartSNESProblem:
         dim = self.dim
         logger.debug("Assembling block residual vector", extra=dict(format_type="assembly"))
         self.stopwatches["snes residual assemble"].start()
-
-        # update forms here for odes and/or mass conservation -
-        # currently projecting volume species onto surface for "surface_to_volume"
-        # and "volume_to_surface" reactions to fix mass conservation
-        fNames = []
-        if self.model.config.flags["enforce_mass_conservation"]:
-            for f in self.model.fc:
-                if f.topology in ["surface_to_volume", "volume_to_surface"]:
-                    fNames.append(f.name)
-        u = self.model.u["u"]._functions
-        for f in self.model.fc:
-            if f.name in fNames:
-                form_type = "boundary_reaction" if f.is_boundary_condition else "domain_reaction"
-                flux_form_units = f.equation_units * f.measure_units
-                linearity_dict = {
-                    k: f.is_linear_wrt_comp.setdefault(k, True) for k in self.model.cc.keys
-                }
-                # note that "add" here just updates existing form
-                self.model.forms.add(
-                    Form(
-                        f.name,
-                        f.form,
-                        f.destination_species,
-                        form_type,
-                        flux_form_units,
-                        True,
-                        linearity_dict,
-                    )
-                )
-        # self.model._init_5_2_create_variational_forms()
-        self.Fsum_all = sum([f.lhs for f in self.model.forms])  # Sum of all forms
-        # get updated blocks for residual and Jacobian
-        self.Fforms = self.model.get_block_F(self.Fsum_all, u)
-        self.Jforms_all = self.model.get_block_J(self.Fsum_all, u)
 
         if self.is_single_domain:
             Fj_petsc = [Fnest]
