@@ -981,7 +981,6 @@ class Model:
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
         for reaction in self.rc:
             reaction.axisymm = self.config.flags["axisymmetric_model"]
-            reaction.mass_cons = self.config.flags["enforce_mass_conservation"]
             reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
 
@@ -1902,7 +1901,7 @@ class Model:
                     new_value = float(np.interp(t, t_data, p_data, left=np.nan, right=np.nan))
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by data. "
-                        "New value is {new_value}",
+                        f"New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
 
@@ -1920,7 +1919,7 @@ class Model:
                     new_value = float((b - a) / dt)
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by "
-                        "pre-integrated expression. New value is {new_value}",
+                        f"pre-integrated expression. New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
                 if parameter.type == ParameterType.from_file:
@@ -2013,7 +2012,10 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
-        elif isinstance(unew, Path) and Path(unew).is_file():
+        elif isinstance(unew, Path):
+            assert Path(
+                unew
+            ).is_file(), f"{str(unew)} could not be found for loading initial conditions"
             logger.debug(f"Loading initial condition for {sp.name} from file")
             if unew.suffix == ".h5":
                 h5Cur = str(unew)
@@ -2061,6 +2063,8 @@ class Model:
             vec = self.cc[sp.compartment_name].u[ukey].vector()
             orig_vals = vec.get_local()
             start_vals = start_vec.get_local()
+            mesh_map = d.dof_to_vertex_map(sp.V)[:]
+            start_vals = start_vals[mesh_map]  # reorder to match dof ordering
             if len(start_vals) != len(sp.dof_map):
                 raise ValueError(
                     f"Vector from {str(unew)} does not match function space for {sp.name}"
