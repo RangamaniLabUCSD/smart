@@ -57,6 +57,7 @@ class _Mesh:
     # Number of entities
     def get_num_entities(self, dimension):
         "Get the number of entities in this mesh with a certain topological dimension"
+        self.dolfin_mesh.init(dimension)
         return self.dolfin_mesh.topology().size(dimension)
 
     @cached_property
@@ -447,7 +448,7 @@ class ChildMesh(_Mesh):
         self.intersection_map_parent[mesh_id_set].array()[parent_indices] = 1
 
     def get_intersection_submesh(self, mesh_id_set: FrozenSet[int]):
-        self.intersection_submesh[mesh_id_set] = d.MeshView.create(
+        self.intersection_submesh[mesh_id_set] = d.create_meshview(
             self.intersection_map_parent[mesh_id_set], 1
         )
         self.intersection_submesh[mesh_id_set].init()
@@ -465,4 +466,4 @@ class ChildMesh(_Mesh):
 
     def extract_submesh(self):
         mf_type = "cells" if self.is_volume else "facets"
-        self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
+        self.dolfin_mesh = d.create_meshview(self.parent_mesh.mf[mf_type], self.primary_marker)

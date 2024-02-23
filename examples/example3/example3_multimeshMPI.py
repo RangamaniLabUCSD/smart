@@ -177,8 +177,9 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     result_folder.mkdir(exist_ok=True)
     for species_name, species in modelCur.sc.items:
         results[species_name] = d.XDMFFile(
-            modelCur.mpi_comm_world, str(result_folder / f"{species_name}.xdmf")
+            d.MPI.comm_self, str(result_folder / f"{species_name}.xdmf")
         )
+
         results[species_name].parameters["flush_output"] = True
         results[species_name].write(modelCur.sc[species_name].u["u"], modelCur.t)
 
@@ -195,8 +196,8 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
 
     # compute steady state solution at the end of each run
     dx = d.Measure("dx", domain=modelCur.cc["Cyto"].dolfin_mesh)
-    int_val = d.assemble(modelCur.sc["Aphos"].u["u"] * dx)
-    volume = d.assemble(1.0 * dx)
+    int_val = d.assemble_mixed(modelCur.sc["Aphos"].u["u"] * dx)
+    volume = d.assemble_mixed(1.0 * dx)
     ss_vec_cur[i] = int_val / volume
 
 d.MPI.comm_world.Barrier()
