@@ -1901,7 +1901,7 @@ class Model:
                     new_value = float(np.interp(t, t_data, p_data, left=np.nan, right=np.nan))
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by data. "
-                        "New value is {new_value}",
+                        f"New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
 
@@ -1919,7 +1919,7 @@ class Model:
                     new_value = float((b - a) / dt)
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by "
-                        "pre-integrated expression. New value is {new_value}",
+                        f"pre-integrated expression. New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
                 if parameter.type == ParameterType.from_file:
