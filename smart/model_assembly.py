@@ -220,7 +220,7 @@ class ObjectContainer:
         properties_to_print=None,
         max_col_width=None,
         sig_figs=2,
-        return_df=True,
+        return_df=False,
     ):
         """
         Print object properties in latex format.
@@ -236,18 +236,21 @@ class ObjectContainer:
         # Change certain df entries to best format for display
         for col in df.columns:
             # Convert quantity objects to unit
-            if isinstance(df[col][0], pint.Quantity):
+            if isinstance(df[col].iloc[0], pint.Quantity):
                 # if tablefmt=='latex':
                 df[col] = df[col].apply(lambda x: f"${x:0.{sig_figs}e~Lx}$")
 
             if col == "idx":
                 df = df.drop("idx", axis=1)
 
+            if "_" in col:
+                df = df.rename(columns={col: col.replace("_", "-")})
+
         if return_df:
             return df
         else:
             with pandas.option_context("max_colwidth", 1000):
-                logger.info(df.to_latex(escape=False, longtable=True, index=False))
+                logger.info(df.to_latex(escape=False, longtable=True, index=True))
 
     def get_pandas_dataframe_formatted(
         self,
@@ -270,7 +273,7 @@ class ObjectContainer:
         # add new lines to df entries (type str) that exceed max col width
         if max_col_width:
             for col in df.columns:
-                if isinstance(df[col][0], str):
+                if isinstance(df[col].iloc[0], str):
                     df[col] = df[col].apply(lambda x: "\n".join(wrap(x, max_col_width)))
 
         # remove leading underscores from df column names (used for cached properties)
@@ -300,7 +303,7 @@ class ObjectContainer:
         # # Change certain df entries to best format for printing
         for col in df.columns:
             # Convert quantity objects to unit
-            if isinstance(df[col][0], pint.Quantity):
+            if isinstance(df[col].iloc[0], pint.Quantity):
                 # if tablefmt=='latex':
                 df[col] = df[col].apply(lambda x: f"{x:0.{sig_figs}e~P}")
 
@@ -625,15 +628,16 @@ class Parameter(ObjectInstance):
         free_symbols = [str(x) for x in sym_expr.free_symbols]
         is_time_dependent = "t" in free_symbols
         is_space_dependent = not {"x[0]", "x[1]", "x[2]"}.isdisjoint(set(free_symbols))
-        if is_space_dependent:
-            raise NotImplementedError
         # For now, parameters can only be defined in terms of time/space
         if not {"x[0]", "x[1]", "x[2]", "t"}.issuperset(free_symbols):
             raise NotImplementedError
 
-        # TODO: fix this when implementing space dependent parameters
-        if is_time_dependent:
+        if is_time_dependent and not is_space_dependent:
             value = float(sym_expr.subs({"t": 0.0}))
+
+        if is_space_dependent:
+            dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=3)
+            value = float(sym_expr.subs({"t": 0.0, "x[0]": 0.0, "x[1]": 0.0, "x[2]": 0.0}))
 
         parameter = cls(
             name,
@@ -662,8 +666,9 @@ class Parameter(ObjectInstance):
         parameter.sym_expr = sym_expr
         parameter.is_time_dependent = is_time_dependent
         parameter.is_space_dependent = is_space_dependent
+        if is_space_dependent:
+            parameter.dolfin_expression = dolfin_expression
 
-        # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
         parameter.type = ParameterType.expression
         parameter.__post_init__()
         logger.debug(
@@ -702,7 +707,7 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if hasattr(self, "dolfin_expression") and not self.use_preintegration:
+        if hasattr(self, "dolfin_expression"):
             return self.dolfin_expression * self.unit
         else:
             return self.dolfin_constant * self.unit
@@ -748,8 +753,8 @@ class SpeciesContainer(ObjectContainer):
         sig_figs=2,
         return_df=False,
     ):
-        properties_to_print = ["_latex_name"]
-        properties_to_print.extend(self.properties_to_print)
+        # properties_to_print = ["_latex_name"]
+        # properties_to_print.extend(self.properties_to_print)
         df = super().print_to_latex(properties_to_print, max_col_width, sig_figs, return_df=True)
         # fix dof_index
         for col in df.columns:
@@ -831,6 +836,7 @@ class Species(ObjectInstance):
         self._usplit = dict()
         self.ut = None
         self.v = None
+        self.has_subdomain = False
 
         if isinstance(self.initial_condition, float):
             pass
@@ -888,6 +894,11 @@ class Species(ObjectInstance):
                 f"Units of diffusion coefficient for species {self.name} must "
                 "be dimensionally equivalent to [length]^2/[time]."
             )
+
+    def restrict_to_subdomain(self, mf, mfval):
+        self.has_subdomain = True
+        self.subdomain_data = mf
+        self.subdomain_val = mfval
 
     @cached_property
     def vscalar(self):
@@ -1775,10 +1786,10 @@ def sbmodel_from_locals(local_values):
     compartments = [x for x in local_values if isinstance(x, Compartment)]
     reactions = [x for x in local_values if isinstance(x, Reaction)]
     # we just reverse the list so that the order is the same as how they were defined
-    parameters.reverse()
-    species.reverse()
-    compartments.reverse()
-    reactions.reverse()
+    # parameters.reverse()
+    # species.reverse()
+    # compartments.reverse()
+    # reactions.reverse()
     pc.add(parameters)
     sc.add(species)
     cc.add(compartments)
