@@ -1785,11 +1785,6 @@ def sbmodel_from_locals(local_values):
     species = [x for x in local_values if isinstance(x, Species)]
     compartments = [x for x in local_values if isinstance(x, Compartment)]
     reactions = [x for x in local_values if isinstance(x, Reaction)]
-    # we just reverse the list so that the order is the same as how they were defined
-    # parameters.reverse()
-    # species.reverse()
-    # compartments.reverse()
-    # reactions.reverse()
     pc.add(parameters)
     sc.add(species)
     cc.add(compartments)
