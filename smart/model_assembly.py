@@ -234,6 +234,25 @@ class ObjectContainer:
         )
 
         # Change certain df entries to best format for display
+        for name in df.index:
+            if "_" in name:
+                new_name = name.replace("_", "-")
+                df = df.rename(index={name: new_name})
+        for row in range(df.shape[0]):
+            for col in range(df.shape[1]):
+                if isinstance(df.iat[row, col], str):
+                    cur_str = df.iat[row, col]
+                    if "_" in cur_str:
+                        df = df.replace(cur_str, cur_str.replace("_", "-"))
+                elif isinstance(df.iat[row, col], list):
+                    if len(df.iat[row, col]) > 0:
+                        cur_list = df.iat[row, col]
+                        new_list = cur_list
+                        for i in range(len(cur_list)):
+                            if isinstance(new_list[i], str):
+                                cur_str = df.iat[row, col][0]
+                                new_list[i] = cur_str.replace("_", "-")
+                        df = df.replace(cur_list, new_list)
         for col in df.columns:
             # Convert quantity objects to unit
             if isinstance(df[col].iloc[0], pint.Quantity):
@@ -732,7 +751,12 @@ class Parameter(ObjectInstance):
 class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
-        self.properties_to_print = ["compartment_name", "dof_index", "_Diffusion"]
+        self.properties_to_print = [
+            "compartment_name",
+            "_Diffusion",
+            "initial_condition",
+            "concentration_units",
+        ]
 
     def print(
         self,
