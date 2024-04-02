@@ -16,6 +16,10 @@ import sympy as sym
 from cached_property import cached_property
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
+from scipy import integrate
+from sympy.utilities.lambdify import lambdify
+from pathlib import Path
+import re
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -184,6 +188,9 @@ class Model:
                 f"has been parallelized (size={self.mpi_size}).",
                 extra=dict(format_type="log_urgent"),
             )
+
+        # Initialize load_init_time for use in loading initial conditions from file
+        self.load_init_time = None
 
     @property
     def mpi_am_i_root(self):
@@ -802,11 +809,13 @@ class Model:
                     self.child_meshes[compartment.name].dolfin_mesh, "P", 1
                 )
 
-        if self.parent_mesh.curvature != "":
-            scalarFunctionSpace = d.FunctionSpace(
-                self.child_meshes[compartment.name].dolfin_mesh, "P", 1
-            )
-            compartment.curv_func = self.mf0_to_fun(self.parent_mesh.curvature, scalarFunctionSpace)
+            if self.parent_mesh.curvature is not None:
+                scalarFunctionSpace = d.FunctionSpace(
+                    self.child_meshes[compartment.name].dolfin_mesh, "P", 1
+                )
+                compartment.curv_func = self.mf0_to_fun(
+                    self.parent_mesh.curvature, scalarFunctionSpace
+                )
 
         self.V = [compartment.V for compartment in self._active_compartments]
         # Make the MixedFunctionSpace
@@ -971,7 +980,8 @@ class Model:
         """Convert reactions to flux objects"""
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
         for reaction in self.rc:
-            reaction.reaction_to_fluxes(self.config.flags["axisymmetric_model"])
+            reaction.axisymm = self.config.flags["axisymmetric_model"]
+            reaction.reaction_to_fluxes()
             self.fc.add(reaction.fluxes)
 
     def _init_5_2_create_variational_forms(self):
@@ -1158,6 +1168,7 @@ class Model:
         # if use snes
         if self.config.solver["use_snes"]:
             logger.debug("Using SNES solver", extra=dict(format_type="log"))
+            # Does passing the entire model object to smartSNESProblem slow down execution?
             self.problem = smartSNESProblem(
                 self.u["u"],
                 self.Fblocks_all,
@@ -1165,6 +1176,7 @@ class Model:
                 self._active_compartments,
                 self._all_compartments,
                 self.stopwatches,
+                self,
             )
 
             self.problem.init_petsc_matnest()
@@ -1612,6 +1624,9 @@ class Model:
         if self.dt <= 0:
             raise ValueError("dt is <= 0")
 
+        # update equation variables (necessary for mass conservation workaround)
+        for fname, f in self.fc.items:
+            f.equation_variables.update()
         # Take a step forward in time and update time-dependent parameters
         # update time-dependent parameters
 
@@ -1886,18 +1901,25 @@ class Model:
                     new_value = float(np.interp(t, t_data, p_data, left=np.nan, right=np.nan))
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by data. "
-                        "New value is {new_value}",
+                        f"New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
 
             if parameter.use_preintegration:
                 if parameter.type == ParameterType.expression:
-                    a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
-                    b = parameter.preint_sym_expr.subs({"t": t}).evalf()
+                    if parameter.preint_sym_expr is None:  # then numerically approximate integral
+                        a = parameter.int_vec[-1]
+                        tsym = sym.symbols("t")
+                        intval, err = integrate.quad(lambdify(tsym, parameter.sym_expr), tn, t)
+                        b = a + intval
+                        parameter.int_vec.append(b)
+                    else:
+                        a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
+                        b = parameter.preint_sym_expr.subs({"t": t}).evalf()
                     new_value = float((b - a) / dt)
                     logger.debug(
                         f"Time-dependent parameter {parameter_name} updated by "
-                        "pre-integrated expression. New value is {new_value}",
+                        f"pre-integrated expression. New value is {new_value}",
                         extra=dict(format_type="log"),
                     )
                 if parameter.type == ParameterType.from_file:
@@ -1973,7 +1995,7 @@ class Model:
             # then this still needs to have free symbols inserted
             x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
             # Parse the given string to create a sympy expression
-            sym_expr = parse_expr(sp.initial_condition).subs({"x": x, "y": y, "z": z})
+            sym_expr = parse_expr(unew).subs({"x": x, "y": y, "z": z})
             free_symbols = [str(x) for x in sym_expr.free_symbols]
             if not {"x[0]", "x[1]", "x[2]", "curv"}.issuperset(free_symbols):
                 # could add other keywords for spatial dependence in the future
@@ -1990,6 +2012,66 @@ class Model:
         elif isinstance(unew, (float, int)):
             uinterp = d.interpolate(d.Constant(unew), sp.V)
             d.assign(sp.u[ukey], uinterp)
+        elif isinstance(unew, Path):
+            assert Path(
+                unew
+            ).is_file(), f"{str(unew)} could not be found for loading initial conditions"
+            logger.debug(f"Loading initial condition for {sp.name} from file")
+            if unew.suffix == ".h5":
+                h5Cur = str(unew)
+                xdmfCur = h5Cur[0:-2] + "xdmf"
+            elif unew.suffix == ".xdmf":
+                xdmfCur = str(unew)
+                h5Cur = xdmfCur[0:-4] + "h5"
+            else:
+                raise TypeError(
+                    f"{str(unew)} is an unrecognized file type for loading initial conditions"
+                )
+
+            # load the time vec from xdmf file
+            xdmf_file = open(xdmfCur, "r")
+            xdmf_string = xdmf_file.read()
+            found_pattern = re.findall(r"Time Value=\"?[^\s]+", xdmf_string)
+            tVec = []
+            for i in range(len(found_pattern)):
+                tVec.append(float(found_pattern[i][12:-1]))
+            if self.load_init_time is None:
+                if len(tVec) == 0:
+                    raise ValueError(f"Could not load time from {xdmfCur}")
+                elif len(tVec) == 1:
+                    self.load_init_time = tVec[0]
+                    self.load_init_idx = 0
+                else:
+                    self.load_init_time = tVec[-2]
+                    self.load_init_idx = len(tVec) - 2
+                # set to current time
+                self.t = self.rounded_decimal(self.load_init_time)
+                self.T.assign(self.t)
+
+            assert np.isclose(
+                tVec[self.load_init_idx], self.load_init_time
+            ), "Time value does not match load in value"
+
+            cur_file = d.HDF5File(self.parent_mesh.mpi_comm, h5Cur, "r")
+            if not cur_file.has_dataset(f"VisualisationVector/{self.load_init_idx}"):
+                raise TypeError(
+                    f"Unable to read initial condition for {sp.name} from file {str(unew)}"
+                )
+            start_vec = d.Vector()
+            cur_file.read(start_vec, f"VisualisationVector/{self.load_init_idx}", True)
+            cur_file.close()
+            vec = self.cc[sp.compartment_name].u[ukey].vector()
+            orig_vals = vec.get_local()
+            start_vals = start_vec.get_local()
+            mesh_map = d.dof_to_vertex_map(sp.V)[:]
+            start_vals = start_vals[mesh_map]  # reorder to match dof ordering
+            if len(start_vals) != len(sp.dof_map):
+                raise ValueError(
+                    f"Vector from {str(unew)} does not match function space for {sp.name}"
+                )
+            orig_vals[sp.dof_map] = start_vals
+            vec.set_local(orig_vals)
+            vec.apply("insert")
         elif len(sp.dof_map) == len(unew):
             # unew must be an N x 4 array: [X, Y, Z, function_values]
             u = self.cc[sp.compartment_name].u[ukey]
@@ -2140,3 +2222,23 @@ class Model:
         dfunc.vector().set_local(values)
         dfunc.vector().apply("insert")
         return dfunc
+
+    def adjust_dt(self):
+        if self.idx_nl[-1] in [0, 1]:
+            dt_scale = 1.1
+        elif self.idx_nl[-1] in [2, 3, 4]:
+            dt_scale = 1.05
+        elif self.idx_nl[-1] in [5, 6, 7, 8, 9, 10]:
+            dt_scale = 1.0
+        # decrease time step
+        elif self.idx_nl[-1] in [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]:
+            dt_scale = 0.8
+        elif self.idx_nl[-1] >= 20:
+            dt_scale = 0.5
+        # further adjustments depending on linear iterations
+        # if self.idx_l[-1] <= 5 and dt_scale >= 1.0:
+        #     dt_scale *= 1.05
+        # if self.idx_l[-1] >= 10:
+        #     dt_scale = min(dt_scale * 0.8, 0.8)
+        dt_cur = float(self.dt) * dt_scale
+        self.set_dt(dt_cur)

@@ -36,7 +36,7 @@ jobs:
 
       - name: Cache notebooks
         id: cache-notebooks
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build
           key: cache_key_3 # Bump number manually when you want to clear the cache
@@ -45,7 +45,7 @@ jobs:
         run: jupyter book build .
 
       - name: Upload documentation as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: ${{ env.PUBLISH_DIR }}

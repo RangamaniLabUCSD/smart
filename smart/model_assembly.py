@@ -27,6 +27,7 @@ from cached_property import cached_property
 from sympy import Symbol, integrate
 from sympy.parsing.sympy_parser import parse_expr
 from tabulate import tabulate
+from pathlib import Path
 
 from . import common
 from .config import global_settings as gset
@@ -597,6 +598,7 @@ class Parameter(ObjectInstance):
         group="",
         notes="",
         use_preintegration=False,
+        numerical_int=False,
     ):
         """
         Use sympy to parse time-dependent expression for parameter
@@ -647,6 +649,9 @@ class Parameter(ObjectInstance):
                 if isinstance(preint_sym_expr, str):
                     preint_sym_expr = parse_expr(preint_sym_expr)
                 preint_sym_expr = preint_sym_expr.subs({"x": x, "y": y, "z": z})
+            elif numerical_int:
+                preint_sym_expr = None
+                parameter.int_vec = [0.0]
             else:
                 # try to integrate
                 t = Symbol("t")
@@ -851,6 +856,8 @@ class Species(ObjectInstance):
                 self.initial_condition_expression = d.Expression(
                     sym.printing.ccode(sym_expr), degree=1
                 )
+        elif isinstance(self.initial_condition, Path):
+            pass  # keep as path
         else:
             raise TypeError("initial_condition must be a float or string.")
 
@@ -1170,6 +1177,7 @@ class Reaction(ObjectInstance):
     eqn_f_str: str = ""
     eqn_r_str: str = ""
     group: str = ""
+    axisymm: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1186,6 +1194,7 @@ class Reaction(ObjectInstance):
             "eqn_f_str",
             "eqn_r_str",
             "group",
+            "axisymm",
         ]
         return {key: self.__dict__[key] for key in keys_to_keep}
 
@@ -1255,14 +1264,13 @@ class Reaction(ObjectInstance):
         reaction_expr = reaction_expr.subs(self.species_map)
         return str(reaction_expr)
 
-    def reaction_to_fluxes(self, axisymm):
+    def reaction_to_fluxes(self):
         """
         Convert reactions to fluxes -
         in general, for each product and each reactant there are two fluxes,
         one forward flux (dictated by :code:`self.eqn_f_str`)
         and one reverse flux (dictated by :code:`self.eqn_r_str`),
         stoichiometry is dictated by the number of times a given species occurs on the lhs or rhs
-        If axisymm is true, this is a 2D mesh representing a 3D axisymmetric geometry
         """
         logger.debug(f"Getting fluxes for reaction {self.name}", extra=dict(format_type="log"))
         # set of 2-tuples. (species_name, signed stoichiometry)
@@ -1289,11 +1297,11 @@ class Reaction(ObjectInstance):
             if self.eqn_f_str:
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, axisymm)})
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
-                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, axisymm)})
+                self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
 
 
 class FluxContainer(ObjectContainer):

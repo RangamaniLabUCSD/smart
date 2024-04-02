@@ -50,6 +50,7 @@ class smartSNESProblem:
         active_compartments: List[Compartment],
         all_compartments: List[Compartment],
         stopwatches: Dict[str, Stopwatch],
+        model,
     ):
         self.u = u
         self.Fforms = Fforms
@@ -57,6 +58,8 @@ class smartSNESProblem:
         # for convenience, the mixed function space (model.V)
         self.W = [usub.function_space() for usub in u._functions]
         self.dim = len(self.Fforms)
+
+        self.model = model
 
         assert len(self.Jforms_all) == self.dim**2
 
@@ -251,10 +254,13 @@ class smartSNESProblem:
 
 
         """
+
         logger.debug("Assembling block Jacobian", extra=dict(format_type="assembly"))
         self.stopwatches["snes jacobian assemble"].start()
         dim = self.dim
 
+        # forms are updated for ODE solutions in
+        # assemble_Fnest, as that is executed first
         Jform = self.Jforms_all
 
         # Get the petsc sub matrices, convert to dolfin wrapper, assemble forms using

@@ -27,7 +27,7 @@ jobs:
 
       - name: Run tests
         run: |
-         python3 -m pytest
+          python3 -m pytest
 
       - name: Extract Coverage
         run: |
@@ -37,7 +37,7 @@ jobs:
           echo "total=$TOTAL" >> $GITHUB_ENV
 
       - name: Upload HTML report.
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: html-report
           path: htmlcov

@@ -177,8 +177,9 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
     result_folder.mkdir(exist_ok=True)
     for species_name, species in modelCur.sc.items:
         results[species_name] = d.XDMFFile(
-            modelCur.mpi_comm_world, str(result_folder / f"{species_name}.xdmf")
+            d.MPI.comm_self, str(result_folder / f"{species_name}.xdmf")
         )
+
         results[species_name].parameters["flush_output"] = True
         results[species_name].write(modelCur.sc[species_name].u["u"], modelCur.t)
 
@@ -195,8 +196,8 @@ for i, curRadius in enumerate(radiusVec[local_range[0] : local_range[1]]):
 
     # compute steady state solution at the end of each run
     dx = d.Measure("dx", domain=modelCur.cc["Cyto"].dolfin_mesh)
-    int_val = d.assemble(modelCur.sc["Aphos"].u["u"] * dx)
-    volume = d.assemble(1.0 * dx)
+    int_val = d.assemble_mixed(modelCur.sc["Aphos"].u["u"] * dx)
+    volume = d.assemble_mixed(1.0 * dx)
     ss_vec_cur[i] = int_val / volume
 
 d.MPI.comm_world.Barrier()
@@ -210,11 +211,11 @@ if rank == 0:
     np.savetxt("ss_vec_MPI.txt", ss_vec)
     plt.plot(radiusVec, ss_vec, "ro")
     radiusTest = np.logspace(0, 1, 100)
-    thieleMod = radiusTest / 1.0
-    k_kin = 50
-    k_p = 10
-    cT = 1
-    D = 10
+    k_kin = kkin.value
+    k_p = kp.value
+    cT = Atot.value
+    D = Aphos.D
+    thieleMod = radiusTest / np.sqrt(D / k_p)
     C1 = (
         k_kin
         * cT
@@ -235,11 +236,7 @@ if rank == 0:
     plt.show()
 
     # quantify percent error
-    thieleMod = radiusVec / 1.0
-    k_kin = 50
-    k_p = 10
-    cT = 1
-    D = 10
+    thieleMod = radiusVec / np.sqrt(D / k_p)
     C1 = (
         k_kin
         * cT
@@ -266,16 +263,16 @@ if rank == 0:
     # check that solution is not too far from previous numerical solution (regression test)
     ss_vec_ref = np.array(
         [
-            7.923821144851057596e-01,
-            7.669667883419870602e-01,
-            7.298498502029002744e-01,
-            6.788940529553533221e-01,
-            6.142454046569625348e-01,
-            5.396662231709322688e-01,
-            4.614726970070175405e-01,
-            3.858559025223168293e-01,
-            3.170657047898646219e-01,
-            2.570951001202800845e-01,
+            0.79232888,
+            0.76696666,
+            0.72982203,
+            0.67888582,
+            0.61424132,
+            0.53967824,
+            0.46147368,
+            0.38586242,
+            0.31707563,
+            0.25709714,
         ]
     )
     percentErrorRegression = 100 * np.abs(ss_vec - ss_vec_ref) / ss_vec_ref

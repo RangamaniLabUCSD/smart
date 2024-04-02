@@ -3,7 +3,7 @@ Wrapper around dolfin mesh class to define parent and child meshes for SMART sim
 """
 from typing import Dict, FrozenSet
 import logging
-
+from pathlib import Path
 import dolfin as d
 import numpy as np
 from cached_property import cached_property
@@ -57,6 +57,7 @@ class _Mesh:
     # Number of entities
     def get_num_entities(self, dimension):
         "Get the number of entities in this mesh with a certain topological dimension"
+        self.dolfin_mesh.init(dimension)
         return self.dolfin_mesh.topology().size(dimension)
 
     @cached_property
@@ -163,7 +164,7 @@ class ParentMesh(_Mesh):
         name,
         use_partition=False,
         mpi_comm=d.MPI.comm_world,
-        curvature="",
+        curvature=None,
     ):
         super().__init__(name)
         self.use_partition = use_partition
@@ -177,7 +178,20 @@ class ParentMesh(_Mesh):
 
         self.child_meshes = dict()
         self.parent_mesh = self
-        self.curvature = curvature
+        if isinstance(curvature, (str, Path)) and Path(curvature).is_file():
+            # Load curvature from file
+            if Path(curvature).suffix == ".xdmf":
+                self.curvature = d.MeshFunction("double", self.dolfin_mesh, 0)
+                with d.XDMFFile(str(curvature)) as curv_file:
+                    curv_file.read(self.curvature)
+            elif Path(curvature).suffix == ".xml":
+                self.curvature = d.MeshFunction("double", self.dolfin_mesh, str(curvature))
+                self.curvature.array()[np.where(self.curvature.array() > 1e9)[0]] = 0
+            else:
+                raise TypeError(f"Unable to read curvatures from {Path(curvature).suffix} file")
+        else:
+            # Otherwise just take what we got
+            self.curvature = curvature
 
     def get_mesh_from_id(self, id):
         "Find the mesh that has the matching id."
@@ -434,7 +448,7 @@ class ChildMesh(_Mesh):
         self.intersection_map_parent[mesh_id_set].array()[parent_indices] = 1
 
     def get_intersection_submesh(self, mesh_id_set: FrozenSet[int]):
-        self.intersection_submesh[mesh_id_set] = d.MeshView.create(
+        self.intersection_submesh[mesh_id_set] = d.create_meshview(
             self.intersection_map_parent[mesh_id_set], 1
         )
         self.intersection_submesh[mesh_id_set].init()
@@ -452,4 +466,4 @@ class ChildMesh(_Mesh):
 
     def extract_submesh(self):
         mf_type = "cells" if self.is_volume else "facets"
-        self.dolfin_mesh = d.MeshView.create(self.parent_mesh.mf[mf_type], self.primary_marker)
+        self.dolfin_mesh = d.create_meshview(self.parent_mesh.mf[mf_type], self.primary_marker)

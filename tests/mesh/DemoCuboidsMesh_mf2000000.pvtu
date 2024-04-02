@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<VTKFile type="PUnstructuredGrid" version="0.1">
+  <PUnstructuredGrid GhostLevel="0">
+    <PPoints>
+      <PDataArray type="Float64" NumberOfComponents="3" />
+    </PPoints>
+    <PCellData>
+      <PDataArray type="UInt32" Name="connectivity" />
+      <PDataArray type="UInt32" Name="offsets" />
+      <PDataArray type="UInt8" Name="types" />
+    </PCellData>
+    <PCellData Scalars="f">
+      <PDataArray type="Float64" Name="f" NumberOfComponents="0" />
+    </PCellData>
+    <Piece Source="DemoCuboidsMesh_mf2_p0_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p1_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p2_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p3_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p4_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p5_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p6_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p7_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p8_000000.vtu" />
+    <Piece Source="DemoCuboidsMesh_mf2_p9_000000.vtu" />
+  </PUnstructuredGrid>
+</VTKFile>
