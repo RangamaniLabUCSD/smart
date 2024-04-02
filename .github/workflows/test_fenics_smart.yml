@@ -17,7 +17,7 @@ jobs:
   check-code:
     runs-on: ubuntu-22.04
     # Runs against FEniCS main branch built the 16-01-2023
-    container: ghcr.io/scientificcomputing/fenics-gmsh:2023-08-16
+    container: ghcr.io/scientificcomputing/fenics-gmsh:2024-02-19
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
 
       - name: Run tests
         run: |
-         python3 -m pytest
+          python3 -m pytest
 
       - name: Extract Coverage
         run: |
@@ -37,7 +37,7 @@ jobs:
           echo "total=$TOTAL" >> $GITHUB_ENV
 
       - name: Upload HTML report.
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: html-report
           path: htmlcov
