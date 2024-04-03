@@ -232,27 +232,33 @@ class ObjectContainer:
             max_col_width=max_col_width,
             sig_figs=sig_figs,
         )
+        df = df.copy(deep=True)
 
         # Change certain df entries to best format for display
         for name in df.index:
             if "_" in name:
-                new_name = name.replace("_", "-")
+                new_name = name.replace("_", "\_")
                 df = df.rename(index={name: new_name})
+
         for row in range(df.shape[0]):
             for col in range(df.shape[1]):
                 if isinstance(df.iat[row, col], str):
                     cur_str = df.iat[row, col]
                     if "_" in cur_str:
-                        df = df.replace(cur_str, cur_str.replace("_", "-"))
+                        df.iloc[row, col] = cur_str.replace("_", "\_")
                 elif isinstance(df.iat[row, col], list):
-                    if len(df.iat[row, col]) > 0:
-                        cur_list = df.iat[row, col]
-                        new_list = cur_list
-                        for i in range(len(cur_list)):
-                            if isinstance(new_list[i], str):
-                                cur_str = df.iat[row, col][0]
-                                new_list[i] = cur_str.replace("_", "-")
-                        df = df.replace(cur_list, new_list)
+                    cur_str = str(df.iat[row, col])
+                    cur_str = cur_str.replace("_", "\_")
+                    new_list = list(cur_str)
+                    quoteCount = 0
+                    # switch every other quote to an opening quote `
+                    for i in range(len(new_list)):
+                        if new_list[i] == "'":
+                            quoteCount += 1
+                            if np.mod(quoteCount, 2):
+                                new_list[i] = "`"
+                    cur_str = "".join(new_list)
+                    df.iloc[row, col] = cur_str
         for col in df.columns:
             # Convert quantity objects to unit
             if isinstance(df[col].iloc[0], pint.Quantity):
@@ -263,7 +269,7 @@ class ObjectContainer:
                 df = df.drop("idx", axis=1)
 
             if "_" in col:
-                df = df.rename(columns={col: col.replace("_", "-")})
+                df = df.rename(columns={col: col.replace("_", "\_")})
 
         if return_df:
             return df
@@ -966,12 +972,12 @@ class CompartmentContainer(ObjectContainer):
         super().__init__(Compartment)
 
         self.properties_to_print = [
-            "_mesh_id",
+            # "_mesh_id",
             "dimensionality",
             "num_species",
             "_num_vertices",
             "_num_dofs",
-            "_num_dofs_local",
+            # "_num_dofs_local",
             "_num_cells",
             "cell_marker",
             "_nvolume",
