@@ -984,7 +984,7 @@ class Model:
                     # restrict to specified subdomain
                     uvec = self.cc[species.compartment_name].u["u"].vector()
                     values = uvec.get_local()
-                    values_new = np.zeros(len(values))
+                    values_new = np.zeros_like(values)
                     mesh_ref = self.parent_mesh.dolfin_mesh
                     funcSpace = species.V
                     bmesh = funcSpace.mesh()
