@@ -1087,7 +1087,7 @@ class Model:
                     diffusion_conversion = species.diffusion_units.to(
                         species.compartment.compartment_units**2 / unit.s
                     )
-                    D = D * diffusion_conversion.magnitude
+                    D *= diffusion_conversion.magnitude
                 if self.config.flags["axisymmetric_model"]:
                     Dform = x[0] * D * d.inner(d.grad(u), d.grad(v)) * dx
                 else:
