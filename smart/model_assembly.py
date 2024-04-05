@@ -220,7 +220,7 @@ class ObjectContainer:
         properties_to_print=None,
         max_col_width=None,
         sig_figs=2,
-        return_df=False,
+        return_df=True,
     ):
         """
         Print object properties in latex format.
@@ -243,14 +243,11 @@ class ObjectContainer:
             if col == "idx":
                 df = df.drop("idx", axis=1)
 
-            if "_" in col:
-                df = df.rename(columns={col: col.replace("_", "-")})
-
         if return_df:
             return df
         else:
             with pandas.option_context("max_colwidth", 1000):
-                logger.info(df.to_latex(escape=False, longtable=True, index=True))
+                logger.info(df.to_latex(escape=False, longtable=True, index=False))
 
     def get_pandas_dataframe_formatted(
         self,
@@ -753,8 +750,8 @@ class SpeciesContainer(ObjectContainer):
         sig_figs=2,
         return_df=False,
     ):
-        # properties_to_print = ["_latex_name"]
-        # properties_to_print.extend(self.properties_to_print)
+        properties_to_print = ["_latex_name"]
+        properties_to_print.extend(self.properties_to_print)
         df = super().print_to_latex(properties_to_print, max_col_width, sig_figs, return_df=True)
         # fix dof_index
         for col in df.columns:
