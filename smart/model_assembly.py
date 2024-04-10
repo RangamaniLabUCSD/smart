@@ -242,7 +242,29 @@ class ObjectContainer:
 
         for row in range(df.shape[0]):
             for col in range(df.shape[1]):
-                if isinstance(df.iat[row, col], str):
+                if df.columns[col] == "eqn_str":
+                    cur_str = df.iat[row, col]
+                    cur_str = "$" + cur_str + "$"
+                    idx = 0
+                    while idx < len(cur_str):
+                        if cur_str[idx] == "_":
+                            cur_str = cur_str[0 : idx + 1] + "{" + cur_str[idx + 1 :]
+                            isMath = False
+                            testIdx = idx + 2
+                            while not isMath:
+                                if not cur_str[testIdx].isalnum():
+                                    if cur_str[testIdx] == "*":
+                                        cur_str = cur_str[0:testIdx] + "} " + cur_str[testIdx + 1 :]
+                                    else:
+                                        cur_str = cur_str[0:testIdx] + "}" + cur_str[testIdx:]
+                                    isMath = True
+                                else:
+                                    testIdx += 1
+                            idx = testIdx + 2
+                        else:
+                            idx += 1
+                    df.iloc[row, col] = cur_str
+                elif isinstance(df.iat[row, col], str):
                     cur_str = df.iat[row, col]
                     if "_" in cur_str:
                         df.iloc[row, col] = cur_str.replace("_", "\_")
@@ -776,31 +798,6 @@ class SpeciesContainer(ObjectContainer):
             s.latex_name
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
-    def print_to_latex(
-        self,
-        properties_to_print=None,
-        max_col_width=None,
-        sig_figs=2,
-        return_df=False,
-    ):
-        # properties_to_print = ["_latex_name"]
-        # properties_to_print.extend(self.properties_to_print)
-        df = super().print_to_latex(properties_to_print, max_col_width, sig_figs, return_df=True)
-        # fix dof_index
-        for col in df.columns:
-            if col == "dof_index":
-                df[col] = df[col].astype(int)
-        # fix name
-        # get the column of df that contains the name
-        # this can be more robust
-        # df.columns
-
-        if return_df:
-            return df
-        else:
-            with pandas.option_context("max_colwidth", 1000):
-                logger.info(df.to_latex(escape=False, longtable=True, index=False))
-
 
 @dataclass
 class Species(ObjectInstance):
@@ -841,7 +838,6 @@ class Species(ObjectInstance):
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
         keys_to_keep = [
-            "name",
             "initial_condition",
             "concentration_units",
             "D",
@@ -1139,7 +1135,7 @@ class ReactionContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Reaction)
 
-        self.properties_to_print = ["lhs", "rhs", "eqn_f_str", "eqn_r_str"]
+        self.properties_to_print = ["lhs", "rhs", "eqn_str"]
 
     def print(
         self,
@@ -1217,6 +1213,7 @@ class Reaction(ObjectInstance):
     track_value: bool = False
     eqn_f_str: str = ""
     eqn_r_str: str = ""
+    eqn_str: str = ""
     group: str = ""
     axisymm: bool = False
 
@@ -1234,6 +1231,7 @@ class Reaction(ObjectInstance):
             "track_value",
             "eqn_f_str",
             "eqn_r_str",
+            "eqn_str",
             "group",
             "axisymm",
         ]

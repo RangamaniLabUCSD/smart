@@ -472,6 +472,12 @@ class Model:
                 raise ValueError(
                     "Reaction %s does not seem to have an associated equation" % reaction.name
                 )
+            if reaction.eqn_f_str == "":
+                reaction.eqn_str = f"-{reaction.eqn_r_str}"
+            elif reaction.eqn_r_str == "":
+                reaction.eqn_str = f"{reaction.eqn_f_str}"
+            else:
+                reaction.eqn_str = f"{reaction.eqn_f_str}-{reaction.eqn_r_str}"
 
     def _init_2_2_check_reaction_validity(self):
         """Confirms that all reactions have parameters/species defined"""
