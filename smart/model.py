@@ -994,11 +994,15 @@ class Model:
                         facet = d.Facet(mesh_ref, idx)
                         for vertex in d.vertices(facet):
                             global_idx = vertex.global_index()
-                            local_idx = np.nonzero(np.array(store_map) == global_idx)[0][0]
-                            cur_sub_idx = d.vertex_to_dof_map(funcSpace)[local_idx]
-                            values_new[species.dof_map[cur_sub_idx]] = values[
-                                species.dof_map[cur_sub_idx]
-                            ]
+                            local_idx = np.nonzero(np.array(store_map) == global_idx)
+                            if len(local_idx[0]) == 0:
+                                continue
+                            else:
+                                local_idx = local_idx[0][0]
+                                cur_sub_idx = d.vertex_to_dof_map(funcSpace)[local_idx]
+                                values_new[species.dof_map[cur_sub_idx]] = values[
+                                    species.dof_map[cur_sub_idx]
+                                ]
 
                     values[species.dof_map] = values_new[species.dof_map]
                     vec = self.cc[species.compartment_name].u[ukey].vector()
