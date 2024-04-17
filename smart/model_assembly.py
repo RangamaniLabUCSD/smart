@@ -252,7 +252,7 @@ class ObjectContainer:
                             isMath = False
                             testIdx = idx + 2
                             while not isMath:
-                                if not cur_str[testIdx].isalnum():
+                                if not (cur_str[testIdx].isalnum() or cur_str[testIdx] == "_"):
                                     if cur_str[testIdx] == "*":
                                         cur_str = cur_str[0:testIdx] + "} " + cur_str[testIdx + 1 :]
                                     else:
@@ -261,6 +261,9 @@ class ObjectContainer:
                                 else:
                                     testIdx += 1
                             idx = testIdx + 2
+                        elif cur_str[idx] == "*":
+                            cur_str = cur_str[0:idx] + " " + cur_str[idx + 1 :]
+                            idx += 1
                         else:
                             idx += 1
                     df.iloc[row, col] = cur_str
