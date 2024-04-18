@@ -982,32 +982,16 @@ class Model:
                     )
                 if species.has_subdomain:
                     # restrict to specified subdomain
-                    uvec = self.cc[species.compartment_name].u["u"].vector()
-                    values = uvec.get_local()
-                    values_new = np.zeros_like(values)
-                    mesh_ref = self.parent_mesh.dolfin_mesh
-                    funcSpace = species.V
-                    bmesh = funcSpace.mesh()
-                    store_map = bmesh.topology().mapping()[mesh_ref.id()].vertex_map()
-                    idx_list = species.subdomain_data.where_equal(species.subdomain_val)
-                    for idx in idx_list:
-                        facet = d.Facet(mesh_ref, idx)
-                        for vertex in d.vertices(facet):
-                            global_idx = vertex.global_index()
-                            local_idx = np.nonzero(np.array(store_map) == global_idx)
-                            if len(local_idx[0]) == 0:
-                                continue
-                            else:
-                                local_idx = local_idx[0][0]
-                                cur_sub_idx = d.vertex_to_dof_map(funcSpace)[local_idx]
-                                values_new[species.dof_map[cur_sub_idx]] = values[
-                                    species.dof_map[cur_sub_idx]
-                                ]
-
+                    u_cur = self.cc[species.compartment_name].u[ukey]
+                    u_new = self.create_restriction(
+                        u_cur, species.subdomain_data, species.subdomain_val
+                    )
+                    u_vec = u_cur.vector()
+                    values = u_vec.get_local()
+                    values_new = u_new.vector().get_local()
                     values[species.dof_map] = values_new[species.dof_map]
-                    vec = self.cc[species.compartment_name].u[ukey].vector()
-                    vec.set_local(values)
-                    vec.apply("insert")
+                    u_vec.set_local(values)
+                    u_vec.apply("insert")
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -2290,3 +2274,42 @@ class Model:
         #     dt_scale = min(dt_scale * 0.8, 0.8)
         dt_cur = float(self.dt) * dt_scale
         self.set_dt(dt_cur)
+
+    def create_restriction(self, u, mesh_function, value):
+        """
+        Restrict a function on a submesh to a subset of parent entities
+        (same dimension as the submesh)
+
+        :param u: Function on submesh
+        :param mesh_function: MeshFunction marking the subset of parent entities
+                            (same dimension as the cells of the submesh)
+        :param value: Value in MeshFunction marking the subset of parent entities
+        :return: New restricted function
+        """
+        submesh = u.function_space().mesh()
+
+        # Compute local cells in submesh marked by parent meshtag
+        mesh_ref = self.parent_mesh.dolfin_mesh
+        sub_to_parent_map = submesh.topology().mapping()[mesh_ref.id()].cell_map()
+        marked_sub_entities = mesh_function.array()[sub_to_parent_map] == value
+        local_indices = np.flatnonzero(marked_sub_entities)
+
+        # Find all degrees of freedom to transfer data from
+        V = u.function_space()
+        u_new = d.Function(u.function_space())
+        vector = u_new.vector()
+        dof_list = [V.dofmap().cell_dofs(cell) for cell in local_indices]
+        if len(dof_list) == 0:
+            transfer_dofs = np.array([])
+        else:
+            transfer_dofs = np.unique(np.hstack(dof_list))
+        im = V.dofmap().index_map()
+        num_local = im.local_range()[1] - im.local_range()[0] + 1
+
+        # Filter out dofs that are not local
+        transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
+        vector[transfer_dofs] = u.vector()[transfer_dofs]
+        vector.apply("insert")
+        u_new.rename("u_new", "u_new")
+
+        return u_new
