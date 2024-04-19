@@ -2303,7 +2303,7 @@ class Model:
         else:
             transfer_dofs = np.unique(np.hstack(dof_list))
         im = V.dofmap().index_map()
-        num_local = im.local_range()[1] - im.local_range()[0] + 1
+        num_local = im.local_range()[1] - im.local_range()[0]
 
         # Filter out dofs that are not local
         transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
