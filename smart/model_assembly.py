@@ -1307,14 +1307,17 @@ class Reaction(ObjectInstance):
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
+                self.fluxes[flux_name].has_subdomain = self.has_subdomain
+                if self.has_subdomain:  # then copy over subdomain data to flux
+                    self.fluxes[flux_name].subdomain_data = self.subdomain_data
+                    self.fluxes[flux_name].subdomain_val = self.subdomain_val
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
-            self.fluxes[flux_name].has_subdomain = self.has_subdomain
-            if self.has_subdomain:  # then copy over subdomain data to flux
-                self.fluxes[flux_name].subdomain_data = self.subdomain_data
-                self.fluxes[flux_name].subdomain_val = self.subdomain_val
+                if self.has_subdomain:  # then copy over subdomain data to flux
+                    self.fluxes[flux_name].subdomain_data = self.subdomain_data
+                    self.fluxes[flux_name].subdomain_val = self.subdomain_val
 
     def restrict_to_subdomain(self, mf, mfval):
         self.has_subdomain = True
@@ -1624,7 +1627,13 @@ class Flux(ObjectInstance):
         lhs of the equation :math:`F(u;v)=0`"""
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
         if self.has_subdomain:
-            funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            if hasattr(self, "surface"):
+                funcSpace = d.FunctionSpace(self.surface.dolfin_mesh, "P", 1)
+            else:  # then should be volume reaction, assertion to be sure
+                assert self.destination_compartment == list(self.source_compartments.values())[0]
+                funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            # check that subdomain mesh fcn dim matches function space topological dim
+            assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
             u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
             u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
             mult = u_mask_new
@@ -1655,7 +1664,13 @@ class Flux(ObjectInstance):
         """
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
         if self.has_subdomain:
-            funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            if hasattr(self, "surface"):
+                funcSpace = d.FunctionSpace(self.surface.dolfin_mesh, "P", 1)
+            else:  # then should be volume reaction, assertion to be sure
+                assert self.destination_compartment == list(self.source_compartments.values())[0]
+                funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            # check that subdomain mesh fcn dim matches function space topological dim
+            assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
             u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
             u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
             mult = u_mask_new
@@ -1829,7 +1844,7 @@ def create_restriction(u, mesh_function, value):
 
     # Compute local cells in submesh marked by parent meshtag
     # using first map to run without specifying parent mesh id
-    sub_to_parent_map = list(submesh.topology().mapping().values())[0].cell_map()
+    sub_to_parent_map = submesh.topology().mapping()[mesh_function.mesh().id()].cell_map()
     marked_sub_entities = mesh_function.array()[sub_to_parent_map] == value
     local_indices = np.flatnonzero(marked_sub_entities)
 
@@ -1849,6 +1864,5 @@ def create_restriction(u, mesh_function, value):
     transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
     vector[transfer_dofs] = u.vector()[transfer_dofs]
     vector.apply("insert")
-    u_new.rename("u_new", "u_new")
 
     return u_new

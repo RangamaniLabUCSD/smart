@@ -2289,8 +2289,7 @@ class Model:
         submesh = u.function_space().mesh()
 
         # Compute local cells in submesh marked by parent meshtag
-        mesh_ref = self.parent_mesh.dolfin_mesh
-        sub_to_parent_map = submesh.topology().mapping()[mesh_ref.id()].cell_map()
+        sub_to_parent_map = submesh.topology().mapping()[mesh_function.mesh().id()].cell_map()
         marked_sub_entities = mesh_function.array()[sub_to_parent_map] == value
         local_indices = np.flatnonzero(marked_sub_entities)
 
@@ -2310,6 +2309,5 @@ class Model:
         transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
         vector[transfer_dofs] = u.vector()[transfer_dofs]
         vector.apply("insert")
-        u_new.rename("u_new", "u_new")
 
         return u_new

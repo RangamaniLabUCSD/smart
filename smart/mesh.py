@@ -148,6 +148,10 @@ class ParentMesh(_Mesh):
         parent_mesh (str): Name of mesh
         use_partition (bool): If `hdf5` mesh file is loaded,
           choose if mesh should be read in with its current partition
+        curvature (MeshFunction): either provided as a MeshFunction or given
+          as an xml or xdmf file containing a vertex mesh function of type double
+        extra_keys (list): list of names of extra keys to load from hdf5 mesh
+          file, specifying other subdomains besides main compartments (optional)
     """
 
     mesh_filename: str
@@ -156,6 +160,7 @@ class ParentMesh(_Mesh):
     parent_mesh: "ParentMesh"
     use_partition: bool
     curvature: d.MeshFunction
+    extra_keys: list = []
 
     def __init__(
         self,
@@ -165,11 +170,15 @@ class ParentMesh(_Mesh):
         use_partition=False,
         mpi_comm=d.MPI.comm_world,
         curvature=None,
+        extra_keys=[],
     ):
         super().__init__(name)
         self.use_partition = use_partition
         self.mpi_comm = mpi_comm
+        self.extra_keys = extra_keys
         if mesh_filetype == "xml":
+            if len(self.extra_keys) > 0:
+                raise NotImplementedError("Loading extra keys from xml not implemented")
             self.load_mesh_from_xml(mesh_filename)
         elif mesh_filetype == "hdf5":
             self.load_mesh_from_hdf5(mesh_filename, use_partition)
@@ -228,13 +237,27 @@ class ParentMesh(_Mesh):
 
         if comm.size > 1:
             d.MPI.comm_world.Barrier()
-        hdf5.close()
 
         self.dimensionality = self.dolfin_mesh.topology().dim()
         self.dolfin_mesh.init(self.dimensionality - 1)
         self.dolfin_mesh.init(self.dimensionality - 1, self.dimensionality)
 
         logger.info(f'HDF5 mesh, "{self.name}", successfully loaded from file: {mesh_filename}!')
+
+        # if extra keys are provided, load these as subdomains
+        self.subdomains = []
+        mesh = self.dolfin_mesh
+        if len(self.extra_keys) > 0:
+            for key in self.extra_keys:
+                cur_dim = int(key[-1])
+                mf_cur = d.MeshFunction("size_t", mesh, cur_dim)
+                hdf5.read(mf_cur, f"/{key}")
+                self.subdomains.append(mf_cur)
+        hdf5.close()
+
+        logger.info(
+            f"{len(self.subdomains)} subdomains successfully loaded from file: {mesh_filename}!"
+        )
 
     def _read_parent_mesh_function_from_file(self, dim):
         if self.mesh_filetype == "xml":
