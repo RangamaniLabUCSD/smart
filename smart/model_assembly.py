@@ -1829,7 +1829,7 @@ def sbmodel_from_locals(local_values):
     return pc, sc, cc, rc
 
 
-def create_restriction(u, mesh_function, value):
+def create_restriction(u: d.Function, mesh_function: d.MeshFunction, value: np.integer):
     """
     Restrict a function on a submesh to a subset of parent entities
     (same dimension as the submesh)

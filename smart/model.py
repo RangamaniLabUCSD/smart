@@ -986,12 +986,7 @@ class Model:
                     u_new = self.create_restriction(
                         u_cur, species.subdomain_data, species.subdomain_val
                     )
-                    u_vec = u_cur.vector()
-                    values = u_vec.get_local()
-                    values_new = u_new.vector().get_local()
-                    values[species.dof_map] = values_new[species.dof_map]
-                    u_vec.set_local(values)
-                    u_vec.apply("insert")
+                    u_cur.assign(u_new)
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -2279,35 +2274,12 @@ class Model:
         """
         Restrict a function on a submesh to a subset of parent entities
         (same dimension as the submesh)
-
         :param u: Function on submesh
         :param mesh_function: MeshFunction marking the subset of parent entities
                             (same dimension as the cells of the submesh)
         :param value: Value in MeshFunction marking the subset of parent entities
         :return: New restricted function
         """
-        submesh = u.function_space().mesh()
+        from smart.model_assembly import create_restriction as _c_r
 
-        # Compute local cells in submesh marked by parent meshtag
-        sub_to_parent_map = submesh.topology().mapping()[mesh_function.mesh().id()].cell_map()
-        marked_sub_entities = mesh_function.array()[sub_to_parent_map] == value
-        local_indices = np.flatnonzero(marked_sub_entities)
-
-        # Find all degrees of freedom to transfer data from
-        V = u.function_space()
-        u_new = d.Function(u.function_space())
-        vector = u_new.vector()
-        dof_list = [V.dofmap().cell_dofs(cell) for cell in local_indices]
-        if len(dof_list) == 0:
-            transfer_dofs = np.array([])
-        else:
-            transfer_dofs = np.unique(np.hstack(dof_list))
-        im = V.dofmap().index_map()
-        num_local = im.local_range()[1] - im.local_range()[0]
-
-        # Filter out dofs that are not local
-        transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
-        vector[transfer_dofs] = u.vector()[transfer_dofs]
-        vector.apply("insert")
-
-        return u_new
+        return _c_r(u, mesh_function, value)
