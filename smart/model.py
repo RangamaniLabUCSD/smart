@@ -43,9 +43,11 @@ from .model_assembly import (
     ReactionContainer,
     Species,
     SpeciesContainer,
+    create_restriction,
     empty_sbmodel,
     ParameterType,
 )
+
 from .solvers import smartSNESProblem
 from .units import unit
 
@@ -983,7 +985,7 @@ class Model:
                 if species.has_subdomain:
                     # restrict to specified subdomain
                     u_cur = self.cc[species.compartment_name].u[ukey]
-                    u_new = self.create_restriction(
+                    u_new = create_restriction(
                         u_cur, species.subdomain_data, species.subdomain_val
                     )
                     u_cur.assign(u_new)
@@ -2269,17 +2271,3 @@ class Model:
         #     dt_scale = min(dt_scale * 0.8, 0.8)
         dt_cur = float(self.dt) * dt_scale
         self.set_dt(dt_cur)
-
-    def create_restriction(u: d.Function, mesh_function: d.MeshFunction, value: np.integer):
-        """
-        Restrict a function on a submesh to a subset of parent entities
-        (same dimension as the submesh)
-        :param u: Function on submesh
-        :param mesh_function: MeshFunction marking the subset of parent entities
-                            (same dimension as the cells of the submesh)
-        :param value: Value in MeshFunction marking the subset of parent entities
-        :return: New restricted function
-        """
-        from smart.model_assembly import create_restriction as _c_r
-
-        return _c_r(u, mesh_function, value)
