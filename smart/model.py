@@ -985,9 +985,7 @@ class Model:
                 if species.has_subdomain:
                     # restrict to specified subdomain
                     u_cur = self.cc[species.compartment_name].u[ukey]
-                    u_new = create_restriction(
-                        u_cur, species.subdomain_data, species.subdomain_val
-                    )
+                    u_new = create_restriction(u_cur, species.subdomain_data, species.subdomain_val)
                     u_cur.assign(u_new)
 
     def _init_5_1_reactions_to_fluxes(self):
