@@ -43,9 +43,11 @@ from .model_assembly import (
     ReactionContainer,
     Species,
     SpeciesContainer,
+    create_restriction,
     empty_sbmodel,
     ParameterType,
 )
+
 from .solvers import smartSNESProblem
 from .units import unit
 
@@ -982,32 +984,9 @@ class Model:
                     )
                 if species.has_subdomain:
                     # restrict to specified subdomain
-                    uvec = self.cc[species.compartment_name].u["u"].vector()
-                    values = uvec.get_local()
-                    values_new = np.zeros(len(values))
-                    mesh_ref = self.parent_mesh.dolfin_mesh
-                    funcSpace = species.V
-                    bmesh = funcSpace.mesh()
-                    store_map = bmesh.topology().mapping()[mesh_ref.id()].vertex_map()
-                    for facet in d.facets(mesh_ref):
-                        facet_idx = facet.index()
-                        cur_marker = species.subdomain_data.array()[facet_idx]
-                        for vertex in d.vertices(facet):
-                            global_idx = vertex.global_index()
-                            local_idx = np.nonzero(np.array(store_map) == global_idx)
-                            if len(local_idx[0]) == 0:
-                                continue
-                            else:
-                                local_idx = local_idx[0][0]
-                                cur_sub_idx = d.vertex_to_dof_map(funcSpace)[local_idx]
-                                if cur_marker == species.subdomain_val:
-                                    values_new[species.dof_map[cur_sub_idx]] = values[
-                                        species.dof_map[cur_sub_idx]
-                                    ]
-                    values[species.dof_map] = values_new[species.dof_map]
-                    vec = self.cc[species.compartment_name].u[ukey].vector()
-                    vec.set_local(values)
-                    vec.apply("insert")
+                    u_cur = self.cc[species.compartment_name].u[ukey]
+                    u_new = create_restriction(u_cur, species.subdomain_data, species.subdomain_val)
+                    u_cur.assign(u_new)
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -1087,7 +1066,7 @@ class Model:
                     diffusion_conversion = species.diffusion_units.to(
                         species.compartment.compartment_units**2 / unit.s
                     )
-                    D = D * diffusion_conversion.magnitude
+                    D *= diffusion_conversion.magnitude
                 if self.config.flags["axisymmetric_model"]:
                     Dform = x[0] * D * d.inner(d.grad(u), d.grad(v)) * dx
                 else:
