@@ -14,7 +14,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    container: ghcr.io/scientificcomputing/fenics-gmsh:2023-08-16
+    container: ghcr.io/scientificcomputing/fenics-gmsh:2024-02-19
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
