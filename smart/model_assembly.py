@@ -220,7 +220,7 @@ class ObjectContainer:
         properties_to_print=None,
         max_col_width=None,
         sig_figs=2,
-        return_df=False,
+        return_df=True,
     ):
         """
         Print object properties in latex format.
@@ -300,7 +300,7 @@ class ObjectContainer:
             return df
         else:
             with pandas.option_context("max_colwidth", 1000):
-                logger.info(df.to_latex(escape=False, longtable=True, index=True))
+                logger.info(df.to_latex(escape=False, longtable=True, index=False))
 
     def get_pandas_dataframe_formatted(
         self,
@@ -1219,6 +1219,7 @@ class Reaction(ObjectInstance):
     eqn_str: str = ""
     group: str = ""
     axisymm: bool = False
+    has_subdomain: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1340,10 +1341,22 @@ class Reaction(ObjectInstance):
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
+                self.fluxes[flux_name].has_subdomain = self.has_subdomain
+                if self.has_subdomain:  # then copy over subdomain data to flux
+                    self.fluxes[flux_name].subdomain_data = self.subdomain_data
+                    self.fluxes[flux_name].subdomain_val = self.subdomain_val
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
+                if self.has_subdomain:  # then copy over subdomain data to flux
+                    self.fluxes[flux_name].subdomain_data = self.subdomain_data
+                    self.fluxes[flux_name].subdomain_val = self.subdomain_val
+
+    def restrict_to_subdomain(self, mf, mfval):
+        self.has_subdomain = True
+        self.subdomain_data = mf
+        self.subdomain_val = mfval
 
 
 class FluxContainer(ObjectContainer):
@@ -1388,6 +1401,7 @@ class Flux(ObjectInstance):
     equation: sym.Expr
     reaction: Reaction
     axisymm: bool = False
+    has_subdomain: bool = False
 
     def check_validity(self):
         "No validity checks for flux objects currently"
@@ -1646,9 +1660,22 @@ class Flux(ObjectInstance):
         """-1 factor because terms are defined as if they were on the
         lhs of the equation :math:`F(u;v)=0`"""
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.has_subdomain:
+            if hasattr(self, "surface"):
+                funcSpace = d.FunctionSpace(self.surface.dolfin_mesh, "P", 1)
+            else:  # then should be volume reaction, assertion to be sure
+                assert self.destination_compartment == list(self.source_compartments.values())[0]
+                funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            # check that subdomain mesh fcn dim matches function space topological dim
+            assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
+            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
+            mult = u_mask_new
+        else:
+            mult = d.Constant(-1.0)
         if self.axisymm:
             return (
-                d.Constant(-1)
+                mult
                 * x[0]
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
@@ -1656,7 +1683,7 @@ class Flux(ObjectInstance):
             )
         else:
             return (
-                d.Constant(-1)
+                mult
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
                 * self.measure
@@ -1670,9 +1697,22 @@ class Flux(ObjectInstance):
         the assembled form will be a vector of size NDOF.
         """
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.has_subdomain:
+            if hasattr(self, "surface"):
+                funcSpace = d.FunctionSpace(self.surface.dolfin_mesh, "P", 1)
+            else:  # then should be volume reaction, assertion to be sure
+                assert self.destination_compartment == list(self.source_compartments.values())[0]
+                funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            # check that subdomain mesh fcn dim matches function space topological dim
+            assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
+            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
+            mult = u_mask_new
+        else:
+            mult = d.Constant(-1.0)
         if self.axisymm:
             return (
-                d.Constant(-1)
+                mult
                 * x[0]
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.vscalar
@@ -1680,7 +1720,7 @@ class Flux(ObjectInstance):
             )
         else:
             return (
-                d.Constant(-1)
+                mult
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.vscalar
                 * self.measure
@@ -1821,3 +1861,42 @@ def sbmodel_from_locals(local_values):
     cc.add(compartments)
     rc.add(reactions)
     return pc, sc, cc, rc
+
+
+def create_restriction(u: d.Function, mesh_function: d.MeshFunction, value: np.integer):
+    """
+    Restrict a function on a submesh to a subset of parent entities
+    (same dimension as the submesh)
+
+    :param u: Function on submesh
+    :param mesh_function: MeshFunction marking the subset of parent entities
+    (same dimension as the cells of the submesh)
+    :param value: Value in MeshFunction marking the subset of parent entities
+    :return: New restricted function
+    """
+    submesh = u.function_space().mesh()
+
+    # Compute local cells in submesh marked by parent meshtag
+    # using first map to run without specifying parent mesh id
+    sub_to_parent_map = submesh.topology().mapping()[mesh_function.mesh().id()].cell_map()
+    marked_sub_entities = mesh_function.array()[sub_to_parent_map] == value
+    local_indices = np.flatnonzero(marked_sub_entities)
+
+    # Find all degrees of freedom to transfer data from
+    V = u.function_space()
+    u_new = d.Function(u.function_space())
+    vector = u_new.vector()
+    dof_list = [V.dofmap().cell_dofs(cell) for cell in local_indices]
+    if len(dof_list) == 0:
+        transfer_dofs = np.array([])
+    else:
+        transfer_dofs = np.unique(np.hstack(dof_list))
+    im = V.dofmap().index_map()
+    num_local = im.local_range()[1] - im.local_range()[0]
+
+    # Filter out dofs that are not local
+    transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
+    vector[transfer_dofs] = u.vector()[transfer_dofs]
+    vector.apply("insert")
+
+    return u_new
