@@ -219,8 +219,8 @@ class ObjectContainer:
         self,
         properties_to_print=None,
         max_col_width=None,
-        sig_figs=2,
-        return_df=True,
+        sig_figs=3,
+        return_df=False,
     ):
         """
         Print object properties in latex format.
@@ -245,6 +245,7 @@ class ObjectContainer:
                 if df.columns[col] == "eqn_str":
                     cur_str = df.iat[row, col]
                     cur_str = "$" + cur_str + "$"
+                    cur_str = cur_str.replace("**", "^")
                     idx = 0
                     while idx < len(cur_str):
                         if cur_str[idx] == "_":
@@ -284,15 +285,15 @@ class ObjectContainer:
                                 new_list[i] = "`"
                     cur_str = "".join(new_list)
                     df.iloc[row, col] = cur_str
+                # Convert quantity objects to unit
+                elif isinstance(df.iat[row, col], pint.Quantity):
+                    x = df.iat[row, col]
+                    if isinstance(x.magnitude, str):
+                        df.iloc[row, col] = f"{x:s~P}"
+                    else:
+                        df.iloc[row, col] = f"${x:0.{sig_figs}e~Lx}$"
+
         for col in df.columns:
-            # Convert quantity objects to unit
-            if isinstance(df[col].iloc[0], pint.Quantity):
-                # if tablefmt=='latex':
-                df[col] = df[col].apply(lambda x: f"${x:0.{sig_figs}e~Lx}$")
-
-            if col == "idx":
-                df = df.drop("idx", axis=1)
-
             if "_" in col:
                 df = df.rename(columns={col: col.replace("_", "\_")})
 
@@ -300,7 +301,7 @@ class ObjectContainer:
             return df
         else:
             with pandas.option_context("max_colwidth", 1000):
-                logger.info(df.to_latex(escape=False, longtable=True, index=False))
+                logger.info(df.to_latex(escape=False, longtable=True, index=True))
 
     def get_pandas_dataframe_formatted(
         self,
@@ -351,11 +352,14 @@ class ObjectContainer:
         )
 
         # # Change certain df entries to best format for printing
-        for col in df.columns:
-            # Convert quantity objects to unit
-            if isinstance(df[col].iloc[0], pint.Quantity):
-                # if tablefmt=='latex':
-                df[col] = df[col].apply(lambda x: f"{x:0.{sig_figs}e~P}")
+        for row in range(df.shape[0]):
+            for col in range(df.shape[1]):
+                if isinstance(df.iat[row, col], pint.Quantity):
+                    x = df.iat[row, col]
+                    if isinstance(x.magnitude, str):
+                        df.iloc[row, col] = f"{x:s~P}"
+                    else:
+                        df.iloc[row, col] = f"{x:0.{sig_figs}e~P}"
 
         # print to file
         if filename is None:
@@ -472,7 +476,7 @@ class ParameterContainer(ObjectContainer):
 
         self.properties_to_print = [
             "_quantity",
-            "is_time_dependent",
+            # "is_time_dependent",
             "sym_expr",
             "notes",
             "group",
@@ -785,8 +789,7 @@ class SpeciesContainer(ObjectContainer):
         self.properties_to_print = [
             "compartment_name",
             "_Diffusion",
-            "initial_condition",
-            "concentration_units",
+            "_Initial_Concentration",
         ]
 
     def print(
@@ -799,6 +802,7 @@ class SpeciesContainer(ObjectContainer):
         for s in self:
             s.D_quantity
             s.latex_name
+            s.initial_condition_quantity
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 
@@ -1138,7 +1142,7 @@ class ReactionContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Reaction)
 
-        self.properties_to_print = ["lhs", "rhs", "eqn_str"]
+        self.properties_to_print = ["lhs", "rhs", "eqn_str", "topology"]
 
     def print(
         self,
@@ -1217,6 +1221,7 @@ class Reaction(ObjectInstance):
     eqn_f_str: str = ""
     eqn_r_str: str = ""
     eqn_str: str = ""
+    topology: str = ""
     group: str = ""
     axisymm: bool = False
     has_subdomain: bool = False
