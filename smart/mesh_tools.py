@@ -52,14 +52,18 @@ def implicit_curve(boundExpr):
     * boundExpr = "r**2 + z**2 - 1": defines a quarter circle from (0, 1) to (1, 0)
     * boundExpr = "r**2 + (z-2)**2 - 1": defines a half circle from (0, 3) to (1, 2) to (0, 1)
     """
-    outerExpr0 = parse_expr(boundExpr)
+    outerExprRef = parse_expr(boundExpr)
     r = sym.Symbol("r", real=True)
     z = sym.Symbol("z", real=True)
-    outerExpr0 = outerExpr0.subs({"r": 0, "z": z})
+    outerExpr0 = outerExprRef.subs({"r": 0, "z": z})
     z0 = solveset_real(outerExpr0, z)
     rVals = [0.0]
     zVals = [float(max(z0))]
-    sGap = max(z0) / 100
+    rMax = solveset_real(outerExprRef.subs({"r": r, "z": 0.0}), r)
+    if len(rMax) > 0:
+        sGap = max([float(max(z0)), float(max(rMax))]) / 50
+    else:
+        sGap = float(max(z0)) / 50
     curTan = [1, 0]
     while rVals[-1] >= 0 and zVals[-1] >= 0:
         rNext = rVals[-1] + curTan[0] * sGap

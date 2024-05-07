@@ -43,9 +43,11 @@ from .model_assembly import (
     ReactionContainer,
     Species,
     SpeciesContainer,
+    create_restriction,
     empty_sbmodel,
     ParameterType,
 )
+
 from .solvers import smartSNESProblem
 from .units import unit
 
@@ -740,6 +742,11 @@ class Model:
         for parameter in self.pc.values:
             if parameter.type == ParameterType.constant:
                 parameter.dolfin_constant = d.Constant(parameter.value)
+            elif parameter.type == ParameterType.expression and parameter.is_space_dependent:
+                # use higher degree to avoid interpolation error
+                parameter.dolfin_expression = d.Expression(
+                    sym.printing.ccode(parameter.sym_expr), t=self.T, degree=3
+                )
             elif parameter.type == ParameterType.expression and not parameter.use_preintegration:
                 parameter.dolfin_expression = d.Expression(
                     sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1
@@ -975,6 +982,11 @@ class Model:
                     self.dolfin_set_function_values(
                         species, ukey, species.initial_condition_expression
                     )
+                if species.has_subdomain:
+                    # restrict to specified subdomain
+                    u_cur = self.cc[species.compartment_name].u[ukey]
+                    u_new = create_restriction(u_cur, species.subdomain_data, species.subdomain_val)
+                    u_cur.assign(u_new)
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -1032,6 +1044,16 @@ class Model:
             v = species.v
             D = species.D
             dx = species.compartment.mesh.dx
+            Dform_units = (
+                species.diffusion_units
+                * species.concentration_units
+                * species.compartment.compartment_units ** (species.compartment.dimensionality - 2)
+            )
+            mass_form_units = (
+                species.concentration_units
+                / unit.s
+                * species.compartment.compartment_units**species.compartment.dimensionality
+            )
             # diffusion term
             if species.D == 0:
                 logger.debug(
@@ -1040,17 +1062,17 @@ class Model:
                     extra=dict(format_type="log"),
                 )
             else:
+                if Dform_units != mass_form_units:  # unit conversion for consistency
+                    diffusion_conversion = species.diffusion_units.to(
+                        species.compartment.compartment_units**2 / unit.s
+                    )
+                    D *= diffusion_conversion.magnitude
                 if self.config.flags["axisymmetric_model"]:
                     Dform = x[0] * D * d.inner(d.grad(u), d.grad(v)) * dx
                 else:
                     Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
-                Dform_units = (
-                    species.diffusion_units
-                    * species.concentration_units
-                    * species.compartment.compartment_units
-                    ** (species.compartment.dimensionality - 2)
-                )
+
                 self.forms.add(
                     Form(
                         f"diffusion_{species.name}",
@@ -1068,11 +1090,6 @@ class Model:
                 Muform = x[0] * (u) * v / self.dT * dx
             else:
                 Muform = (u) * v / self.dT * dx
-            mass_form_units = (
-                species.concentration_units
-                / unit.s
-                * species.compartment.compartment_units**species.compartment.dimensionality
-            )
             self.forms.add(
                 Form(
                     f"mass_u_{species.name}",
@@ -1168,7 +1185,6 @@ class Model:
         # if use snes
         if self.config.solver["use_snes"]:
             logger.debug("Using SNES solver", extra=dict(format_type="log"))
-            # Does passing the entire model object to smartSNESProblem slow down execution?
             self.problem = smartSNESProblem(
                 self.u["u"],
                 self.Fblocks_all,
@@ -1916,12 +1932,23 @@ class Model:
                     else:
                         a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
                         b = parameter.preint_sym_expr.subs({"t": t}).evalf()
-                    new_value = float((b - a) / dt)
-                    logger.debug(
-                        f"Time-dependent parameter {parameter_name} updated by "
-                        f"pre-integrated expression. New value is {new_value}",
-                        extra=dict(format_type="log"),
-                    )
+                    if parameter.is_space_dependent:
+                        parameter.dolfin_expression = d.Expression(
+                            sym.printing.ccode((b - a) / dt), degree=3
+                        )
+                        logger.debug(
+                            f"Time-dependent parameter {parameter_name} updated by "
+                            f"pre-integrated expression",
+                            extra=dict(format_type="log"),
+                        )
+                        continue
+                    else:
+                        new_value = float((b - a) / dt)
+                        logger.debug(
+                            f"Time-dependent parameter {parameter_name} updated by "
+                            f"pre-integrated expression. New value is {new_value}",
+                            extra=dict(format_type="log"),
+                        )
                 if parameter.type == ParameterType.from_file:
                     int_data = parameter.preint_sampling_data
                     a = np.interp(tn, int_data[:, 0], int_data[:, 1], left=np.nan, right=np.nan)

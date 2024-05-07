@@ -232,16 +232,44 @@ class ObjectContainer:
             max_col_width=max_col_width,
             sig_figs=sig_figs,
         )
+        df = df.copy(deep=True)
 
         # Change certain df entries to best format for display
+        for name in df.index:
+            if "_" in name:
+                new_name = name.replace("_", "\_")
+                df = df.rename(index={name: new_name})
+
+        for row in range(df.shape[0]):
+            for col in range(df.shape[1]):
+                if isinstance(df.iat[row, col], str):
+                    cur_str = df.iat[row, col]
+                    if "_" in cur_str:
+                        df.iloc[row, col] = cur_str.replace("_", "\_")
+                elif isinstance(df.iat[row, col], list):
+                    cur_str = str(df.iat[row, col])
+                    cur_str = cur_str.replace("_", "\_")
+                    new_list = list(cur_str)
+                    quoteCount = 0
+                    # switch every other quote to an opening quote `
+                    for i in range(len(new_list)):
+                        if new_list[i] == "'":
+                            quoteCount += 1
+                            if np.mod(quoteCount, 2):
+                                new_list[i] = "`"
+                    cur_str = "".join(new_list)
+                    df.iloc[row, col] = cur_str
         for col in df.columns:
             # Convert quantity objects to unit
-            if isinstance(df[col][0], pint.Quantity):
+            if isinstance(df[col].iloc[0], pint.Quantity):
                 # if tablefmt=='latex':
                 df[col] = df[col].apply(lambda x: f"${x:0.{sig_figs}e~Lx}$")
 
             if col == "idx":
                 df = df.drop("idx", axis=1)
+
+            if "_" in col:
+                df = df.rename(columns={col: col.replace("_", "\_")})
 
         if return_df:
             return df
@@ -270,7 +298,7 @@ class ObjectContainer:
         # add new lines to df entries (type str) that exceed max col width
         if max_col_width:
             for col in df.columns:
-                if isinstance(df[col][0], str):
+                if isinstance(df[col].iloc[0], str):
                     df[col] = df[col].apply(lambda x: "\n".join(wrap(x, max_col_width)))
 
         # remove leading underscores from df column names (used for cached properties)
@@ -300,7 +328,7 @@ class ObjectContainer:
         # # Change certain df entries to best format for printing
         for col in df.columns:
             # Convert quantity objects to unit
-            if isinstance(df[col][0], pint.Quantity):
+            if isinstance(df[col].iloc[0], pint.Quantity):
                 # if tablefmt=='latex':
                 df[col] = df[col].apply(lambda x: f"{x:0.{sig_figs}e~P}")
 
@@ -625,15 +653,16 @@ class Parameter(ObjectInstance):
         free_symbols = [str(x) for x in sym_expr.free_symbols]
         is_time_dependent = "t" in free_symbols
         is_space_dependent = not {"x[0]", "x[1]", "x[2]"}.isdisjoint(set(free_symbols))
-        if is_space_dependent:
-            raise NotImplementedError
         # For now, parameters can only be defined in terms of time/space
         if not {"x[0]", "x[1]", "x[2]", "t"}.issuperset(free_symbols):
             raise NotImplementedError
 
-        # TODO: fix this when implementing space dependent parameters
-        if is_time_dependent:
+        if is_time_dependent and not is_space_dependent:
             value = float(sym_expr.subs({"t": 0.0}))
+
+        if is_space_dependent:
+            dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=3)
+            value = float(sym_expr.subs({"t": 0.0, "x[0]": 0.0, "x[1]": 0.0, "x[2]": 0.0}))
 
         parameter = cls(
             name,
@@ -662,8 +691,9 @@ class Parameter(ObjectInstance):
         parameter.sym_expr = sym_expr
         parameter.is_time_dependent = is_time_dependent
         parameter.is_space_dependent = is_space_dependent
+        if is_space_dependent:
+            parameter.dolfin_expression = dolfin_expression
 
-        # parameter.dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=1)
         parameter.type = ParameterType.expression
         parameter.__post_init__()
         logger.debug(
@@ -702,7 +732,7 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if hasattr(self, "dolfin_expression") and not self.use_preintegration:
+        if hasattr(self, "dolfin_expression"):
             return self.dolfin_expression * self.unit
         else:
             return self.dolfin_constant * self.unit
@@ -727,7 +757,12 @@ class Parameter(ObjectInstance):
 class SpeciesContainer(ObjectContainer):
     def __init__(self):
         super().__init__(Species)
-        self.properties_to_print = ["compartment_name", "dof_index", "_Diffusion"]
+        self.properties_to_print = [
+            "compartment_name",
+            "_Diffusion",
+            "initial_condition",
+            "concentration_units",
+        ]
 
     def print(
         self,
@@ -831,6 +866,7 @@ class Species(ObjectInstance):
         self._usplit = dict()
         self.ut = None
         self.v = None
+        self.has_subdomain = False
 
         if isinstance(self.initial_condition, float):
             pass
@@ -889,6 +925,11 @@ class Species(ObjectInstance):
                 "be dimensionally equivalent to [length]^2/[time]."
             )
 
+    def restrict_to_subdomain(self, mf, mfval):
+        self.has_subdomain = True
+        self.subdomain_data = mf
+        self.subdomain_val = mfval
+
     @cached_property
     def vscalar(self):
         return d.TestFunction(common.sub(self.compartment.V, 0, True))
@@ -931,12 +972,12 @@ class CompartmentContainer(ObjectContainer):
         super().__init__(Compartment)
 
         self.properties_to_print = [
-            "_mesh_id",
+            # "_mesh_id",
             "dimensionality",
             "num_species",
             "_num_vertices",
             "_num_dofs",
-            "_num_dofs_local",
+            # "_num_dofs_local",
             "_num_cells",
             "cell_marker",
             "_nvolume",
@@ -1178,6 +1219,7 @@ class Reaction(ObjectInstance):
     eqn_r_str: str = ""
     group: str = ""
     axisymm: bool = False
+    has_subdomain: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1298,10 +1340,22 @@ class Reaction(ObjectInstance):
                 flux_name = self.name + f" [{species_name} (f)]"
                 eqn = stoich * parse_expr(self.eqn_f_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
+                self.fluxes[flux_name].has_subdomain = self.has_subdomain
+                if self.has_subdomain:  # then copy over subdomain data to flux
+                    self.fluxes[flux_name].subdomain_data = self.subdomain_data
+                    self.fluxes[flux_name].subdomain_val = self.subdomain_val
             if self.eqn_r_str:
                 flux_name = self.name + f" [{species_name} (r)]"
                 eqn = -stoich * parse_expr(self.eqn_r_str)
                 self.fluxes.update({flux_name: Flux(flux_name, species, eqn, self, self.axisymm)})
+                if self.has_subdomain:  # then copy over subdomain data to flux
+                    self.fluxes[flux_name].subdomain_data = self.subdomain_data
+                    self.fluxes[flux_name].subdomain_val = self.subdomain_val
+
+    def restrict_to_subdomain(self, mf, mfval):
+        self.has_subdomain = True
+        self.subdomain_data = mf
+        self.subdomain_val = mfval
 
 
 class FluxContainer(ObjectContainer):
@@ -1346,6 +1400,7 @@ class Flux(ObjectInstance):
     equation: sym.Expr
     reaction: Reaction
     axisymm: bool = False
+    has_subdomain: bool = False
 
     def check_validity(self):
         "No validity checks for flux objects currently"
@@ -1604,9 +1659,22 @@ class Flux(ObjectInstance):
         """-1 factor because terms are defined as if they were on the
         lhs of the equation :math:`F(u;v)=0`"""
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.has_subdomain:
+            if hasattr(self, "surface"):
+                funcSpace = d.FunctionSpace(self.surface.dolfin_mesh, "P", 1)
+            else:  # then should be volume reaction, assertion to be sure
+                assert self.destination_compartment == list(self.source_compartments.values())[0]
+                funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            # check that subdomain mesh fcn dim matches function space topological dim
+            assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
+            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
+            mult = u_mask_new
+        else:
+            mult = d.Constant(-1.0)
         if self.axisymm:
             return (
-                d.Constant(-1)
+                mult
                 * x[0]
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
@@ -1614,7 +1682,7 @@ class Flux(ObjectInstance):
             )
         else:
             return (
-                d.Constant(-1)
+                mult
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
                 * self.measure
@@ -1628,9 +1696,22 @@ class Flux(ObjectInstance):
         the assembled form will be a vector of size NDOF.
         """
         x = d.SpatialCoordinate(self.destination_compartment.dolfin_mesh)
+        if self.has_subdomain:
+            if hasattr(self, "surface"):
+                funcSpace = d.FunctionSpace(self.surface.dolfin_mesh, "P", 1)
+            else:  # then should be volume reaction, assertion to be sure
+                assert self.destination_compartment == list(self.source_compartments.values())[0]
+                funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
+            # check that subdomain mesh fcn dim matches function space topological dim
+            assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
+            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
+            mult = u_mask_new
+        else:
+            mult = d.Constant(-1.0)
         if self.axisymm:
             return (
-                d.Constant(-1)
+                mult
                 * x[0]
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.vscalar
@@ -1638,7 +1719,7 @@ class Flux(ObjectInstance):
             )
         else:
             return (
-                d.Constant(-1)
+                mult
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.vscalar
                 * self.measure
@@ -1774,13 +1855,47 @@ def sbmodel_from_locals(local_values):
     species = [x for x in local_values if isinstance(x, Species)]
     compartments = [x for x in local_values if isinstance(x, Compartment)]
     reactions = [x for x in local_values if isinstance(x, Reaction)]
-    # we just reverse the list so that the order is the same as how they were defined
-    parameters.reverse()
-    species.reverse()
-    compartments.reverse()
-    reactions.reverse()
     pc.add(parameters)
     sc.add(species)
     cc.add(compartments)
     rc.add(reactions)
     return pc, sc, cc, rc
+
+
+def create_restriction(u: d.Function, mesh_function: d.MeshFunction, value: np.integer):
+    """
+    Restrict a function on a submesh to a subset of parent entities
+    (same dimension as the submesh)
+
+    :param u: Function on submesh
+    :param mesh_function: MeshFunction marking the subset of parent entities
+    (same dimension as the cells of the submesh)
+    :param value: Value in MeshFunction marking the subset of parent entities
+    :return: New restricted function
+    """
+    submesh = u.function_space().mesh()
+
+    # Compute local cells in submesh marked by parent meshtag
+    # using first map to run without specifying parent mesh id
+    sub_to_parent_map = submesh.topology().mapping()[mesh_function.mesh().id()].cell_map()
+    marked_sub_entities = mesh_function.array()[sub_to_parent_map] == value
+    local_indices = np.flatnonzero(marked_sub_entities)
+
+    # Find all degrees of freedom to transfer data from
+    V = u.function_space()
+    u_new = d.Function(u.function_space())
+    vector = u_new.vector()
+    dof_list = [V.dofmap().cell_dofs(cell) for cell in local_indices]
+    if len(dof_list) == 0:
+        transfer_dofs = np.array([])
+    else:
+        transfer_dofs = np.unique(np.hstack(dof_list))
+    im = V.dofmap().index_map()
+    num_local = im.local_range()[1] - im.local_range()[0]
+
+    # Filter out dofs that are not local
+    transfer_dofs = np.array([dof for dof in transfer_dofs if dof < num_local])
+    vector[transfer_dofs] = u.vector()[transfer_dofs]
+    vector.apply("insert")
+
+    return u_new
