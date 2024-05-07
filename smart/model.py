@@ -1661,7 +1661,8 @@ class Model:
             self.stopwatches["snes all"].start()
 
             # Solve
-            self.solver.solve(None, self._ubackend)
+            with PETSc.Log.Event("solve"):
+                self.solver.solve(None, self._ubackend)
 
             # Store/compute timings
             logger.info(
