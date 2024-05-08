@@ -8,7 +8,6 @@ import petsc4py.PETSc as p
 
 from .common import Stopwatch
 from .model_assembly import Compartment
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -351,11 +350,7 @@ class smartSNESProblem:
             Fvecs.append([])
             for k in range(len(self.Fforms[j])):
                 # , tensor=d.PETScVector(Fvecs[idx]))
-                cur_vec = d.assemble_mixed(self.Fforms[j][k])
-                # assemble_mixed sometimes returns nan (nondeterministic???)
-                while any(np.isnan(cur_vec.get_local())):
-                    cur_vec = d.assemble_mixed(self.Fforms[j][k])
-                Fvecs[j].append(d.as_backend_type(cur_vec))
+                Fvecs[j].append(d.as_backend_type(d.assemble_mixed(self.Fforms[j][k])))
             # TODO: could probably speed this up by not using axpy if there is only one subform
             # sum the vectors
             Fj_petsc[j].zeroEntries()
