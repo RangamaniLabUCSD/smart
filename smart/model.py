@@ -986,7 +986,11 @@ class Model:
                     # restrict to specified subdomain
                     u_cur = self.cc[species.compartment_name].u[ukey]
                     u_new = create_restriction(u_cur, species.subdomain_data, species.subdomain_val)
-                    u_cur.assign(u_new)
+                    values = u_cur.vector().get_local()
+                    values_new = u_new.vector().get_local()
+                    values[species.dof_map] = values_new[species.dof_map]
+                    u_cur.vector().set_local(values)
+                    u_cur.vector().apply("insert")
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
