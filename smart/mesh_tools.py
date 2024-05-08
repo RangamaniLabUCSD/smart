@@ -1438,16 +1438,19 @@ def load_mesh(
     if extra_keys is None:
         extra_keys = []
 
-    if not pathlib.Path(filename).is_file():
+    if isinstance(filename, str):
+        filename = pathlib.Path(filename)
+
+    if not filename.is_file():
         raise FileNotFoundError(f"File {filename} does not exists")
 
     if mesh is None:
         mesh = d.Mesh(comm)
 
-        with d.HDF5File(comm, pathlib.Path(filename).with_suffix(".h5").as_posix(), "r") as hdf5:
+        with d.HDF5File(comm, filename.with_suffix(".h5").as_posix(), "r") as hdf5:
             hdf5.read(mesh, "/mesh", False)
 
-    dim = mesh.geometric_dimension()
+    dim = mesh.topology().dim()  # geometric_dimension()
     mf_cell = d.MeshFunction("size_t", mesh, dim)
     mf_facet = d.MeshFunction("size_t", mesh, dim - 1)
     subdomains = []
