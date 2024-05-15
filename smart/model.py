@@ -1095,7 +1095,7 @@ class Model:
                         linear_wrt_comp,
                     )
                 )
-            
+
             # mass (time derivative) terms
             if self.config.flags["axisymmetric_model"]:
                 Muform = x[0] * (u) * v / self.dT * dx
@@ -1315,8 +1315,8 @@ class Model:
             I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
 
-        Flist = get_block_F(self, Fsum, u)
-        Jlist = get_block_J(self, Fsum, u)
+        Flist = self.get_block_F(Fsum, u)
+        Jlist = self.get_block_J(Fsum, u)
         global_sizes = [uj.function_space().dim() for uj in u]
 
         return Flist, Jlist, global_sizes
