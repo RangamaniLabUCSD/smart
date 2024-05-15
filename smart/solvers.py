@@ -209,22 +209,22 @@ class smartSNESProblem:
         Fpetsc = []
         for j in range(dim):
             Fsum = None
-            for k in range(len(self.Fforms[j])):
-                if self.Fforms[j][k].function_space(0) is None:
+            for k, form in enumerate(self.Fforms[j]):
+                if form is None:
                     logger.warning(
-                        f"{self.Fjk_name(j,k)}] has no function space",
+                        f"{self.Fjk_name(j,k)}] is not defined",
                         extra=dict(format_type="log"),
                     )
                     continue
-
+                # Note: This could be simplified once add_values in assemble mixed is fixed
                 tensor = d.PETScVector(self.comm)
 
                 if Fsum is None:
-                    Fsum = d.assemble_mixed(self.Fforms[j][k], tensor=tensor)
+                    Fsum = d.assemble_mixed(form, tensor=tensor)
                 else:
                     # Fsum.axpy(1, d.assemble_mixed(self.Fforms[j][k], tensor=tensor).vec(),
                     # structure=Fsum.Structure.DIFFERENT_NONZERO_PATTERN)
-                    Fsum += d.assemble_mixed(self.Fforms[j][k], tensor=tensor)
+                    Fsum += d.assemble_mixed(form, tensor=tensor)
 
             if Fsum is None:
                 logger.debug(
@@ -348,14 +348,18 @@ class smartSNESProblem:
 
         for j in range(dim):
             Fvecs.append([])
-            for k in range(len(self.Fforms[j])):
-                # , tensor=d.PETScVector(Fvecs[idx]))
-                Fvecs[j].append(d.as_backend_type(d.assemble_mixed(self.Fforms[j][k])))
-            # TODO: could probably speed this up by not using axpy if there is only one subform
-            # sum the vectors
+            # NOTE: This can be simplified once add_values is fixed
+            for k, form in enumerate(self.Fforms[j]):
+                if form is None:
+                    logger.warning(
+                        f"{self.Fjk_name(j,k)}] is not defined",
+                        extra=dict(format_type="log"),
+                    )
+                    continue
+                Fvecs[j].append(d.as_backend_type(d.assemble_mixed(form)))
             Fj_petsc[j].zeroEntries()
-            for k in range(len(self.Fforms[j])):
-                Fj_petsc[j].axpy(1, Fvecs[j][k].vec())
+            for k, vec in enumerate(Fvecs[j]):
+                Fj_petsc[j].axpy(1, vec.vec())
 
         Fnest.assemble()
         self.stopwatches["snes residual assemble"].pause()

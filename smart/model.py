@@ -1314,93 +1314,10 @@ class Model:
             I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
 
-        # blocks/partitions are by compartment, not species
-        Fblock = d.extract_blocks(Fsum)
-
-        # =====================================================================
-        # doflin.fem.problem.MixedNonlinearVariationalProblem()
-        # =====================================================================
-        # basically is a wrapper around the cpp class that finalizes preparing
-        # F and J into the right format
-        # TODO: add dirichlet BCs
-
-        # Add in placeholders for empty blocks of F
-        if len(Fblock) != len(u):
-            Ftemp = [None for i in range(len(u))]
-            for Fi in Fblock:
-                Ftemp[Fi.arguments()[0].part()] = Fi
-            Fblock = Ftemp
-
-        # debug attempt
-        J = []
-        for Fi in Fblock:
-            for uj in u:
-                if Fi is None:
-                    # pass
-                    J.append(None)
-                else:
-                    dFdu = expand_derivatives(d.derivative(Fi, uj))
-                    J.append(dFdu)
-
-        # Check number of blocks in the residual and solution are coherent
-        assert len(J) == len(u) * len(u)
-        assert len(Fblock) == len(u)
-
-        # Decompose F blocks into subforms based on domain of integration
-        # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
-        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]]
-        # If a form has integrals on multiple domains, they are split into a list
-        Flist = list()
-        for idx, Fi in enumerate(Fblock):
-            if Fi is None or Fi.empty():
-                logger.warning(
-                    f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty",
-                    extra=dict(format_type="warning"),
-                )
-                Flist.append([d.cpp.fem.Form(1, 0)])
-            else:
-                Fs = []
-                for Fsub in sub_forms_by_domain(Fi):
-                    if Fsub is None or Fsub.empty():
-                        domain = self.get_mesh_by_id(Fsub.mesh().id()).name
-                        logger.warning(
-                            f"F{idx} = F[{self.cc.get_index(idx).name}] "
-                            "is empty on integration domain {domain}",
-                            extra=dict(format_type="logred"),
-                        )
-                        Fs.append(d.cpp.fem.Form(1, 0))
-                    else:
-                        Fs.append(d.Form(Fsub))
-                Flist.append(Fs)
-
-        # Decompose J blocks into subforms based on domain of integration
-        Jlist = list()
-        for idx, Ji in enumerate(J):
-            idx_i, idx_j = divmod(idx, len(u))
-            if Ji is None or Ji.empty():
-                logger.warning(
-                    f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
-                    f"/du[{self.cc.get_index(idx_j).name}] is empty",
-                    extra=dict(format_type="logred"),
-                )
-                Jlist.append([d.cpp.fem.Form(2, 0)])
-            else:
-                Js = []
-                for Jsub in sub_forms_by_domain(Ji):
-                    if Jsub is None or Jsub.empty():
-                        domain = self.get_mesh_by_id(Jsub.mesh().id()).name
-                        logger.warning(
-                            f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
-                            f"/du[{self.cc.get_index(idx_j).name}]"
-                            f"is empty on integration domain {domain}",
-                            extra=dict(format_type="logred"),
-                        )
-                    Js.append(d.Form(Jsub))
-                Jlist.append(Js)
-
+        Flist = get_block_F(self, Fsum, u)
+        Jlist = get_block_J(self, Fsum, u)
         global_sizes = [uj.function_space().dim() for uj in u]
 
-        # return Flist, Jlist
         return Flist, Jlist, global_sizes
 
     def get_global_sizes(self, u):
@@ -1426,6 +1343,7 @@ class Model:
         # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
         # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]]
         # If a form has integrals on multiple domains, they are split into a list
+        # If Fi(Omega_j) is not defined, None is inserted
         Flist = list()
         for idx, Fi in enumerate(Fblock):
             if Fi is None or Fi.empty():
@@ -1433,7 +1351,7 @@ class Model:
                     f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty",
                     extra=dict(format_type="warning"),
                 )
-                Flist.append([d.cpp.fem.Form(1, 0)])
+                Flist.append([None])
             else:
                 Fs = []
                 for Fsub in sub_forms_by_domain(Fi):
@@ -1444,7 +1362,7 @@ class Model:
                             f"on integration domain {domain}",
                             extra=dict(format_type="logred"),
                         )
-                        Fs.append(d.cpp.fem.Form(1, 0))
+                        Fs.append(None)
                     else:
                         Fs.append(d.Form(Fsub))
                 Flist.append(Fs)
