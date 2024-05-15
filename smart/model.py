@@ -230,8 +230,8 @@ class Model:
         self.final_t = self.rounded_decimal(self.config.solver["final_t"])
         assert self.config.solver["time_precision"] in range(1, 30)
 
-        self.T = d.Constant(self.t)
-        self.dT = d.Constant(self.dt)
+        self.T = d.Constant(self.t, name="t")
+        self.dT = d.Constant(self.dt, name="dT")
         self.tvec = [self.t]
         self.dtvec = [self.dt]
 
@@ -747,7 +747,7 @@ class Model:
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:
             if parameter.type == ParameterType.constant:
-                parameter.dolfin_constant = d.Constant(parameter.value)
+                parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
             elif parameter.type == ParameterType.expression and parameter.is_space_dependent:
                 # use higher degree to avoid interpolation error
                 parameter.dolfin_expression = d.Expression(
@@ -758,9 +758,9 @@ class Model:
                     sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1
                 )
             elif parameter.type == ParameterType.expression and parameter.use_preintegration:
-                parameter.dolfin_constant = d.Constant(parameter.value)
+                parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
             elif parameter.type == ParameterType.from_file:
-                parameter.dolfin_constant = d.Constant(parameter.value)
+                parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
 
     def _init_4_1_get_active_compartments(self):
         """Arrange the compartments based on the number of degrees of freedom they have
@@ -1077,10 +1077,11 @@ class Model:
                         species.compartment.compartment_units**2 / unit.s
                     )
                     D *= diffusion_conversion.magnitude
+                D_constant = d.Constant(D, name=f"D_{species.name}")
                 if self.config.flags["axisymmetric_model"]:
-                    Dform = x[0] * D * d.inner(d.grad(u), d.grad(v)) * dx
+                    Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
                 else:
-                    Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
+                    Dform = D_constant * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
 
                 self.forms.add(
@@ -1094,7 +1095,7 @@ class Model:
                         linear_wrt_comp,
                     )
                 )
-
+            
             # mass (time derivative) terms
             if self.config.flags["axisymmetric_model"]:
                 Muform = x[0] * (u) * v / self.dT * dx
