@@ -1673,11 +1673,11 @@ class Flux(ObjectInstance):
                 funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
             # check that subdomain mesh fcn dim matches function space topological dim
             assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
-            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask = d.interpolate(d.Constant(-1.0, name="-1"), funcSpace)
             u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
             mult = u_mask_new
         else:
-            mult = d.Constant(-1.0)
+            mult = d.Constant(-1.0, name="-1")
         if self.axisymm:
             return (
                 mult
@@ -1710,11 +1710,12 @@ class Flux(ObjectInstance):
                 funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
             # check that subdomain mesh fcn dim matches function space topological dim
             assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
-            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask = d.interpolate(d.Constant(-1.0, name="-1"), funcSpace)
+            u_mask.rename(self.name + "_subdomain_mask", self.name + "_subdomain_mask")
             u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
             mult = u_mask_new
         else:
-            mult = d.Constant(-1.0)
+            mult = d.Constant(-1.0, name="-1")
         if self.axisymm:
             return (
                 mult
@@ -1818,12 +1819,12 @@ class Form(ObjectInstance):
         if self.is_lhs:
             return self.form
         else:
-            return d.Constant(-1) * self.form
+            return d.Constant(-1, name="-1") * self.form
 
     @property
     def rhs(self):
         if self.is_lhs:
-            return d.Constant(-1) * self.form
+            return d.Constant(-1, name="-1") * self.form
         else:
             return self.form
 
@@ -1831,7 +1832,7 @@ class Form(ObjectInstance):
         self.compartment = self.species.compartment
         self._compartment_name = self.compartment.name
 
-        self.form_scaling_dolfin_constant = d.Constant(self.form_scaling)
+        self.form_scaling_dolfin_constant = d.Constant(self.form_scaling, name=f"scale_{self.name}")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
