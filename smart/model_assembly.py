@@ -492,7 +492,7 @@ class ParameterContainer(ObjectContainer):
         ]
         self.print_names = [
             "Value/Equation",
-            "References",
+            "Description",
         ]
 
     def print(
