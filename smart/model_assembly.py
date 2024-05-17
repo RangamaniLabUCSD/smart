@@ -293,9 +293,12 @@ class ObjectContainer:
                     else:
                         df.iloc[row, col] = f"${x:0.{sig_figs}e~Lx}$"
 
-        for col in df.columns:
-            if "_" in col:
-                df = df.rename(columns={col: col.replace("_", "\_")})
+        for i, col in enumerate(df.columns):
+            if hasattr(self, "print_names"):
+                df = df.rename(columns={col: self.print_names[i]})
+            else:
+                if "_" in col:
+                    df = df.rename(columns={col: col.replace("_", "\_")})
 
         if return_df:
             return df
@@ -363,17 +366,26 @@ class ObjectContainer:
 
         # print to file
         if filename is None:
-            logger.info(
-                tabulate(df, headers="keys", tablefmt=tablefmt),
-                extra=dict(format_type="table"),
-            )
+            if hasattr(self, "print_names"):
+                logger.info(
+                    tabulate(df, headers=self.print_names, tablefmt=tablefmt),
+                    extra=dict(format_type="table"),
+                )
+            else:
+                logger.info(
+                    tabulate(df, headers="keys", tablefmt=tablefmt),
+                    extra=dict(format_type="table"),
+                )
         else:
             original_stdout = sys.stdout  # Save a reference to the original standard output
             with open(filename, "w") as f:  # TODO: Add this to logging
                 # Change the standard output to the file we created.
                 sys.stdout = f
                 print("This message will be written to a file.")
-                print(tabulate(df, headers="keys", tablefmt=tablefmt))  # ,
+                if hasattr(self, "print_names"):
+                    print(tabulate(df, headers=self.print_names, tablefmt=tablefmt))  # ,
+                else:
+                    print(tabulate(df, headers="keys", tablefmt=tablefmt))
                 sys.stdout = original_stdout  # Reset the standard output to its original value
 
     def __str__(self):
@@ -475,11 +487,12 @@ class ParameterContainer(ObjectContainer):
         super().__init__(Parameter)
 
         self.properties_to_print = [
-            "_quantity",
-            # "is_time_dependent",
-            "sym_expr",
+            "_print_val",
             "notes",
-            "group",
+        ]
+        self.print_names = [
+            "Value/Equation",
+            "References",
         ]
 
     def print(
@@ -490,7 +503,7 @@ class ParameterContainer(ObjectContainer):
         max_col_width=50,
     ):
         for s in self:
-            s.quantity
+            s.print_val
         super().print(tablefmt, self.properties_to_print, filename, max_col_width)
 
 
@@ -565,6 +578,7 @@ class Parameter(ObjectInstance):
     group: str = ""
     notes: str = ""
     use_preintegration: bool = False
+    sym_expr: str = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -771,6 +785,14 @@ class Parameter(ObjectInstance):
         self._quantity = self.value * self.unit
         return self._quantity
 
+    @property
+    def print_val(self):
+        if self.sym_expr == "":
+            self._print_val = self.value * self.unit
+        else:
+            self._print_val = str(self.sym_expr) * self.unit
+        return self._print_val
+
     def check_validity(self):
         """Confirm that time-dependent parameter is defined in terms of time"""
         if self.is_time_dependent:
@@ -790,6 +812,11 @@ class SpeciesContainer(ObjectContainer):
             "compartment_name",
             "_Diffusion",
             "_Initial_Concentration",
+        ]
+        self.print_names = [
+            "Compartment",
+            "D",
+            "Initial condition",
         ]
 
     def print(
@@ -975,15 +1002,20 @@ class CompartmentContainer(ObjectContainer):
         super().__init__(Compartment)
 
         self.properties_to_print = [
-            # "_mesh_id",
             "dimensionality",
             "num_species",
             "_num_vertices",
-            "_num_dofs",
-            # "_num_dofs_local",
             "_num_cells",
             "cell_marker",
             "_nvolume",
+        ]
+        self.print_names = [
+            "Dimensionality",
+            "Species",
+            "Vertices",
+            "Cells",
+            "Marker value",
+            "Size",
         ]
 
     def print(
@@ -1143,6 +1175,12 @@ class ReactionContainer(ObjectContainer):
         super().__init__(Reaction)
 
         self.properties_to_print = ["lhs", "rhs", "eqn_str", "topology"]
+        self.print_names = [
+            "Reactants",
+            "Products",
+            "Equation",
+            "Type",
+        ]
 
     def print(
         self,
