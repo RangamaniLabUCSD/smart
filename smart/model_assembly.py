@@ -4,7 +4,6 @@ Model class contains functions to efficiently solve a system.
 import dataclasses
 import logging
 import numbers
-import sys
 from collections import OrderedDict as odict
 from dataclasses import dataclass
 from enum import Enum
@@ -31,6 +30,7 @@ from pathlib import Path
 
 from . import common
 from .config import global_settings as gset
+from .config import base_format
 from .units import quantity_to_unit, unit, unit_to_quantity
 
 __all__ = [
@@ -377,16 +377,11 @@ class ObjectContainer:
                     extra=dict(format_type="table"),
                 )
         else:
-            original_stdout = sys.stdout  # Save a reference to the original standard output
-            with open(filename, "w") as f:  # TODO: Add this to logging
-                # Change the standard output to the file we created.
-                sys.stdout = f
-                print("This message will be written to a file.")
-                if hasattr(self, "print_names"):
-                    print(tabulate(df, headers=self.print_names, tablefmt=tablefmt))  # ,
-                else:
-                    print(tabulate(df, headers="keys", tablefmt=tablefmt))
-                sys.stdout = original_stdout  # Reset the standard output to its original value
+            file_handler = logging.FileHandler(filename)
+            file_handler.setFormatter(logging.Formatter(base_format))
+            logger.addHandler(file_handler)
+            logger.info(tabulate(df, headers="keys", tablefmt=tablefmt))  # ,
+            logger.removeHandler(file_handler)
 
     def __str__(self):
         df = self.get_pandas_dataframe(properties_to_print=self.properties_to_print)
