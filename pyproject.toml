@@ -35,7 +35,7 @@ test = ["pytest", "pytest-cov"]
 # which causes https://github.com/executablebooks/jupyter-book/issues/2063
 docs = ["jupyter-book==0.15.1", "sphinx-autoapi==2.0.1", "astroid<3"]
 examples = ["meshio", "gmsh", "matplotlib", "jupyter", "jupyterlab"]
-pyvista = ["pyvista==0.38.4", "panel"]
+pyvista = ["pyvista[all]>=0.43.0", "trame-vuetify", "ipywidgets",]
 
 all = [
     "fenics-smart[examples]",
