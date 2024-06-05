@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0.0", "wheel"]
 
 [project]
 name = "fenics-smart"
-version = "2.2.1"
+version = "2.2.2"
 description = "Spatial Modeling Algorithms for Reactions and Transport (SMART) is a high-performance finite-element-based simulation package for model specification and numerical simulation of spatially-varying reaction-transport processes in biological cells."
 authors = [{ name = "Justin Laughlin", email = "justinglaughlin@gmail.com" }]
 license = { file = "LICENSE" }
