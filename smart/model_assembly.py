@@ -573,7 +573,7 @@ class Parameter(ObjectInstance):
     group: str = ""
     notes: str = ""
     use_preintegration: bool = False
-    sym_expr: str = ""
+    sym_expr: Any = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
