@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pprint import pformat
 from textwrap import wrap
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, get_origin
 import warnings
 
 import dolfin as d
@@ -399,7 +399,7 @@ class ObjectInstance:
         "Check that the inputs have the same type (or are convertible) to the type hint."
         for field in dataclasses.fields(self):
             value = getattr(self, field.name)
-            if field.type == Any:
+            if field.type == Any or get_origin(field.type) == Union:
                 continue
             elif not isinstance(value, field.type):
                 try:
@@ -573,7 +573,7 @@ class Parameter(ObjectInstance):
     group: str = ""
     notes: str = ""
     use_preintegration: bool = False
-    sym_expr: str = ""
+    sym_expr: Union[str, sym.core.Expr] = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
