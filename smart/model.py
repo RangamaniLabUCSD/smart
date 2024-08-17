@@ -641,12 +641,6 @@ class Model:
         for species in self.sc:
             species.compartment = self.cc[species.compartment_name]
             species.dimensionality = self.cc[species.compartment_name].dimensionality
-            # convert diffusion coeff to units consistent with mesh
-            diffusion_conversion = species.diffusion_units.to(
-                species.compartment.compartment_units**2 / unit.s
-            )
-            species.diffusion_units = species.compartment.compartment_units**2 / unit.s
-            species.D *= diffusion_conversion.magnitude
 
     def _init_2_6_link_species_to_compartments(self):
         """Links species to compartments - a species is considered to be
