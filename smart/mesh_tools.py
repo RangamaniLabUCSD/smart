@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 
-def implicit_curve(boundExpr):
+def implicit_curve(boundExpr, num_points=51):
     """
     Output (r,z) coordinates given a string expression in the r-z plane
     Currently the function only outputs cell coordinates in the right half
@@ -57,13 +57,16 @@ def implicit_curve(boundExpr):
     z = sym.Symbol("z", real=True)
     outerExpr0 = outerExprRef.subs({"r": 0, "z": z})
     z0 = solveset_real(outerExpr0, z)
+    z0Array = np.array([float(z0Val) for z0Val in z0])
     rVals = [0.0]
     zVals = [float(max(z0))]
     rMax = solveset_real(outerExprRef.subs({"r": r, "z": 0.0}), r)
     if len(rMax) > 0:
-        sGap = max([float(max(z0)), float(max(rMax))]) / 50
+        sGap = max([float(max(z0)), float(max(rMax))]) / (num_points - 1)
+    elif len(z0) == 2 and np.all(z0Array > 0):  # then probably a nuclear contour
+        sGap = float(max(z0) - min(z0)) / (num_points - 1)
     else:
-        sGap = float(max(z0)) / 50
+        sGap = float(max(z0)) / (num_points - 1)
     curTan = [1, 0]
     while rVals[-1] >= 0 and zVals[-1] >= 0:
         rNext = rVals[-1] + curTan[0] * sGap
