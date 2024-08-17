@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pprint import pformat
 from textwrap import wrap
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, get_origin
 import warnings
 
 import dolfin as d
@@ -400,7 +400,7 @@ class ObjectInstance:
         "Check that the inputs have the same type (or are convertible) to the type hint."
         for field in dataclasses.fields(self):
             value = getattr(self, field.name)
-            if field.type == Any:
+            if field.type == Any or get_origin(field.type) == Union:
                 continue
             elif not isinstance(value, field.type):
                 try:
@@ -574,7 +574,7 @@ class Parameter(ObjectInstance):
     group: str = ""
     notes: str = ""
     use_preintegration: bool = False
-    sym_expr: Any = ""
+    sym_expr: Union[str, sym.core.Expr] = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -1762,11 +1762,11 @@ class Flux(ObjectInstance):
                 funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
             # check that subdomain mesh fcn dim matches function space topological dim
             assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
-            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask = d.interpolate(d.Constant(-1.0, name="-1"), funcSpace)
             u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
             mult = u_mask_new
         else:
-            mult = d.Constant(-1.0)
+            mult = d.Constant(-1.0, name="-1")
         if self.axisymm:
             return (
                 mult
@@ -1799,11 +1799,12 @@ class Flux(ObjectInstance):
                 funcSpace = d.FunctionSpace(self.destination_compartment.dolfin_mesh, "P", 1)
             # check that subdomain mesh fcn dim matches function space topological dim
             assert self.subdomain_data.dim() == funcSpace.mesh().topology().dim()
-            u_mask = d.interpolate(d.Constant(-1.0), funcSpace)
+            u_mask = d.interpolate(d.Constant(-1.0, name="-1"), funcSpace)
+            u_mask.rename(self.name + "_subdomain_mask", self.name + "_subdomain_mask")
             u_mask_new = create_restriction(u_mask, self.subdomain_data, self.subdomain_val)
             mult = u_mask_new
         else:
-            mult = d.Constant(-1.0)
+            mult = d.Constant(-1.0, name="-1")
         if self.axisymm:
             return (
                 mult
@@ -1907,12 +1908,12 @@ class Form(ObjectInstance):
         if self.is_lhs:
             return self.form
         else:
-            return d.Constant(-1) * self.form
+            return d.Constant(-1, name="-1") * self.form
 
     @property
     def rhs(self):
         if self.is_lhs:
-            return d.Constant(-1) * self.form
+            return d.Constant(-1, name="-1") * self.form
         else:
             return self.form
 
@@ -1920,7 +1921,7 @@ class Form(ObjectInstance):
         self.compartment = self.species.compartment
         self._compartment_name = self.compartment.name
 
-        self.form_scaling_dolfin_constant = d.Constant(self.form_scaling)
+        self.form_scaling_dolfin_constant = d.Constant(self.form_scaling, name=f"scale_{self.name}")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
