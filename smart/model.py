@@ -632,8 +632,7 @@ class Model:
                 raise ValueError(print_str)
 
     def _init_2_5_link_compartments_to_species(self):
-        """Linking compartments and compartment dimensionality to species,
-        check for consistency of diffusion coefficient definition"""
+        """Linking compartments and compartment dimensionality to species"""
         logger.debug(
             "Linking compartments and compartment dimensionality to species",
             extra=dict(format_type="log"),
