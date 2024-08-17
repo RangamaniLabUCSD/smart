@@ -47,6 +47,8 @@ def implicit_curve(boundExpr, num_points=51):
     which corresponds to a substrate in most cases.
     The (r,z) coordinates start at the maximum z value for r = 0
     and end when either z = 0 or r = 0.
+    num_points can be increased for more accuracy in generating the contour,
+    but this function will run more slowly for very high num_points.
 
     Examples:
     * boundExpr = "r**2 + z**2 - 1": defines a quarter circle from (0, 1) to (1, 0)
