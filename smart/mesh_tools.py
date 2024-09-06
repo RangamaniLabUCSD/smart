@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 
-def implicit_curve(boundExpr):
+def implicit_curve(boundExpr, num_points=51):
     """
     Output (r,z) coordinates given a string expression in the r-z plane
     Currently the function only outputs cell coordinates in the right half
@@ -47,6 +47,8 @@ def implicit_curve(boundExpr):
     which corresponds to a substrate in most cases.
     The (r,z) coordinates start at the maximum z value for r = 0
     and end when either z = 0 or r = 0.
+    num_points can be increased for more accuracy in generating the contour,
+    but this function will run more slowly for very high num_points.
 
     Examples:
     * boundExpr = "r**2 + z**2 - 1": defines a quarter circle from (0, 1) to (1, 0)
@@ -57,13 +59,16 @@ def implicit_curve(boundExpr):
     z = sym.Symbol("z", real=True)
     outerExpr0 = outerExprRef.subs({"r": 0, "z": z})
     z0 = solveset_real(outerExpr0, z)
+    z0Array = np.array([float(z0Val) for z0Val in z0])
     rVals = [0.0]
     zVals = [float(max(z0))]
     rMax = solveset_real(outerExprRef.subs({"r": r, "z": 0.0}), r)
     if len(rMax) > 0:
-        sGap = max([float(max(z0)), float(max(rMax))]) / 50
+        sGap = max([float(max(z0)), float(max(rMax))]) / (num_points - 1)
+    elif len(z0) == 2 and np.all(z0Array > 0):  # then probably a nuclear contour
+        sGap = float(max(z0) - min(z0)) / (num_points - 1)
     else:
-        sGap = float(max(z0)) / 50
+        sGap = float(max(z0)) / (num_points - 1)
     curTan = [1, 0]
     while rVals[-1] >= 0 and zVals[-1] >= 0:
         rNext = rVals[-1] + curTan[0] * sGap

@@ -632,7 +632,8 @@ class Model:
                 raise ValueError(print_str)
 
     def _init_2_5_link_compartments_to_species(self):
-        """Linking compartments and compartment dimensionality to species"""
+        """Linking compartments and compartment dimensionality to species,
+        check for consistency of diffusion coefficient definition"""
         logger.debug(
             "Linking compartments and compartment dimensionality to species",
             extra=dict(format_type="log"),
@@ -640,6 +641,12 @@ class Model:
         for species in self.sc:
             species.compartment = self.cc[species.compartment_name]
             species.dimensionality = self.cc[species.compartment_name].dimensionality
+            # convert diffusion coeff to units consistent with mesh
+            diffusion_conversion = species.diffusion_units.to(
+                species.compartment.compartment_units**2 / unit.s
+            )
+            species.diffusion_units = species.compartment.compartment_units**2 / unit.s
+            species.D *= diffusion_conversion.magnitude
 
     def _init_2_6_link_species_to_compartments(self):
         """Links species to compartments - a species is considered to be
@@ -1123,11 +1130,6 @@ class Model:
                     extra=dict(format_type="log"),
                 )
             else:
-                if Dform_units != mass_form_units:  # unit conversion for consistency
-                    diffusion_conversion = species.diffusion_units.to(
-                        species.compartment.compartment_units**2 / unit.s
-                    )
-                    D *= diffusion_conversion.magnitude
                 D_constant = d.Constant(D, name=f"D_{species.name}")
                 if self.config.flags["axisymmetric_model"]:
                     Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
