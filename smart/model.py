@@ -1000,54 +1000,68 @@ class Model:
 
         for parameter in self.pc:
             if parameter.type == ParameterType.from_xdmf:
-                if parameter.type == ParameterType.from_xdmf:
-                    # load the time vec from xdmf file
-                    xdmf_file = open(parameter.xdmf_file, "r")
-                    xdmf_string = xdmf_file.read()
-                    found_pattern = re.findall(r"Time Value=\"?[^\s]+", xdmf_string)
-                    tVec = []
-                    for i in range(len(found_pattern)):
-                        tVec.append(float(found_pattern[i][12:-1]))
-                    parameter.tVec = np.array(tVec)
+                # load the time vec from xdmf file
+                xdmf_file = open(parameter.xdmf_file, "r")
+                xdmf_string = xdmf_file.read()
+                found_pattern = re.findall(r"Time Value=\"?[^\s]+", xdmf_string)
+                tVec = []
+                for i in range(len(found_pattern)):
+                    tVec.append(float(found_pattern[i][12:-1]))
+                parameter.tVec = np.array(tVec)
 
-                    # define function space
-                    if parameter.compartment not in self.cc.keys:
-                        raise ValueError(
-                            f"Compartment name {parameter.compartment} for parameter"
-                            f"{parameter.name} does not match a known compartment"
-                        )
-                    V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
-                    parameter.dolfin_function = d.Function(V_cur)
+                # define function space
+                if parameter.compartment not in self.cc.keys:
+                    raise ValueError(
+                        f"Compartment name {parameter.compartment} for parameter"
+                        f"{parameter.name} does not match a known compartment"
+                    )
+                V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
+                parameter.dolfin_function = d.Function(V_cur)
 
-                    cur_file = d.HDF5File(self.parent_mesh.mpi_comm, parameter.h5_file, "r")
-                    if np.any(np.isclose(tVec, float(self.t))):
-                        vec_new = d.Vector()
-                        idx1 = np.nonzero(np.isclose(tVec, float(self.t)))[0][0]
-                        cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                        cur_file.close()
-                    elif self.t > tVec[-1]:
-                        raise ValueError(
-                            f"File {str(parameter.h5_file)} does not cover current time {self.t}"
-                        )
-                    else:
-                        vec1 = d.Vector()
-                        vec2 = d.Vector()
-                        idx1 = np.nonzero(tVec < float(self.t))[0][-1]
-                        idx2 = np.nonzero(tVec > float(self.t))[0][0]
-                        cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
-                        cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
-                        vec_new = (vec1 + vec2) / 2
-                    vec = parameter.dolfin_function.vector()
-                    mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
-                    if len(vec_new) != len(mesh_map):
-                        raise ValueError(
-                            f"Vector from {str(parameter.h5_file)} "
-                            f"does not match function space for {parameter.name}"
-                        )
-                    else:
-                        new_vals = vec_new[mesh_map]  # reorder to match dof ordering
-                    vec.set_local(new_vals)
-                    vec.apply("insert")
+                cur_file = d.HDF5File(self.parent_mesh.mpi_comm, parameter.h5_file, "r")
+                # Find index associated with the starting time
+                if np.any(np.isclose(tVec, float(self.t))):
+                    vec_new = d.Vector()
+                    idx1 = np.nonzero(np.isclose(tVec, float(self.t)))[0][0]
+                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+                    cur_file.close()
+                elif self.t > tVec[-1]:  # then starting after final time in the xdmf file
+                    logger.warning(
+                        f"File {str(parameter.h5_file)} ends before current time {self.t}"
+                        "Using final time point in file instead."
+                    )
+                    vec_new = d.Vector()
+                    idx1 = len(tVec) - 1
+                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+                    cur_file.close()
+                elif self.t < tVec[0]:  # then starting before initial time in xdmf file
+                    logger.warning(
+                        f"File {str(parameter.h5_file)} starts after current time {self.t}"
+                        "Using initial time point in file instead."
+                    )
+                    vec_new = d.Vector()
+                    idx1 = 0
+                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+                    cur_file.close()
+                else:  # then in between two times in the xdmf file
+                    vec1 = d.Vector()
+                    vec2 = d.Vector()
+                    idx1 = np.nonzero(tVec < float(self.t))[0][-1]
+                    idx2 = np.nonzero(tVec > float(self.t))[0][0]
+                    cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
+                    cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
+                    vec_new = (vec1 + vec2) / 2
+                vec = parameter.dolfin_function.vector()
+                mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
+                if len(vec_new) != len(mesh_map):
+                    raise ValueError(
+                        f"Vector from {str(parameter.h5_file)} "
+                        f"does not match function space for {parameter.name}"
+                    )
+                else:
+                    new_vals = vec_new[mesh_map]  # reorder to match dof ordering
+                vec.set_local(new_vals)
+                vec.apply("insert")
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -1960,16 +1974,30 @@ class Model:
                 # load the time vec from xdmf file
                 tVec = parameter.tVec
                 cur_file = d.HDF5File(self.parent_mesh.mpi_comm, parameter.h5_file, "r")
-                if np.any(np.isclose(tVec, t)):
+                if np.any(np.isclose(tVec, t)):  # time matches exactly
                     vec_new = d.Vector()
                     idx1 = np.nonzero(np.isclose(tVec, t))[0][0]
                     cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
                     cur_file.close()
-                elif t > tVec[-1]:
-                    raise ValueError(
-                        f"File {str(parameter.h5_file)} does not cover current time {t}"
+                elif t > tVec[-1]:  # then current time is after final time in xdmf file
+                    logger.warning(
+                        f"File {str(parameter.h5_file)} ends before current time {self.t}"
+                        "Using final time point in file instead."
                     )
-                else:
+                    vec_new = d.Vector()
+                    idx1 = len(tVec) - 1
+                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+                    cur_file.close()
+                elif self.t < tVec[0]:  # then current time is before initial time in xdmf file
+                    logger.warning(
+                        f"File {str(parameter.h5_file)} starts after current time {self.t}"
+                        "Using initial time point in file instead."
+                    )
+                    vec_new = d.Vector()
+                    idx1 = 0
+                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+                    cur_file.close()
+                else:  # interpolate between two time points
                     vec1 = d.Vector()
                     vec2 = d.Vector()
                     idx1 = np.nonzero(tVec < t)[0][-1]

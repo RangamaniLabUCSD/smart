@@ -566,6 +566,28 @@ class Parameter(ObjectInstance):
         use_preintegration (optional):  use preintegration in solution process if
                                      "use_preintegration" is true (defaults to false),
                                      uses sci.integrate.cumtrapz for numerical integration
+
+    To load a space-dependent parameter over time from an .xdmf file, call:
+
+    .. code:: python
+
+        param_var = Parameter.from_file(
+            name, xdmf_file, unit, compartment, group (opt),
+            notes (opt), use_preintegration (opt)
+        )
+        from_xdmf(
+        cls, name, xdmf_file, unit, compartment, group="", notes="", use_preintegration=False
+    ):
+
+    Inputs are the same as described above, except:
+
+    Args:
+        xdmf_file: name of the xdmf file with parameters saved at multiple time points
+                    (linked to an hdf5 file), saved using dolfin.XDMFFile.write()
+        compartment: string matching the compartment associated with the saved xdmf.
+                     In the current implementation, dimensions must match exactly.
+        use_preintegration: will always be set to false, not implemented for this case yet
+
     """
 
     name: str
@@ -575,6 +597,7 @@ class Parameter(ObjectInstance):
     notes: str = ""
     use_preintegration: bool = False
     sym_expr: Any = ""
+    xdmf_file: Any = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -645,7 +668,7 @@ class Parameter(ObjectInstance):
         parameter.sampling_file = sampling_file
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
-        parameter.is_space_dependent = False  # not supported yet
+        parameter.is_space_dependent = False
         parameter.type = ParameterType.from_file
         parameter.__post_init__()
         logger.info(
@@ -662,9 +685,10 @@ class Parameter(ObjectInstance):
         """ "
         Data read in from an xdmf/h5 file pairing
         """
-        assert Path(
-            xdmf_file
-        ).is_file(), f"{str(xdmf_file)} could not be found for loading spatial parameter values"
+        if isinstance(xdmf_file, str):
+            xdmf_file = Path(xdmf_file)
+        assert xdmf_file.is_file(), f"{str(xdmf_file)} could not be found to load parameter"
+
         logger.debug(f"Loading initial condition for {name} from file")
         if xdmf_file.suffix == ".xdmf":
             xdmfCur = str(xdmf_file)
@@ -693,8 +717,8 @@ class Parameter(ObjectInstance):
         # initialize instance
         parameter.xdmf_file = xdmfCur
         parameter.h5_file = h5Cur
-        # parameter.is_time_dependent = True
-        # parameter.is_space_dependent = True
+        parameter.is_time_dependent = True
+        parameter.is_space_dependent = True
         parameter.type = ParameterType.from_xdmf
         parameter.__post_init__()
         logger.info(
@@ -845,7 +869,15 @@ class Parameter(ObjectInstance):
         """Confirm that time-dependent parameter is defined in terms of time"""
         if self.is_time_dependent:
             if all(
-                [x in ("", None) for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]
+                [
+                    x in ("", None)
+                    for x in [
+                        self.sampling_file,
+                        self.sym_expr,
+                        self.preint_sym_expr,
+                        self.xdmf_file,
+                    ]
+                ]
             ):
                 raise ValueError(
                     f"Parameter {self.name} is marked as time dependent "
@@ -1725,7 +1757,7 @@ class Flux(ObjectInstance):
         variables.update({"unit_scale_factor": self.unit_scale_factor})
         free_symbols = [str(x) for x in self.equation.free_symbols]
         if "curv" in free_symbols:
-            self.curv = self.surface.curv_func * unit.dimensionless
+            self.curv = self.surface.curv_func / self.surface.compartment_units
             variables.update({"curv": self.curv})
         return variables
 
