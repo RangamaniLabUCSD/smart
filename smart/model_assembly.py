@@ -597,6 +597,7 @@ class Parameter(ObjectInstance):
     notes: str = ""
     use_preintegration: bool = False
     sym_expr: Union[str, sym.core.Expr] = ""
+    xdmf_file: Union[str, Path] = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
