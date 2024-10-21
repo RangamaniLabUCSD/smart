@@ -598,6 +598,10 @@ class Parameter(ObjectInstance):
     use_preintegration: bool = False
     sym_expr: Union[str, sym.core.Expr] = ""
     xdmf_file: Union[str, Path] = ""
+    h5_file: Union[str, Path] = ""
+    is_time_dependent: bool = False
+    is_space_dependent: bool = False
+    compartment: str = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -690,7 +694,7 @@ class Parameter(ObjectInstance):
         assert xdmf_file.is_file(), f"{str(xdmf_file)} could not be found to load parameter"
 
         logger.debug(f"Loading initial condition for {name} from file")
-        if xdmf_file.suffix == ".xdmf":
+        if xdmf_file.suffix == ".xdmf" and xdmf_file.with_suffix(".h5").exists():
             xdmfCur = str(xdmf_file)
             h5Cur = xdmfCur[0:-4] + "h5"
         else:

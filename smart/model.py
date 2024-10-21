@@ -1025,39 +1025,7 @@ class Model:
                 V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
                 parameter.dolfin_function = d.Function(V_cur)
 
-                cur_file = d.HDF5File(self.parent_mesh.mpi_comm, parameter.h5_file, "r")
-                # Find index associated with the starting time
-                if np.any(np.isclose(tVec, float(self.t))):
-                    vec_new = d.Vector()
-                    idx1 = np.nonzero(np.isclose(tVec, float(self.t)))[0][0]
-                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                    cur_file.close()
-                elif self.t > tVec[-1]:  # then starting after final time in the xdmf file
-                    logger.warning(
-                        f"File {str(parameter.h5_file)} ends before current time {self.t}"
-                        "Using final time point in file instead."
-                    )
-                    vec_new = d.Vector()
-                    idx1 = len(tVec) - 1
-                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                    cur_file.close()
-                elif self.t < tVec[0]:  # then starting before initial time in xdmf file
-                    logger.warning(
-                        f"File {str(parameter.h5_file)} starts after current time {self.t}"
-                        "Using initial time point in file instead."
-                    )
-                    vec_new = d.Vector()
-                    idx1 = 0
-                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                    cur_file.close()
-                else:  # then in between two times in the xdmf file
-                    vec1 = d.Vector()
-                    vec2 = d.Vector()
-                    idx1 = np.nonzero(tVec < float(self.t))[0][-1]
-                    idx2 = np.nonzero(tVec > float(self.t))[0][0]
-                    cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
-                    cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
-                    vec_new = (vec1 + vec2) / 2
+                vec_new = self.load_vector(parameter.h5_file, parameter.tVec)
                 vec = parameter.dolfin_function.vector()
                 mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
                 if len(vec_new) != len(mesh_map):
@@ -1893,40 +1861,7 @@ class Model:
         for parameter_name, parameter in self.pc.items:
             new_value = None
             if parameter.type == ParameterType.from_xdmf:
-                # load the time vec from xdmf file
-                tVec = parameter.tVec
-                cur_file = d.HDF5File(self.parent_mesh.mpi_comm, parameter.h5_file, "r")
-                if np.any(np.isclose(tVec, t)):  # time matches exactly
-                    vec_new = d.Vector()
-                    idx1 = np.nonzero(np.isclose(tVec, t))[0][0]
-                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                    cur_file.close()
-                elif t > tVec[-1]:  # then current time is after final time in xdmf file
-                    logger.warning(
-                        f"File {str(parameter.h5_file)} ends before current time {self.t}"
-                        "Using final time point in file instead."
-                    )
-                    vec_new = d.Vector()
-                    idx1 = len(tVec) - 1
-                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                    cur_file.close()
-                elif self.t < tVec[0]:  # then current time is before initial time in xdmf file
-                    logger.warning(
-                        f"File {str(parameter.h5_file)} starts after current time {self.t}"
-                        "Using initial time point in file instead."
-                    )
-                    vec_new = d.Vector()
-                    idx1 = 0
-                    cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
-                    cur_file.close()
-                else:  # interpolate between two time points
-                    vec1 = d.Vector()
-                    vec2 = d.Vector()
-                    idx1 = np.nonzero(tVec < t)[0][-1]
-                    idx2 = np.nonzero(tVec > t)[0][0]
-                    cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
-                    cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
-                    vec_new = (vec1 + vec2) / 2
+                vec_new = self.load_vector(parameter.h5_file, parameter.tVec)
                 vec = parameter.dolfin_function.vector()
                 mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
                 if len(vec_new) != len(mesh_map):
@@ -2325,3 +2260,37 @@ class Model:
         #     dt_scale = min(dt_scale * 0.8, 0.8)
         dt_cur = float(self.dt) * dt_scale
         self.set_dt(dt_cur)
+
+    def load_vector(self, h5_file, tVec):
+        with d.HDF5File(self.parent_mesh.mpi_comm, h5_file, "r") as cur_file:
+            # Find index associated with the starting time
+            if np.any(np.isclose(tVec, float(self.t))):
+                vec_new = d.Vector()
+                idx1 = np.nonzero(np.isclose(tVec, float(self.t)))[0][0]
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            elif self.t > tVec[-1]:  # then starting after final time in the xdmf file
+                logger.warning(
+                    f"File {str(h5_file)} ends before current time {self.t}"
+                    "Using final time point in file instead."
+                )
+                vec_new = d.Vector()
+                idx1 = len(tVec) - 1
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            elif self.t < tVec[0]:  # then starting before initial time in xdmf file
+                logger.warning(
+                    f"File {str(h5_file)} starts after current time {self.t}"
+                    "Using initial time point in file instead."
+                )
+                vec_new = d.Vector()
+                idx1 = 0
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            else:  # then in between two times in the xdmf file
+                vec1 = d.Vector()
+                vec2 = d.Vector()
+                idx1 = np.nonzero(tVec < float(self.t))[0][-1]
+                idx2 = np.nonzero(tVec > float(self.t))[0][0]
+                cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
+                cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
+                vec_new = (vec1 + vec2) / 2
+            cur_file.close()
+        return vec_new
