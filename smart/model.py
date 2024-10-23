@@ -20,6 +20,7 @@ from scipy import integrate
 from sympy.utilities.lambdify import lambdify
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -1008,12 +1009,15 @@ class Model:
         for parameter in self.pc:
             if parameter.type == ParameterType.from_xdmf:
                 # load the time vec from xdmf file
-                xdmf_file = open(parameter.xdmf_file, "r")
-                xdmf_string = xdmf_file.read()
-                found_pattern = re.findall(r"Time Value=\"?[^\s]+", xdmf_string)
-                tVec = []
-                for i in range(len(found_pattern)):
-                    tVec.append(float(found_pattern[i][12:-1]))
+                def load_timesteps_from_xdmf(xdmffile):
+                    times = []
+                    tree = ET.parse(xdmffile)
+                    for elem in tree.iter():
+                        if elem.tag == "Time":
+                            times.append(float(elem.get("Value")))
+                    return times
+
+                tVec = load_timesteps_from_xdmf(parameter.xdmf_file)
                 parameter.tVec = np.array(tVec)
 
                 # define function space
