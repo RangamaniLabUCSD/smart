@@ -20,6 +20,7 @@ from scipy import integrate
 from sympy.utilities.lambdify import lambdify
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -632,7 +633,8 @@ class Model:
                 raise ValueError(print_str)
 
     def _init_2_5_link_compartments_to_species(self):
-        """Linking compartments and compartment dimensionality to species"""
+        """Linking compartments and compartment dimensionality to species,
+        check for consistency of diffusion coefficient definition"""
         logger.debug(
             "Linking compartments and compartment dimensionality to species",
             extra=dict(format_type="log"),
@@ -640,6 +642,12 @@ class Model:
         for species in self.sc:
             species.compartment = self.cc[species.compartment_name]
             species.dimensionality = self.cc[species.compartment_name].dimensionality
+            # convert diffusion coeff to units consistent with mesh
+            diffusion_conversion = species.diffusion_units.to(
+                species.compartment.compartment_units**2 / unit.s
+            )
+            species.diffusion_units = species.compartment.compartment_units**2 / unit.s
+            species.D *= diffusion_conversion.magnitude
 
     def _init_2_6_link_species_to_compartments(self):
         """Links species to compartments - a species is considered to be
@@ -998,6 +1006,42 @@ class Model:
                     u_cur.vector().set_local(values)
                     u_cur.vector().apply("insert")
 
+        for parameter in self.pc:
+            if parameter.type == ParameterType.from_xdmf:
+                # load the time vec from xdmf file
+                def load_timesteps_from_xdmf(xdmffile):
+                    times = []
+                    tree = ET.parse(xdmffile)
+                    for elem in tree.iter():
+                        if elem.tag == "Time":
+                            times.append(float(elem.get("Value")))
+                    return times
+
+                tVec = load_timesteps_from_xdmf(parameter.xdmf_file)
+                parameter.tVec = np.array(tVec)
+
+                # define function space
+                if parameter.compartment not in self.cc.keys:
+                    raise ValueError(
+                        f"Compartment name {parameter.compartment} for parameter"
+                        f"{parameter.name} does not match a known compartment"
+                    )
+                V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
+                parameter.dolfin_function = d.Function(V_cur)
+
+                vec_new = self.load_vector(parameter.h5_file, parameter.tVec)
+                vec = parameter.dolfin_function.vector()
+                mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
+                if len(vec_new) != len(mesh_map):
+                    raise ValueError(
+                        f"Vector from {str(parameter.h5_file)} "
+                        f"does not match function space for {parameter.name}"
+                    )
+                else:
+                    new_vals = vec_new[mesh_map]  # reorder to match dof ordering
+                vec.set_local(new_vals)
+                vec.apply("insert")
+
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
         logger.debug("Convert reactions to flux objects", extra=dict(format_type="log"))
@@ -1072,11 +1116,6 @@ class Model:
                     extra=dict(format_type="log"),
                 )
             else:
-                if Dform_units != mass_form_units:  # unit conversion for consistency
-                    diffusion_conversion = species.diffusion_units.to(
-                        species.compartment.compartment_units**2 / unit.s
-                    )
-                    D *= diffusion_conversion.magnitude
                 D_constant = d.Constant(D, name=f"D_{species.name}")
                 if self.config.flags["axisymmetric_model"]:
                     Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
@@ -1825,6 +1864,19 @@ class Model:
         # Update time dependent parameters
         for parameter_name, parameter in self.pc.items:
             new_value = None
+            if parameter.type == ParameterType.from_xdmf:
+                vec_new = self.load_vector(parameter.h5_file, parameter.tVec)
+                vec = parameter.dolfin_function.vector()
+                mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
+                if len(vec_new) != len(mesh_map):
+                    raise ValueError(
+                        f"Vector from {str(parameter.h5_file)} "
+                        f"does not match function space for {parameter.name}"
+                    )
+                new_vals = vec_new[mesh_map]  # reorder to match dof ordering
+                vec.set_local(new_vals)
+                vec.apply("insert")
+                continue
             if not parameter.is_time_dependent:
                 continue
             if not parameter.use_preintegration:
@@ -1998,24 +2050,37 @@ class Model:
                 elif len(tVec) == 1:
                     self.load_init_time = tVec[0]
                     self.load_init_idx = 0
+                    self.tvec = [tVec[0]]
                 else:
                     self.load_init_time = tVec[-2]
                     self.load_init_idx = len(tVec) - 2
+                    self.set_dt(tVec[-1] - tVec[-2])
+                    self.tvec = [tVec[-2]]
                 # set to current time
                 self.t = self.rounded_decimal(self.load_init_time)
+                if self.load_init_idx > 0:  # then store prev time
+                    self.tn = self.rounded_decimal(tVec[-3])
                 self.T.assign(self.t)
 
-            assert np.isclose(
-                tVec[self.load_init_idx], self.load_init_time
-            ), "Time value does not match load in value"
+            if tVec[self.load_init_idx] != self.load_init_time:
+                if self.load_init_time in tVec:
+                    init_idx = np.nonzero(np.array(tVec) == self.load_init_time)[0]
+                    assert len(init_idx) == 1, "t values must be unique in xdmf file"
+                    init_idx = init_idx[0]
+                else:
+                    assert np.isclose(
+                        tVec[self.load_init_idx], self.load_init_time
+                    ), "Time vector does not contain load in value"
+            else:
+                init_idx = self.load_init_idx
 
             cur_file = d.HDF5File(self.parent_mesh.mpi_comm, h5Cur, "r")
-            if not cur_file.has_dataset(f"VisualisationVector/{self.load_init_idx}"):
+            if not cur_file.has_dataset(f"VisualisationVector/{init_idx}"):
                 raise TypeError(
                     f"Unable to read initial condition for {sp.name} from file {str(unew)}"
                 )
             start_vec = d.Vector()
-            cur_file.read(start_vec, f"VisualisationVector/{self.load_init_idx}", True)
+            cur_file.read(start_vec, f"VisualisationVector/{init_idx}", True)
             cur_file.close()
             vec = self.cc[sp.compartment_name].u[ukey].vector()
             orig_vals = vec.get_local()
@@ -2199,3 +2264,37 @@ class Model:
         #     dt_scale = min(dt_scale * 0.8, 0.8)
         dt_cur = float(self.dt) * dt_scale
         self.set_dt(dt_cur)
+
+    def load_vector(self, h5_file, tVec):
+        with d.HDF5File(self.parent_mesh.mpi_comm, h5_file, "r") as cur_file:
+            # Find index associated with the starting time
+            if np.any(np.isclose(tVec, float(self.t))):
+                vec_new = d.Vector()
+                idx1 = np.nonzero(np.isclose(tVec, float(self.t)))[0][0]
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            elif self.t > tVec[-1]:  # then starting after final time in the xdmf file
+                logger.warning(
+                    f"File {str(h5_file)} ends before current time {self.t}"
+                    "Using final time point in file instead."
+                )
+                vec_new = d.Vector()
+                idx1 = len(tVec) - 1
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            elif self.t < tVec[0]:  # then starting before initial time in xdmf file
+                logger.warning(
+                    f"File {str(h5_file)} starts after current time {self.t}"
+                    "Using initial time point in file instead."
+                )
+                vec_new = d.Vector()
+                idx1 = 0
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            else:  # then in between two times in the xdmf file
+                vec1 = d.Vector()
+                vec2 = d.Vector()
+                idx1 = np.nonzero(tVec < float(self.t))[0][-1]
+                idx2 = np.nonzero(tVec > float(self.t))[0][0]
+                cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
+                cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
+                vec_new = (vec1 + vec2) / 2
+            cur_file.close()
+        return vec_new

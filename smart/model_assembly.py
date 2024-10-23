@@ -63,6 +63,7 @@ class ParameterType(str, Enum):
     from_file = "from_file"
     constant = "constant"
     expression = "expression"
+    from_xdmf = "from_xdmf"
 
 
 class InvalidObjectException(Exception):
@@ -565,6 +566,28 @@ class Parameter(ObjectInstance):
         use_preintegration (optional):  use preintegration in solution process if
                                      "use_preintegration" is true (defaults to false),
                                      uses sci.integrate.cumtrapz for numerical integration
+
+    To load a space-dependent parameter over time from an .xdmf file, call:
+
+    .. code:: python
+
+        param_var = Parameter.from_file(
+            name, xdmf_file, unit, compartment, group (opt),
+            notes (opt), use_preintegration (opt)
+        )
+        from_xdmf(
+        cls, name, xdmf_file, unit, compartment, group="", notes="", use_preintegration=False
+    ):
+
+    Inputs are the same as described above, except:
+
+    Args:
+        xdmf_file: name of the xdmf file with parameters saved at multiple time points
+                    (linked to an hdf5 file), saved using dolfin.XDMFFile.write()
+        compartment: string matching the compartment associated with the saved xdmf.
+                     In the current implementation, dimensions must match exactly.
+        use_preintegration: will always be set to false, not implemented for this case yet
+
     """
 
     name: str
@@ -574,6 +597,11 @@ class Parameter(ObjectInstance):
     notes: str = ""
     use_preintegration: bool = False
     sym_expr: Union[str, sym.core.Expr] = ""
+    xdmf_file: Union[str, Path] = ""
+    h5_file: Union[str, Path] = ""
+    is_time_dependent: bool = False
+    is_space_dependent: bool = False
+    compartment: str = ""
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -644,11 +672,61 @@ class Parameter(ObjectInstance):
         parameter.sampling_file = sampling_file
         parameter.sampling_data = sampling_data
         parameter.is_time_dependent = True
-        parameter.is_space_dependent = False  # not supported yet
+        parameter.is_space_dependent = False
         parameter.type = ParameterType.from_file
         parameter.__post_init__()
         logger.info(
             f"Time-dependent parameter {name} loaded from file.",
+            extra=dict(format_type="log"),
+        )
+
+        return parameter
+
+    @classmethod
+    def from_xdmf(
+        cls, name, xdmf_file, unit, compartment, group="", notes="", use_preintegration=False
+    ):
+        """ "
+        Data read in from an xdmf/h5 file pairing
+        """
+        if isinstance(xdmf_file, str):
+            xdmf_file = Path(xdmf_file)
+        assert xdmf_file.is_file(), f"{str(xdmf_file)} could not be found to load parameter"
+
+        logger.debug(f"Loading initial condition for {name} from file")
+        if xdmf_file.suffix == ".xdmf" and xdmf_file.with_suffix(".h5").exists():
+            xdmfCur = str(xdmf_file)
+            h5Cur = xdmfCur[0:-4] + "h5"
+        else:
+            raise TypeError(f"{str(xdmf_file)} cannot be used for loading parameter, must be xdmf")
+
+        # load in xdmf file
+        logger.info(f"Loading in data for parameter {name}", extra=dict(format_type="log"))
+
+        if use_preintegration:
+            logger.warning(
+                f"Setting use_preintegration to False for parameter {name}."
+                "Not currently implemented for parameters loaded from xdmf"
+            )
+            use_preintegration = False
+        parameter = cls(
+            name,
+            0.0,
+            unit,
+            group=group,
+            notes=notes,
+            use_preintegration=use_preintegration,
+        )
+        parameter.compartment = compartment
+        # initialize instance
+        parameter.xdmf_file = xdmfCur
+        parameter.h5_file = h5Cur
+        parameter.is_time_dependent = True
+        parameter.is_space_dependent = True
+        parameter.type = ParameterType.from_xdmf
+        parameter.__post_init__()
+        logger.info(
+            f"Parameter {name} linked to xdmf file.",
             extra=dict(format_type="log"),
         )
 
@@ -697,8 +775,7 @@ class Parameter(ObjectInstance):
 
         if is_time_dependent and not is_space_dependent:
             value = float(sym_expr.subs({"t": 0.0}))
-
-        if is_space_dependent:
+        else:
             dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=3)
             value = float(sym_expr.subs({"t": 0.0, "x[0]": 0.0, "x[1]": 0.0, "x[2]": 0.0}))
 
@@ -770,7 +847,9 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if hasattr(self, "dolfin_expression"):
+        if self.type == ParameterType.from_xdmf:
+            return self.dolfin_function * self.unit
+        elif hasattr(self, "dolfin_expression"):
             return self.dolfin_expression * self.unit
         else:
             return self.dolfin_constant * self.unit
@@ -782,7 +861,9 @@ class Parameter(ObjectInstance):
 
     @property
     def print_val(self):
-        if self.sym_expr == "":
+        if self.type == ParameterType.from_xdmf:
+            return str(self.xdmf_file) * self.unit
+        elif self.sym_expr == "":
             self._print_val = self.value * self.unit
         else:
             self._print_val = str(self.sym_expr) * self.unit
@@ -792,7 +873,15 @@ class Parameter(ObjectInstance):
         """Confirm that time-dependent parameter is defined in terms of time"""
         if self.is_time_dependent:
             if all(
-                [x in ("", None) for x in [self.sampling_file, self.sym_expr, self.preint_sym_expr]]
+                [
+                    x in ("", None)
+                    for x in [
+                        self.sampling_file,
+                        self.sym_expr,
+                        self.preint_sym_expr,
+                        self.xdmf_file,
+                    ]
+                ]
             ):
                 raise ValueError(
                     f"Parameter {self.name} is marked as time dependent "
@@ -920,7 +1009,7 @@ class Species(ObjectInstance):
         elif isinstance(self.initial_condition, Path):
             pass  # keep as path
         else:
-            raise TypeError("initial_condition must be a float or string.")
+            raise TypeError("initial_condition must be a float or string or path.")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
@@ -965,7 +1054,10 @@ class Species(ObjectInstance):
 
     @property
     def initial_condition_quantity(self):
-        self._Initial_Concentration = self.initial_condition * self.concentration_units
+        if isinstance(self.initial_condition, Path):
+            self._Initial_Concentration = "from file"
+        else:
+            self._Initial_Concentration = self.initial_condition * self.concentration_units
         return self._Initial_Concentration
 
     @property
@@ -1576,7 +1668,7 @@ class Flux(ObjectInstance):
         # The expected units
         if self.is_boundary_condition:
             self._expected_flux_units = (
-                1.0 * concentration_units / compartment_units * diffusion_units
+                1.0 * (concentration_units / compartment_units) * diffusion_units
             )  # ~D*du/dn
         else:
             self._expected_flux_units = 1.0 * concentration_units / unit.s  # rhs term. ~du/dt
@@ -1669,7 +1761,7 @@ class Flux(ObjectInstance):
         variables.update({"unit_scale_factor": self.unit_scale_factor})
         free_symbols = [str(x) for x in self.equation.free_symbols]
         if "curv" in free_symbols:
-            self.curv = self.surface.curv_func * unit.dimensionless
+            self.curv = self.surface.curv_func / self.surface.compartment_units
             variables.update({"curv": self.curv})
         return variables
 
