@@ -64,6 +64,7 @@ class ParameterType(str, Enum):
     constant = "constant"
     expression = "expression"
     from_xdmf = "from_xdmf"
+    mesh_quantity = "mesh_quantity"
 
 
 class InvalidObjectException(Exception):
@@ -602,6 +603,7 @@ class Parameter(ObjectInstance):
     is_time_dependent: bool = False
     is_space_dependent: bool = False
     compartment: str = ""
+    mesh_quantity: bool = False
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -732,6 +734,36 @@ class Parameter(ObjectInstance):
         return parameter
 
     @classmethod
+    def mesh_quantity(
+        cls, name, init_val, unit, compartment, group="", notes="", use_preintegration=False
+    ):
+        """ "
+        Initialize as a generic dolfin function over the mesh.
+        """
+        logger.debug(f"Initializing parameter {name} as mesh quantity")
+        if use_preintegration:
+            logger.warning(
+                f"Setting use_preintegration to False for parameter {name}."
+                "Not currently implemented for parameters given as mesh quantities"
+            )
+            use_preintegration = False
+        parameter = cls(
+            name,
+            init_val,
+            unit,
+            group=group,
+            notes=notes,
+            use_preintegration=use_preintegration,
+        )
+        parameter.compartment = compartment
+        # initialize instance
+        parameter.is_time_dependent = False
+        parameter.is_space_dependent = True
+        parameter.type = ParameterType.mesh_quantity
+        parameter.__post_init__()
+        return parameter
+
+    @classmethod
     def from_expression(
         cls,
         name,
@@ -846,7 +878,7 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if self.type == ParameterType.from_xdmf:
+        if self.type == ParameterType.from_xdmf or self.type == ParameterType.mesh_quantity:
             return self.dolfin_function * self.unit
         elif hasattr(self, "dolfin_expression"):
             return self.dolfin_expression * self.unit
