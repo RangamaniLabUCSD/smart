@@ -1135,12 +1135,14 @@ class Compartment(ObjectInstance):
         dimensionality: topological dimensionality (e.g. 3 for volume, 2 for surface)
         compartment_units: length units for the compartment
         cell_marker: marker value identifying the compartment in the parent mesh
+        vel: string expression for advective velocity field within compartment
     """
 
     name: str
     dimensionality: int
     compartment_units: pint.Unit
     cell_marker: Any
+    vel: Union[str, float] = 0.0
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1170,6 +1172,8 @@ class Compartment(ObjectInstance):
         self._usplit = dict()
         self.V = None
         self.v = None
+        self.vel_expr = None
+        self.vel_func = None
 
     def check_validity(self):
         """

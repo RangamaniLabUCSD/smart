@@ -1035,6 +1035,25 @@ class Model:
                     new_vals = vec_new[mesh_map]  # reorder to match dof ordering
                 vec.set_local(new_vals)
                 vec.apply("insert")
+        for compartment in self._active_compartments:
+            # if vel is string, generate expr for advection
+            if compartment.vel != 0:
+                x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+                vel_expr = [None] * len(compartment.vel)
+                # then this needs to have free symbols inserted
+                for i in range(len(compartment.vel)):
+                    vel_str = compartment.vel[i]
+                    # Parse the given string to create a sympy expression
+                    sym_expr = parse_expr(vel_str).subs({"x": x, "y": y, "z": z, "t": self.t})
+                    free_symbols = [str(x) for x in sym_expr.free_symbols]
+                    if not {"x[0]", "x[1]", "x[2]"}.issuperset(free_symbols):
+                        # could add other keywords for spatial dependence in the future
+                        raise NotImplementedError
+                    else:
+                        vel_expr[i] = sym.printing.ccode(sym_expr)
+                compartment.vel_expr = d.Expression(vel_expr, degree=1)
+                V_vector = d.VectorFunctionSpace(compartment.dolfin_mesh, "P", 1)
+                compartment.vel_func = d.interpolate(compartment.vel_expr, V_vector)
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -1110,20 +1129,79 @@ class Model:
                     extra=dict(format_type="log"),
                 )
             else:
-                D_constant = d.Constant(D, name=f"D_{species.name}")
-                if self.config.flags["axisymmetric_model"]:
-                    Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
+                lagrange = True
+                if lagrange and species.compartment.vel != 0:  # then nonzero advection
+                    # alt Lagrangian form
+                    D_constant = d.Constant(D, name=f"D_{species.name}")
+                    vel = species.compartment.vel_func
+                    udef = vel * d.Constant(self.t - self.tvec[0])
+                    F = d.Identity(3) + d.grad(udef)
+                    J = d.det(F)
+                    if self.config.flags["axisymmetric_model"]:
+                        Dform = (
+                            x[0]
+                            * D_constant
+                            * J
+                            * d.inner(d.dot(d.inv(F.T), d.grad(u)), d.dot(d.inv(F.T), d.grad(v)))
+                            * dx
+                        )
+                    else:
+                        Dform = (
+                            D_constant
+                            * J
+                            * d.inner(d.dot(d.inv(F.T), d.grad(u)), d.dot(d.inv(F.T), d.grad(v)))
+                            * dx
+                        )
+                    self.forms.add(
+                        Form(
+                            f"diffusion_{species.name}",
+                            Dform,
+                            species,
+                            "diffusion",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                        )
+                    )
                 else:
-                    Dform = D_constant * d.inner(d.grad(u), d.grad(v)) * dx
-                # exponent is -2 because of two gradients
+                    D_constant = d.Constant(D, name=f"D_{species.name}")
+                    if self.config.flags["axisymmetric_model"]:
+                        Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
+                    else:
+                        Dform = D_constant * d.inner(d.grad(u), d.grad(v)) * dx
+                    # exponent is -2 because of two gradients
 
+                    self.forms.add(
+                        Form(
+                            f"diffusion_{species.name}",
+                            Dform,
+                            species,
+                            "diffusion",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                        )
+                    )
+
+            if species.compartment.vel != 0:  # then nonzero advection
+                vel = species.compartment.vel_func
+                if lagrange:
+                    if self.config.flags["axisymmetric_model"]:
+                        Aform = J * x[0] * (u * v * d.inner(d.inv(F), d.grad(vel)) * dx)
+                    else:
+                        Aform = J * u * v * d.inner(d.inv(F), d.grad(vel)) * dx
+                else:
+                    if self.config.flags["axisymmetric_model"]:
+                        Aform = x[0] * (u * v * d.div(vel) * dx + d.inner(v * vel, d.grad(u)))
+                    else:
+                        Aform = u * v * d.div(vel) * dx + d.inner(v * vel, d.grad(u)) * dx
                 self.forms.add(
                     Form(
-                        f"diffusion_{species.name}",
-                        Dform,
+                        f"advection_{species.name}",
+                        Aform,
                         species,
-                        "diffusion",
-                        Dform_units,
+                        "advection",
+                        mass_form_units,
                         True,
                         linear_wrt_comp,
                     )
