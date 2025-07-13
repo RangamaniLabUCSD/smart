@@ -719,6 +719,143 @@ def create_cylinders(
     return (dmesh, mf2, mf3)
 
 
+def create_multicell(
+    cubeSize: float = 100.0,
+    locVec: list = [[0, 0, 0]],
+    cellRad: float = 10.0,
+    hCube: float = 0,
+    hCell: float = 0,
+    interface_marker: int = 12,
+    outer_marker: int = 10,
+    extracell_tag: int = 2,
+    cell_vol_tag: int = 1,
+    comm: MPI.Comm = d.MPI.comm_world,
+    verbose: bool = False,
+) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+    """
+    Creates a mesh with an outer cube containing embedded cells at specified locations.
+    Args:
+        cubeSize: Length of cube sides
+        locVec: vector of cell locations
+        hCube: maximum mesh size for cube
+        hCell: maximum mesh size for cell surfaces
+        interface_marker: The value to mark facets on the interface with
+        outer_marker: The value to mark facets on the outer ellipsoid with
+        inner_vol_tag: The value to mark the inner spherical volume with
+        outer_vol_tag: The value to mark the outer spherical volume with
+        comm: MPI communicator to create the mesh with
+        verbose: If true print gmsh output, else skip
+    Returns:
+        A triplet (mesh, facet_marker, cell_marker)
+    """
+    import gmsh
+
+    if np.isclose(cubeSize, 0):
+        ValueError("Outer cube size is equal to zero")
+    if np.isclose(hCube, 0):
+        hCube = 0.1 * max(cubeSize)
+    if np.isclose(hCell, 0):
+        hCell = 0.2 * cubeSize if np.isclose(cellRad, 0) else 0.2 * cellRad
+    # if innerRad > outerRad or innerLength >= outerLength:
+    #     ValueError("Inner cylinder does not fit inside outer cylinder")
+    # Create the two cylinder mesh using gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+
+    gmsh.model.add("multicell")
+    # first add outer cube
+    cube = gmsh.model.occ.addBox(
+        -cubeSize / 2, -cubeSize / 2, -cubeSize / 2, cubeSize, cubeSize, cubeSize
+    )
+    if np.isclose(cellRad, 0):
+        # Just a cube!
+        gmsh.model.occ.synchronize()
+        gmsh.model.add_physical_group(3, [cube], tag=extracell_tag)
+        facets = gmsh.model.getBoundary([(3, cube)])
+        gmsh.model.add_physical_group(2, [facets[0][1]], tag=outer_marker)
+    else:
+        # Add cells
+        cell_list = []
+        for i in range(len(locVec)):
+            cur_tag = gmsh.model.occ.addSphere(locVec[i][0], locVec[i][1], locVec[i][2], cellRad)
+            cell_list.append((3, cur_tag))
+        # Create interface between cells and extracell
+        full_geo, maps = gmsh.model.occ.fragment([(3, cube)], cell_list)
+        cube_map = maps[0]
+        cell_maps = maps[1:]
+        gmsh.model.occ.synchronize()
+
+        # Get the outer boundary
+        outer_shells = gmsh.model.getBoundary(full_geo, oriented=False)
+        # Get the inner boundary
+        inner_shells = []
+        for i in range(len(cell_maps)):
+            inner_shells.append(gmsh.model.getBoundary(cell_maps[i], oriented=False))
+        # Add physical markers for facets
+        gmsh.model.add_physical_group(2, [faces[1] for faces in outer_shells], tag=outer_marker)
+        gmsh.model.add_physical_group(
+            2, [faces[0][1] for faces in inner_shells], tag=interface_marker
+        )
+
+        # Physical markers for
+        all_volumes = [tag[1] for tag in cube_map]
+        inner_volume = [tag[0][1] for tag in cell_maps]
+        outer_volume = []
+        for vol in all_volumes:
+            if vol not in inner_volume:
+                outer_volume.append(vol)
+        gmsh.model.add_physical_group(3, outer_volume, tag=extracell_tag)
+        gmsh.model.add_physical_group(3, inner_volume, tag=cell_vol_tag)
+
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
+        # or set when calling function) and hInnerEdge at the ERM
+        # (defaults to 0.2*innerRad, or set when calling function)
+        # between these, the value is interpolated based on r (polar coord),
+        # and inside the value is interpolated between hInnerEdge and 0.2*innerRad
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*outerRad in the center
+
+        if np.isclose(cellRad, 0):
+            return hCube
+        cell_locs = np.sqrt(
+            (x - np.array(locVec)[:, 0]) ** 2
+            + (y - np.array(locVec)[:, 1]) ** 2
+            + (z - np.array(locVec)[:, 2]) ** 2
+        )
+        closest_cell = min(cell_locs)
+        cellWeight = np.exp(-(closest_cell - cellRad) / (0.2 * cellRad))
+        if closest_cell < cellRad:
+            return hCell
+        else:
+            return hCell * cellWeight + hCube * (1 - cellWeight)
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+    gmsh.model.mesh.generate(3)
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_extracell_{cubeSize}_{cellRad}_{rank}")
+    tmp_folder.mkdir(exist_ok=True)
+    gmsh_file = tmp_folder / "extracell.msh"
+    gmsh.write(str(gmsh_file))
+    gmsh.finalize()
+
+    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3, comm)
+    # remove tmp mesh and tmp folder
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir()
+    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    return (dmesh, mf2, mf3)
+
+
 def create_ellipses(
     xrad_outer: float = 3.0,
     yrad_outer: float = 1.0,
@@ -1547,11 +1684,11 @@ def create_2Dcell_xy(
     gmsh.finalize()
 
     # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
-    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 2, comm)
+    dmesh, mf1, mf2 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 2, comm)
     # remove tmp mesh and tmp folder
     gmsh_file.unlink(missing_ok=False)
     tmp_folder.rmdir()
-    # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
+    # return dolfin mesh, mf1 (1d tags) and mf2 (2d tags)
     if return_curvature:
         if innerExpr == "":
             facet_list = [outer_marker]
@@ -1560,7 +1697,7 @@ def create_2Dcell_xy(
             facet_list = [outer_marker, interface_marker]
             cell_list = [outer_tag, inner_tag]
         if half_cell_with_curvature:  # will likely not work in parallel...
-            dmesh_half, mf2_half, mf3_half = create_2Dcell(
+            dmesh_half, mf1_half, mf2_half = create_2Dcell(
                 outerExpr,
                 innerExpr,
                 hEdge,
@@ -1575,14 +1712,14 @@ def create_2Dcell_xy(
                 return_curvature=False,
             )
             kappa_mf = compute_curvature(
-                dmesh, mf2, mf3, facet_list, cell_list, half_mesh_data=(dmesh_half, mf2_half)
+                dmesh, mf1, mf2, facet_list, cell_list, half_mesh_data=(dmesh_half, mf1_half)
             )
-            (dmesh, mf2, mf3) = (dmesh_half, mf2_half, mf3_half)
+            (dmesh, mf1, mf2) = (dmesh_half, mf1_half, mf2_half)
         else:
-            kappa_mf = compute_curvature(dmesh, mf2, mf3, facet_list, cell_list)
-        return (dmesh, mf2, mf3, kappa_mf)
+            kappa_mf = compute_curvature(dmesh, mf1, mf2, facet_list, cell_list)
+        return (dmesh, mf1, mf2, kappa_mf)
     else:
-        return (dmesh, mf2, mf3)
+        return (dmesh, mf1, mf2)
 
 
 def gmsh_to_dolfin(
