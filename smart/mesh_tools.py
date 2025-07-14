@@ -721,14 +721,18 @@ def create_cylinders(
 
 def create_multicell(
     cubeSize: float = 100.0,
-    locVec: list = [[0, 0, 0]],
-    cellRad: float = 10.0,
+    locVec1: list = [[0, 0, 0]],
+    locVec2: list = [],
+    cellRad1: float = 10.0,
+    cellRad2: float = 10.0,
     hCube: float = 0,
     hCell: float = 0,
-    interface_marker: int = 12,
+    interface_marker1: int = 11,
+    interface_marker2: int = 12,
     outer_marker: int = 10,
-    extracell_tag: int = 2,
-    cell_vol_tag: int = 1,
+    extracell_tag: int = 1,
+    cell_vol_tag1: int = 2,
+    cell_vol_tag2: int = 3,
     comm: MPI.Comm = d.MPI.comm_world,
     verbose: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
@@ -755,7 +759,7 @@ def create_multicell(
     if np.isclose(hCube, 0):
         hCube = 0.1 * max(cubeSize)
     if np.isclose(hCell, 0):
-        hCell = 0.2 * cubeSize if np.isclose(cellRad, 0) else 0.2 * cellRad
+        hCell = 0.2 * cubeSize if np.isclose(cellRad1, 0) else 0.2 * cellRad1
     # if innerRad > outerRad or innerLength >= outerLength:
     #     ValueError("Inner cylinder does not fit inside outer cylinder")
     # Create the two cylinder mesh using gmsh
@@ -767,7 +771,9 @@ def create_multicell(
     cube = gmsh.model.occ.addBox(
         -cubeSize / 2, -cubeSize / 2, -cubeSize / 2, cubeSize, cubeSize, cubeSize
     )
-    if np.isclose(cellRad, 0):
+    if (np.isclose(cellRad1, 0) or len(locVec1) == 0) and (
+        np.isclose(cellRad2, 0) or len(locVec2) == 0
+    ):
         # Just a cube!
         gmsh.model.occ.synchronize()
         gmsh.model.add_physical_group(3, [cube], tag=extracell_tag)
@@ -776,8 +782,17 @@ def create_multicell(
     else:
         # Add cells
         cell_list = []
-        for i in range(len(locVec)):
-            cur_tag = gmsh.model.occ.addSphere(locVec[i][0], locVec[i][1], locVec[i][2], cellRad)
+        # first add source cell(s)
+        for i in range(len(locVec1)):
+            cur_tag = gmsh.model.occ.addSphere(
+                locVec1[i][0], locVec1[i][1], locVec1[i][2], cellRad1
+            )
+            cell_list.append((3, cur_tag))
+        # now add additional cells
+        for i in range(len(locVec2)):
+            cur_tag = gmsh.model.occ.addSphere(
+                locVec2[i][0], locVec2[i][1], locVec2[i][2], cellRad2
+            )
             cell_list.append((3, cur_tag))
         # Create interface between cells and extracell
         full_geo, maps = gmsh.model.occ.fragment([(3, cube)], cell_list)
@@ -788,24 +803,32 @@ def create_multicell(
         # Get the outer boundary
         outer_shells = gmsh.model.getBoundary(full_geo, oriented=False)
         # Get the inner boundary
-        inner_shells = []
-        for i in range(len(cell_maps)):
-            inner_shells.append(gmsh.model.getBoundary(cell_maps[i], oriented=False))
+        inner_shells1 = []
+        inner_shells2 = []
+        for i in range(0, len(locVec1)):
+            inner_shells1.append(gmsh.model.getBoundary(cell_maps[i], oriented=False))
+        for i in range(len(locVec1), len(cell_maps)):
+            inner_shells2.append(gmsh.model.getBoundary(cell_maps[i], oriented=False))
         # Add physical markers for facets
         gmsh.model.add_physical_group(2, [faces[1] for faces in outer_shells], tag=outer_marker)
         gmsh.model.add_physical_group(
-            2, [faces[0][1] for faces in inner_shells], tag=interface_marker
+            2, [faces[0][1] for faces in inner_shells1], tag=interface_marker1
+        )
+        gmsh.model.add_physical_group(
+            2, [faces[0][1] for faces in inner_shells2], tag=interface_marker2
         )
 
         # Physical markers for
         all_volumes = [tag[1] for tag in cube_map]
-        inner_volume = [tag[0][1] for tag in cell_maps]
+        inner_volumes1 = [tag[0][1] for tag in cell_maps[0 : len(locVec1)]]
+        inner_volumes2 = [tag[0][1] for tag in cell_maps[len(locVec1) :]]
         outer_volume = []
         for vol in all_volumes:
-            if vol not in inner_volume:
+            if (vol not in inner_volumes1) and (vol not in inner_volumes2):
                 outer_volume.append(vol)
         gmsh.model.add_physical_group(3, outer_volume, tag=extracell_tag)
-        gmsh.model.add_physical_group(3, inner_volume, tag=cell_vol_tag)
+        gmsh.model.add_physical_group(3, inner_volumes1, tag=cell_vol_tag1)
+        gmsh.model.add_physical_group(3, inner_volumes2, tag=cell_vol_tag2)
 
     def meshSizeCallback(dim, tag, x, y, z, lc):
         # mesh length is hEdge at the PM (defaults to 0.1*outerRad,
@@ -816,18 +839,44 @@ def create_multicell(
         # if innerRad=0, then the mesh length is interpolated between
         # hEdge at the PM and 0.2*outerRad in the center
 
-        if np.isclose(cellRad, 0):
+        if (np.isclose(cellRad1, 0) or len(locVec1) == 0) and (
+            np.isclose(cellRad2, 0) or len(locVec2) == 0
+        ):
             return hCube
-        cell_locs = np.sqrt(
-            (x - np.array(locVec)[:, 0]) ** 2
-            + (y - np.array(locVec)[:, 1]) ** 2
-            + (z - np.array(locVec)[:, 2]) ** 2
-        )
-        closest_cell = min(cell_locs)
-        cellWeight = np.exp(-(closest_cell - cellRad) / (0.2 * cellRad))
-        if closest_cell < cellRad:
+        elif np.isclose(cellRad1, 0) or len(locVec1) == 0:
+            cell_locs1 = [np.inf]
+            cell_locs2 = np.sqrt(
+                (x - np.array(locVec2)[:, 0]) ** 2
+                + (y - np.array(locVec2)[:, 1]) ** 2
+                + (z - np.array(locVec2)[:, 2]) ** 2
+            )
+        elif np.isclose(cellRad2, 0) or len(locVec2) == 0:
+            cell_locs1 = np.sqrt(
+                (x - np.array(locVec1)[:, 0]) ** 2
+                + (y - np.array(locVec1)[:, 1]) ** 2
+                + (z - np.array(locVec1)[:, 2]) ** 2
+            )
+            cell_locs2 = [np.inf]
+        else:
+            cell_locs1 = np.sqrt(
+                (x - np.array(locVec1)[:, 0]) ** 2
+                + (y - np.array(locVec1)[:, 1]) ** 2
+                + (z - np.array(locVec1)[:, 2]) ** 2
+            )
+            cell_locs2 = np.sqrt(
+                (x - np.array(locVec2)[:, 0]) ** 2
+                + (y - np.array(locVec2)[:, 1]) ** 2
+                + (z - np.array(locVec2)[:, 2]) ** 2
+            )
+        closest_cell1 = min(cell_locs1)
+        closest_cell2 = min(cell_locs2)
+        if (closest_cell1 < cellRad1) or (closest_cell2 < cellRad2):
             return hCell
         else:
+            if closest_cell1 < closest_cell2:
+                cellWeight = np.exp(-(closest_cell1 - cellRad1) / (0.2 * cellRad1))
+            else:
+                cellWeight = np.exp(-(closest_cell2 - cellRad2) / (0.2 * cellRad2))
             return hCell * cellWeight + hCube * (1 - cellWeight)
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
@@ -841,7 +890,7 @@ def create_multicell(
 
     gmsh.model.mesh.generate(3)
     rank = MPI.COMM_WORLD.rank
-    tmp_folder = pathlib.Path(f"tmp_extracell_{cubeSize}_{cellRad}_{rank}")
+    tmp_folder = pathlib.Path(f"tmp_extracell_{cubeSize}_{cellRad1}_{cellRad2}_{rank}")
     tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "extracell.msh"
     gmsh.write(str(gmsh_file))
