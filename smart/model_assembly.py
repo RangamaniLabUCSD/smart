@@ -775,7 +775,9 @@ class Parameter(ObjectInstance):
         if is_time_dependent and not is_space_dependent:
             value = float(sym_expr.subs({"t": 0.0}))
         else:
-            dolfin_expression = d.Expression(sym.printing.ccode(sym_expr), t=0.0, degree=3)
+            c_code = sym.printing.ccode(sym_expr)
+            c_code = c_code.replace("log(", "std::log(")
+            dolfin_expression = d.Expression(c_code, t=0.0, degree=3)
             value = float(sym_expr.subs({"t": 0.0, "x[0]": 0.0, "x[1]": 0.0, "x[2]": 0.0}))
 
         parameter = cls(
@@ -1002,9 +1004,9 @@ class Species(ObjectInstance):
                     f"Creating dolfin object for space-dependent initial condition {self.name}",
                     extra=dict(format_type="log"),
                 )
-                self.initial_condition_expression = d.Expression(
-                    sym.printing.ccode(sym_expr), degree=1
-                )
+                c_code = sym.printing.ccode(sym_expr)
+                c_code = c_code.replace("log(", "std::log(")
+                self.initial_condition_expression = d.Expression(c_code, degree=1)
         elif isinstance(self.initial_condition, Path):
             pass  # keep as path
         else:
