@@ -1035,6 +1035,17 @@ class Model:
                     new_vals = vec_new[mesh_map]  # reorder to match dof ordering
                 vec.set_local(new_vals)
                 vec.apply("insert")
+            elif parameter.type == ParameterType.mesh_quantity:
+                if parameter.compartment not in self.cc.keys:
+                    raise ValueError(
+                        f"Compartment name {parameter.compartment} for parameter"
+                        f"{parameter.name} does not match a known compartment"
+                    )
+                V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
+                parameter.dolfin_function = d.Function(V_cur)
+                parameter.dolfin_function.vector()[:] = parameter.value
+                parameter.dolfin_function.vector().apply("insert")
+
         for compartment in self._active_compartments:
             # if vel is string, generate expr for advection
             compartment.vel_logic = np.any([vel != 0.0 for vel in compartment.vel])
