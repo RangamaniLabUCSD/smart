@@ -1098,7 +1098,21 @@ class Model:
                 compartment.deform_func = d.interpolate(compartment.deform_expr, V_vector)
                 compartment.deform_prev = d.interpolate(compartment.deform_expr, V_vector)
                 if not compartment.is_volume:  # then is a surface and must compute normals
-                    mesh_ref = compartment.mesh.parent_mesh.dolfin_mesh
+                    surf_coords = compartment.dolfin_mesh.coordinates()
+                    for c in self.cc:  # find an adjacent volume!
+                        if c.is_volume:
+                            mesh_test = c.dolfin_mesh
+                            test_coords = mesh_test.coordinates()
+                            adjacent = True
+                            for i in range(len(surf_coords)):
+                                if surf_coords[i] not in test_coords:
+                                    adjacent = False
+                                    break
+                            if adjacent:
+                                mesh_ref = mesh_test
+                                break
+                    if not adjacent:
+                        raise ValueError("Could not find an adjacent volume to compute normals!")
                     ref_normals = d.FacetNormal(mesh_ref)
                     Vcur = d.VectorFunctionSpace(mesh_ref, "P", 1)
                     ucur = d.TrialFunction(Vcur)
@@ -1260,7 +1274,7 @@ class Model:
                 )
             elif species.compartment.vel_logic:  # then nonzero advection
                 vel = species.compartment.vel_func
-                Aform = J * u * v * d.div(vel) * dx + d.inner(v * vel, d.grad(u)) * dx
+                Aform = J * u * v * d.div(vel) * dx + J * d.inner(v * vel, d.grad(u)) * dx
                 self.forms.add(
                     Form(
                         f"advection_{species.name}",
@@ -2000,7 +2014,7 @@ class Model:
                 compartment.vel_func.assign(d.interpolate(compartment.vel_expr, Vcur))
             elif compartment.deform_logic and not compartment.manual_update:
                 Vcur = compartment.deform_func.function_space()
-                compartment.deform_prev.assign(compartment.deform_func.copy())
+                compartment.deform_prev.assign(compartment.deform_func.copy(deepcopy=True))
                 compartment.deform_func.assign(d.interpolate(compartment.deform_expr, Vcur))
 
         # Update time dependent parameters

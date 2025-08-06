@@ -1179,8 +1179,8 @@ class Compartment(ObjectInstance):
     cell_marker: Any
     # vel: Union[list[str], list[float]] = [0.0, 0.0, 0.0]
     # deform: Union[list[str], list[float]] = [0.0, 0.0, 0.0]
-    vel: list = dataclass.field(default_factory=lambda: [0.0, 0.0, 0.0])
-    deform: list = dataclass.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
     manual_update: bool = False
 
     def to_dict(self):
@@ -1905,7 +1905,8 @@ class Flux(ObjectInstance):
                 or np.any([source.deform_logic for source in source_list])
                 or self.surface.deform_logic
             ):
-                raise ValueError("Deformation must be continuous across interface")
+                logger.warning("FIX: Ensure that deformation must be continuous across interface")
+                self.integral_factor = d.Expression("1.0", degree=1)
             else:
                 self.integral_factor = d.Expression("1.0", degree=1)
 
