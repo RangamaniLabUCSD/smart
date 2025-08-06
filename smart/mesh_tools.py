@@ -805,7 +805,15 @@ def create_multicell(
                 raise ValueError("Radii must be floats or lists of 3 floats")
 
             cur_tag = gmsh.model.occ.addSphere(locVec1[i][0], locVec1[i][1], locVec1[i][2], 1.0)
-            gmsh.model.occ.dilate([(3, cur_tag)], 0, 0, 0, cellRads[0], cellRads[1], cellRads[2])
+            gmsh.model.occ.dilate(
+                [(3, cur_tag)],
+                locVec1[i][0],
+                locVec1[i][1],
+                locVec1[i][2],
+                cellRads[0],
+                cellRads[1],
+                cellRads[2],
+            )
             cell_list.append((3, cur_tag))
             meanRad1 += np.mean(cellRads)
             cellRad1Vec.append(cellRads)
@@ -829,7 +837,15 @@ def create_multicell(
                 raise ValueError("Radii must be floats or lists of 3 floats")
 
             cur_tag = gmsh.model.occ.addSphere(locVec2[i][0], locVec2[i][1], locVec2[i][2], 1.0)
-            gmsh.model.occ.dilate([(3, cur_tag)], 0, 0, 0, cellRads[0], cellRads[1], cellRads[2])
+            gmsh.model.occ.dilate(
+                [(3, cur_tag)],
+                locVec2[i][0],
+                locVec2[i][1],
+                locVec2[i][2],
+                cellRads[0],
+                cellRads[1],
+                cellRads[2],
+            )
             cell_list.append((3, cur_tag))
             meanRad2 = np.mean(cellRads)
             cellRad2Vec.append(cellRads)
@@ -905,14 +921,14 @@ def create_multicell(
             cell_locs2 = [np.inf]
         else:
             cell_locs1 = np.sqrt(
-                ((x - np.array(locVec1)[:, 0]) / cellRad1Vec[:, 0]) ** 2
-                + ((y - np.array(locVec1)[:, 1]) / cellRad1Vec[:, 1]) ** 2
-                + ((z - np.array(locVec1)[:, 2]) / cellRad1Vec[:, 2]) ** 2
+                ((x - np.array(locVec1)[:, 0]) / np.array(cellRad1Vec)[:, 0]) ** 2
+                + ((y - np.array(locVec1)[:, 1]) / np.array(cellRad1Vec)[:, 1]) ** 2
+                + ((z - np.array(locVec1)[:, 2]) / np.array(cellRad1Vec)[:, 2]) ** 2
             )
             cell_locs2 = np.sqrt(
-                ((x - np.array(locVec2)[:, 0]) / cellRad2Vec[:, 0]) ** 2
-                + ((y - np.array(locVec2)[:, 1]) / cellRad2Vec[:, 1]) ** 2
-                + ((z - np.array(locVec2)[:, 2]) / cellRad2Vec[:, 2]) ** 2
+                ((x - np.array(locVec2)[:, 0]) / np.array(cellRad2Vec)[:, 0]) ** 2
+                + ((y - np.array(locVec2)[:, 1]) / np.array(cellRad2Vec)[:, 1]) ** 2
+                + ((z - np.array(locVec2)[:, 2]) / np.array(cellRad2Vec)[:, 2]) ** 2
             )
         closest_cell1 = min(cell_locs1)
         closest_cell2 = min(cell_locs2)
