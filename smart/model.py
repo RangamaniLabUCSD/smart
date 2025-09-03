@@ -756,14 +756,14 @@ class Model:
             if parameter.type == ParameterType.constant:
                 parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
             elif parameter.type == ParameterType.expression and parameter.is_space_dependent:
+                c_code = sym.printing.ccode(parameter.sym_expr)
+                c_code = c_code.replace("log(", "std::log(")
                 # use higher degree to avoid interpolation error
-                parameter.dolfin_expression = d.Expression(
-                    sym.printing.ccode(parameter.sym_expr), t=self.T, degree=3
-                )
+                parameter.dolfin_expression = d.Expression(c_code, t=self.T, degree=3)
             elif parameter.type == ParameterType.expression and not parameter.use_preintegration:
-                parameter.dolfin_expression = d.Expression(
-                    sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1
-                )
+                c_code = sym.printing.ccode(parameter.sym_expr)
+                c_code = c_code.replace("log(", "std::log(")
+                parameter.dolfin_expression = d.Expression(c_code, t=self.T, degree=1)
             elif parameter.type == ParameterType.expression and parameter.use_preintegration:
                 parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
             elif parameter.type == ParameterType.from_file:
@@ -1909,9 +1909,9 @@ class Model:
                         a = parameter.preint_sym_expr.subs({"t": tn}).evalf()
                         b = parameter.preint_sym_expr.subs({"t": t}).evalf()
                     if parameter.is_space_dependent:
-                        parameter.dolfin_expression = d.Expression(
-                            sym.printing.ccode((b - a) / dt), degree=3
-                        )
+                        c_code = sym.printing.ccode((b - a) / dt)
+                        c_code = c_code.replace("log(", "std::log(")
+                        parameter.dolfin_expression = d.Expression(c_code, degree=3)
                         logger.debug(
                             f"Time-dependent parameter {parameter_name} updated by "
                             f"pre-integrated expression",
@@ -2006,7 +2006,9 @@ class Model:
             else:
                 x = d.SpatialCoordinate(sp.compartment.dolfin_mesh)
                 curv = sp.compartment.curv_func
-                full_expr = d.Expression(sym.printing.ccode(sym_expr), curv=curv, degree=1)
+                c_code = sym.printing.ccode(sym_expr)
+                c_code = c_code.replace("log(", "std::log(")
+                full_expr = d.Expression(c_code, curv=curv, degree=1)
                 ufunc = d.interpolate(full_expr, sp.V)
                 d.assign(sp.u[ukey], ufunc)
         elif isinstance(unew, d.Expression):
