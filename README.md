@@ -19,6 +19,11 @@ framework for specifying reaction pathways, and supports large and irregular cel
 
 ## Installation
 
+SMART has been installed and tested on Linux for AMD, ARM, and x86_64 systems, primarily via Ubuntu 20.04 or 22.04.
+On Windows devices, we recommend using Windows Subsystem for Linux to run the provided docker image (see below).
+SMART has also been tested on Mac OS using docker.
+Installation using docker should take less than 30 minutes on a normal desktop computer.
+
 ### Using docker (recommended)
 The simplest way to use `fenics-smart` is to use the provided docker image. You can get this image by pulling it from the github registry
 ```

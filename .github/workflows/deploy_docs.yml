@@ -11,7 +11,6 @@ permissions:
   id-token: write
 
 jobs:
-
   # Build documentation/website. Will be downloaded in first step
   build-docs:
     uses: ./.github/workflows/build_docs.yml
@@ -21,8 +20,8 @@ jobs:
 
     # Allow one concurrent deployment
     concurrency:
-        group: "pages"
-        cancel-in-progress: true
+      group: "pages"
+      cancel-in-progress: true
 
     environment:
       name: github-pages
@@ -32,13 +31,13 @@ jobs:
     steps:
       - name: Download docs artifact
         # docs artifact is uploaded by build-docs job
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: documentation
           path: "./public"
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: "./public"
 
@@ -46,8 +45,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Pages
-        uses: actions/configure-pages@v3
+        uses: actions/configure-pages@v5
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4

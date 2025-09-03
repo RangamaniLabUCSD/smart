@@ -19,7 +19,7 @@ from tabulate import tabulate
 from scipy import integrate
 from sympy.utilities.lambdify import lambdify
 from pathlib import Path
-import re
+import xml.etree.ElementTree as ET
 
 try:
     from ufl_legacy.algorithms.ad import expand_derivatives
@@ -43,9 +43,11 @@ from .model_assembly import (
     ReactionContainer,
     Species,
     SpeciesContainer,
+    create_restriction,
     empty_sbmodel,
     ParameterType,
 )
+
 from .solvers import smartSNESProblem
 from .units import unit
 
@@ -228,8 +230,8 @@ class Model:
         self.final_t = self.rounded_decimal(self.config.solver["final_t"])
         assert self.config.solver["time_precision"] in range(1, 30)
 
-        self.T = d.Constant(self.t)
-        self.dT = d.Constant(self.dt)
+        self.T = d.Constant(self.t, name="t")
+        self.dT = d.Constant(self.dt, name="dT")
         self.tvec = [self.t]
         self.dtvec = [self.dt]
 
@@ -472,6 +474,12 @@ class Model:
                 raise ValueError(
                     "Reaction %s does not seem to have an associated equation" % reaction.name
                 )
+            if reaction.eqn_f_str == "":
+                reaction.eqn_str = f"-{reaction.eqn_r_str}"
+            elif reaction.eqn_r_str == "":
+                reaction.eqn_str = f"{reaction.eqn_f_str}"
+            else:
+                reaction.eqn_str = f"{reaction.eqn_f_str}-{reaction.eqn_r_str}"
 
     def _init_2_2_check_reaction_validity(self):
         """Confirms that all reactions have parameters/species defined"""
@@ -624,7 +632,8 @@ class Model:
                 raise ValueError(print_str)
 
     def _init_2_5_link_compartments_to_species(self):
-        """Linking compartments and compartment dimensionality to species"""
+        """Linking compartments and compartment dimensionality to species,
+        check for consistency of diffusion coefficient definition"""
         logger.debug(
             "Linking compartments and compartment dimensionality to species",
             extra=dict(format_type="log"),
@@ -632,6 +641,12 @@ class Model:
         for species in self.sc:
             species.compartment = self.cc[species.compartment_name]
             species.dimensionality = self.cc[species.compartment_name].dimensionality
+            # convert diffusion coeff to units consistent with mesh
+            diffusion_conversion = species.diffusion_units.to(
+                species.compartment.compartment_units**2 / unit.s
+            )
+            species.diffusion_units = species.compartment.compartment_units**2 / unit.s
+            species.D *= diffusion_conversion.magnitude
 
     def _init_2_6_link_species_to_compartments(self):
         """Links species to compartments - a species is considered to be
@@ -739,7 +754,7 @@ class Model:
         # Create a dolfin.Constant() for constant parameters
         for parameter in self.pc.values:
             if parameter.type == ParameterType.constant:
-                parameter.dolfin_constant = d.Constant(parameter.value)
+                parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
             elif parameter.type == ParameterType.expression and parameter.is_space_dependent:
                 # use higher degree to avoid interpolation error
                 parameter.dolfin_expression = d.Expression(
@@ -750,9 +765,9 @@ class Model:
                     sym.printing.ccode(parameter.sym_expr), t=self.T, degree=1
                 )
             elif parameter.type == ParameterType.expression and parameter.use_preintegration:
-                parameter.dolfin_constant = d.Constant(parameter.value)
+                parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
             elif parameter.type == ParameterType.from_file:
-                parameter.dolfin_constant = d.Constant(parameter.value)
+                parameter.dolfin_constant = d.Constant(parameter.value, name=parameter.name)
 
     def _init_4_1_get_active_compartments(self):
         """Arrange the compartments based on the number of degrees of freedom they have
@@ -982,28 +997,44 @@ class Model:
                     )
                 if species.has_subdomain:
                     # restrict to specified subdomain
-                    uvec = self.cc[species.compartment_name].u["u"].vector()
-                    values = uvec.get_local()
-                    values_new = np.zeros_like(values)
-                    mesh_ref = self.parent_mesh.dolfin_mesh
-                    funcSpace = species.V
-                    bmesh = funcSpace.mesh()
-                    store_map = bmesh.topology().mapping()[mesh_ref.id()].vertex_map()
-                    idx_list = species.subdomain_data.where_equal(species.subdomain_val)
-                    for idx in idx_list:
-                        facet = d.Facet(mesh_ref, idx)
-                        for vertex in d.vertices(facet):
-                            global_idx = vertex.global_index()
-                            local_idx = np.nonzero(np.array(store_map) == global_idx)[0][0]
-                            cur_sub_idx = d.vertex_to_dof_map(funcSpace)[local_idx]
-                            values_new[species.dof_map[cur_sub_idx]] = values[
-                                species.dof_map[cur_sub_idx]
-                            ]
-
+                    u_cur = self.cc[species.compartment_name].u[ukey]
+                    u_new = create_restriction(u_cur, species.subdomain_data, species.subdomain_val)
+                    values = u_cur.vector().get_local()
+                    values_new = u_new.vector().get_local()
                     values[species.dof_map] = values_new[species.dof_map]
-                    vec = self.cc[species.compartment_name].u[ukey].vector()
-                    vec.set_local(values)
-                    vec.apply("insert")
+                    u_cur.vector().set_local(values)
+                    u_cur.vector().apply("insert")
+
+        for parameter in self.pc:
+            if parameter.type == ParameterType.from_xdmf:
+                # load the time vec from xdmf file
+                tVec = self.load_timesteps_from_xdmf(parameter.xdmf_file)
+                parameter.tVec = np.array(tVec)
+                assert np.all(
+                    np.diff(parameter.tVec) >= 0.0
+                ), f"t values are not strictly increasing in {str(parameter.xdmf_file)}"
+
+                # define function space
+                if parameter.compartment not in self.cc.keys:
+                    raise ValueError(
+                        f"Compartment name {parameter.compartment} for parameter"
+                        f"{parameter.name} does not match a known compartment"
+                    )
+                V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
+                parameter.dolfin_function = d.Function(V_cur)
+
+                vec_new = self.load_vector(parameter.h5_file, parameter.tVec)
+                vec = parameter.dolfin_function.vector()
+                mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
+                if len(vec_new) != len(mesh_map):
+                    raise ValueError(
+                        f"Vector from {str(parameter.h5_file)} "
+                        f"does not match function space for {parameter.name}"
+                    )
+                else:
+                    new_vals = vec_new[mesh_map]  # reorder to match dof ordering
+                vec.set_local(new_vals)
+                vec.apply("insert")
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -1079,15 +1110,11 @@ class Model:
                     extra=dict(format_type="log"),
                 )
             else:
-                if Dform_units != mass_form_units:  # unit conversion for consistency
-                    diffusion_conversion = species.diffusion_units.to(
-                        species.compartment.compartment_units**2 / unit.s
-                    )
-                    D *= diffusion_conversion.magnitude
+                D_constant = d.Constant(D, name=f"D_{species.name}")
                 if self.config.flags["axisymmetric_model"]:
-                    Dform = x[0] * D * d.inner(d.grad(u), d.grad(v)) * dx
+                    Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
                 else:
-                    Dform = D * d.inner(d.grad(u), d.grad(v)) * dx
+                    Dform = D_constant * d.inner(d.grad(u), d.grad(v)) * dx
                 # exponent is -2 because of two gradients
 
                 self.forms.add(
@@ -1321,93 +1348,10 @@ class Model:
             I0.ufl_operands[0] == Ib0.ufl_operands[0](1) -> True
         """
 
-        # blocks/partitions are by compartment, not species
-        Fblock = d.extract_blocks(Fsum)
-
-        # =====================================================================
-        # doflin.fem.problem.MixedNonlinearVariationalProblem()
-        # =====================================================================
-        # basically is a wrapper around the cpp class that finalizes preparing
-        # F and J into the right format
-        # TODO: add dirichlet BCs
-
-        # Add in placeholders for empty blocks of F
-        if len(Fblock) != len(u):
-            Ftemp = [None for i in range(len(u))]
-            for Fi in Fblock:
-                Ftemp[Fi.arguments()[0].part()] = Fi
-            Fblock = Ftemp
-
-        # debug attempt
-        J = []
-        for Fi in Fblock:
-            for uj in u:
-                if Fi is None:
-                    # pass
-                    J.append(None)
-                else:
-                    dFdu = expand_derivatives(d.derivative(Fi, uj))
-                    J.append(dFdu)
-
-        # Check number of blocks in the residual and solution are coherent
-        assert len(J) == len(u) * len(u)
-        assert len(Fblock) == len(u)
-
-        # Decompose F blocks into subforms based on domain of integration
-        # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
-        # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]]
-        # If a form has integrals on multiple domains, they are split into a list
-        Flist = list()
-        for idx, Fi in enumerate(Fblock):
-            if Fi is None or Fi.empty():
-                logger.warning(
-                    f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty",
-                    extra=dict(format_type="warning"),
-                )
-                Flist.append([d.cpp.fem.Form(1, 0)])
-            else:
-                Fs = []
-                for Fsub in sub_forms_by_domain(Fi):
-                    if Fsub is None or Fsub.empty():
-                        domain = self.get_mesh_by_id(Fsub.mesh().id()).name
-                        logger.warning(
-                            f"F{idx} = F[{self.cc.get_index(idx).name}] "
-                            "is empty on integration domain {domain}",
-                            extra=dict(format_type="logred"),
-                        )
-                        Fs.append(d.cpp.fem.Form(1, 0))
-                    else:
-                        Fs.append(d.Form(Fsub))
-                Flist.append(Fs)
-
-        # Decompose J blocks into subforms based on domain of integration
-        Jlist = list()
-        for idx, Ji in enumerate(J):
-            idx_i, idx_j = divmod(idx, len(u))
-            if Ji is None or Ji.empty():
-                logger.warning(
-                    f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
-                    f"/du[{self.cc.get_index(idx_j).name}] is empty",
-                    extra=dict(format_type="logred"),
-                )
-                Jlist.append([d.cpp.fem.Form(2, 0)])
-            else:
-                Js = []
-                for Jsub in sub_forms_by_domain(Ji):
-                    if Jsub is None or Jsub.empty():
-                        domain = self.get_mesh_by_id(Jsub.mesh().id()).name
-                        logger.warning(
-                            f"J{idx_i}{idx_j} = dF[{self.cc.get_index(idx_i).name}])"
-                            f"/du[{self.cc.get_index(idx_j).name}]"
-                            f"is empty on integration domain {domain}",
-                            extra=dict(format_type="logred"),
-                        )
-                    Js.append(d.Form(Jsub))
-                Jlist.append(Js)
-
+        Flist = self.get_block_F(Fsum, u)
+        Jlist = self.get_block_J(Fsum, u)
         global_sizes = [uj.function_space().dim() for uj in u]
 
-        # return Flist, Jlist
         return Flist, Jlist, global_sizes
 
     def get_global_sizes(self, u):
@@ -1433,6 +1377,7 @@ class Model:
         # Fblock = [F0, F1, ... , Fn] where the index is the compartment index
         # Flist  = [[F0(Omega_0), F0(Omega_1)], ..., [Fn(Omega_n)]]
         # If a form has integrals on multiple domains, they are split into a list
+        # If Fi(Omega_j) is not defined, None is inserted
         Flist = list()
         for idx, Fi in enumerate(Fblock):
             if Fi is None or Fi.empty():
@@ -1440,7 +1385,7 @@ class Model:
                     f"F{idx} = F[{self.cc.get_index(idx).name}]) is empty",
                     extra=dict(format_type="warning"),
                 )
-                Flist.append([d.cpp.fem.Form(1, 0)])
+                Flist.append([None])
             else:
                 Fs = []
                 for Fsub in sub_forms_by_domain(Fi):
@@ -1451,7 +1396,7 @@ class Model:
                             f"on integration domain {domain}",
                             extra=dict(format_type="logred"),
                         )
-                        Fs.append(d.cpp.fem.Form(1, 0))
+                        Fs.append(None)
                     else:
                         Fs.append(d.Form(Fsub))
                 Flist.append(Fs)
@@ -1678,7 +1623,8 @@ class Model:
             self.stopwatches["snes all"].start()
 
             # Solve
-            self.solver.solve(None, self._ubackend)
+            with PETSc.Log.Event("solve"):
+                self.solver.solve(None, self._ubackend)
 
             # Store/compute timings
             logger.info(
@@ -1912,6 +1858,19 @@ class Model:
         # Update time dependent parameters
         for parameter_name, parameter in self.pc.items:
             new_value = None
+            if parameter.type == ParameterType.from_xdmf:
+                vec_new = self.load_vector(parameter.h5_file, parameter.tVec)
+                vec = parameter.dolfin_function.vector()
+                mesh_map = d.dof_to_vertex_map(parameter.dolfin_function.function_space())[:]
+                if len(vec_new) != len(mesh_map):
+                    raise ValueError(
+                        f"Vector from {str(parameter.h5_file)} "
+                        f"does not match function space for {parameter.name}"
+                    )
+                new_vals = vec_new[mesh_map]  # reorder to match dof ordering
+                vec.set_local(new_vals)
+                vec.apply("insert")
+                continue
             if not parameter.is_time_dependent:
                 continue
             if not parameter.use_preintegration:
@@ -2073,36 +2032,47 @@ class Model:
                 )
 
             # load the time vec from xdmf file
-            xdmf_file = open(xdmfCur, "r")
-            xdmf_string = xdmf_file.read()
-            found_pattern = re.findall(r"Time Value=\"?[^\s]+", xdmf_string)
-            tVec = []
-            for i in range(len(found_pattern)):
-                tVec.append(float(found_pattern[i][12:-1]))
+            tVec = self.load_timesteps_from_xdmf(xdmfCur)
+            assert np.all(
+                np.diff(np.array(tVec)) >= 0.0
+            ), f"t values are not strictly increasing in {str(xdmfCur)}"
             if self.load_init_time is None:
                 if len(tVec) == 0:
                     raise ValueError(f"Could not load time from {xdmfCur}")
                 elif len(tVec) == 1:
                     self.load_init_time = tVec[0]
                     self.load_init_idx = 0
+                    self.tvec = [tVec[0]]
                 else:
                     self.load_init_time = tVec[-2]
                     self.load_init_idx = len(tVec) - 2
+                    self.set_dt(tVec[-1] - tVec[-2])
+                    self.tvec = [tVec[-2]]
                 # set to current time
                 self.t = self.rounded_decimal(self.load_init_time)
+                if self.load_init_idx > 0:  # then store prev time
+                    self.tn = self.rounded_decimal(tVec[-3])
                 self.T.assign(self.t)
 
-            assert np.isclose(
-                tVec[self.load_init_idx], self.load_init_time
-            ), "Time value does not match load in value"
+            if tVec[self.load_init_idx] != self.load_init_time:
+                if self.load_init_time in tVec:
+                    init_idx = np.nonzero(np.array(tVec) == self.load_init_time)[0]
+                    assert len(init_idx) == 1, "t values must be unique in xdmf file"
+                    init_idx = init_idx[0]
+                else:
+                    assert np.isclose(
+                        tVec[self.load_init_idx], self.load_init_time
+                    ), "Time vector does not contain load in value"
+            else:
+                init_idx = self.load_init_idx
 
             cur_file = d.HDF5File(self.parent_mesh.mpi_comm, h5Cur, "r")
-            if not cur_file.has_dataset(f"VisualisationVector/{self.load_init_idx}"):
+            if not cur_file.has_dataset(f"VisualisationVector/{init_idx}"):
                 raise TypeError(
                     f"Unable to read initial condition for {sp.name} from file {str(unew)}"
                 )
             start_vec = d.Vector()
-            cur_file.read(start_vec, f"VisualisationVector/{self.load_init_idx}", True)
+            cur_file.read(start_vec, f"VisualisationVector/{init_idx}", True)
             cur_file.close()
             vec = self.cc[sp.compartment_name].u[ukey].vector()
             orig_vals = vec.get_local()
@@ -2286,3 +2256,49 @@ class Model:
         #     dt_scale = min(dt_scale * 0.8, 0.8)
         dt_cur = float(self.dt) * dt_scale
         self.set_dt(dt_cur)
+
+    def load_timesteps_from_xdmf(self, xdmffile):
+        times = []
+        tree = ET.parse(xdmffile)
+        for elem in tree.iter():
+            if elem.tag == "Time":
+                times.append(float(elem.get("Value")))
+        return times
+
+    def load_vector(self, h5_file, tVec):
+        cur_level = d.get_log_level()
+        d.set_log_level(40)  # suppress warning about rank of h5 data
+        with d.HDF5File(self.parent_mesh.mpi_comm, h5_file, "r") as cur_file:
+            # Find index associated with the starting time
+            has_timestamp = np.flatnonzero(np.isclose(tVec, float(self.t)))
+            if len(has_timestamp) > 0:
+                vec_new = d.Vector()
+                idx1 = has_timestamp[0]
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            elif self.t > tVec[-1]:  # then starting after final time in the xdmf file
+                logger.warning(
+                    f"File {str(h5_file)} ends before current time {self.t}"
+                    "Using final time point in file instead."
+                )
+                vec_new = d.Vector()
+                idx1 = len(tVec) - 1
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            elif self.t < tVec[0]:  # then starting before initial time in xdmf file
+                logger.warning(
+                    f"File {str(h5_file)} starts after current time {self.t}"
+                    "Using initial time point in file instead."
+                )
+                vec_new = d.Vector()
+                idx1 = 0
+                cur_file.read(vec_new, f"VisualisationVector/{idx1}", True)
+            else:  # then in between two times in the xdmf file
+                vec1 = d.Vector()
+                vec2 = d.Vector()
+                idx1 = np.flatnonzero(tVec < float(self.t))[-1]
+                idx2 = np.flatnonzero(tVec > float(self.t))[0]
+                cur_file.read(vec1, f"VisualisationVector/{idx1}", True)
+                cur_file.read(vec2, f"VisualisationVector/{idx2}", True)
+                vec_new = (vec1 + vec2) / 2
+            cur_file.close()
+        d.set_log_level(cur_level)  # restore log level
+        return vec_new
