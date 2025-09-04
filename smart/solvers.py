@@ -9,6 +9,8 @@ import petsc4py.PETSc as p
 from .common import Stopwatch
 from .model_assembly import Compartment
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["smartSNESProblem"]
@@ -356,7 +358,14 @@ class smartSNESProblem:
                         extra=dict(format_type="log"),
                     )
                     continue
-                Fvecs[j].append(d.as_backend_type(d.assemble_mixed(form)))
+                # Fvecs[j].append(d.as_backend_type(d.assemble_mixed(form)))
+                # assemble_mixed sometimes returns nan (nondeterministic???)
+                cur_vec = d.assemble_mixed(self.Fforms[j][k])
+                count = 1
+                while any(np.isnan(cur_vec.get_local())) and count < 10:
+                    cur_vec = d.assemble_mixed(self.Fforms[j][k])
+                    count += 1
+                Fvecs[j].append(d.as_backend_type(cur_vec))
             Fj_petsc[j].zeroEntries()
             for k, vec in enumerate(Fvecs[j]):
                 Fj_petsc[j].axpy(1, vec.vec())
