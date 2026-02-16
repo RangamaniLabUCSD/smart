@@ -799,7 +799,7 @@ def create_multicell(
                 raise ValueError("Radii must be floats or lists of 3 floats")
             if isinstance(cellRadCur, float):
                 cellRads = [cellRadCur, cellRadCur, cellRadCur]
-            if len(cellRadCur) == 3:
+            elif len(cellRadCur) == 3:
                 cellRads = cellRadCur
             else:
                 raise ValueError("Radii must be floats or lists of 3 floats")
@@ -831,7 +831,7 @@ def create_multicell(
                 raise ValueError("Radii must be floats or lists of 3 floats")
             if isinstance(cellRadCur, float):
                 cellRads = [cellRadCur, cellRadCur, cellRadCur]
-            if len(cellRadCur) == 3:
+            elif len(cellRadCur) == 3:
                 cellRads = cellRadCur
             else:
                 raise ValueError("Radii must be floats or lists of 3 floats")
@@ -952,7 +952,7 @@ def create_multicell(
 
     gmsh.model.mesh.generate(3)
     rank = MPI.COMM_WORLD.rank
-    tmp_folder = pathlib.Path(f"tmp_extracell_{cubeSize}_{cellRad1}_{cellRad2}_{rank}")
+    tmp_folder = pathlib.Path(f"tmp_extracell_{rank}")
     tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "extracell.msh"
     gmsh.write(str(gmsh_file))

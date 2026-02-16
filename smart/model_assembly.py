@@ -979,12 +979,15 @@ class Species(ObjectInstance):
     """
 
     name: str
-    initial_condition: Any
+    initial_condition: Union[float, int, str, Path]
     concentration_units: pint.Unit
-    D: float
+    D: Union[float, int, str]
     diffusion_units: pint.Unit
     compartment_name: str
     group: str = ""
+    alt_deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    alt_vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    alt_manual_update: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1015,6 +1018,13 @@ class Species(ObjectInstance):
         self.v = None
         self.has_subdomain = False
 
+        self.alt_vel_expr = None
+        self.alt_vel_func = None
+        self.alt_deform_expr = None
+        self.alt_deform_func = None
+        self.alt_vel_logic = False
+        self.alt_deform_logic = False
+
         if isinstance(self.initial_condition, float):
             pass
         elif isinstance(self.initial_condition, int):
@@ -1044,6 +1054,13 @@ class Species(ObjectInstance):
         else:
             raise TypeError("initial_condition must be a float or string or path.")
 
+        if isinstance(self.D, float) or isinstance(self.D, str):
+            pass
+        elif isinstance(self.D, int):
+            self.D = float(self.D)
+        else:
+            raise TypeError("Diffusion coefficient must a float, int, or string")
+
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
@@ -1061,7 +1078,7 @@ class Species(ObjectInstance):
             raise ValueError(
                 f"Initial condition for species {self.name} must be greater or equal to 0."
             )
-        if self.D < 0.0:
+        if isinstance(self.D, float) and self.D < 0.0:
             raise ValueError(
                 f"Diffusion coefficient for species {self.name} must be greater or equal to 0."
             )
@@ -1095,7 +1112,10 @@ class Species(ObjectInstance):
 
     @property
     def D_quantity(self):
-        self._Diffusion = self.D * self.diffusion_units
+        if isinstance(self.D, float):
+            self._Diffusion = self.D * self.diffusion_units
+        else:
+            self._Diffusion = f"{self.D} * {self.diffusion_units}"
         return self._Diffusion
 
     @property
@@ -1182,6 +1202,7 @@ class Compartment(ObjectInstance):
     vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
     deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
     manual_update: bool = False
+    normals: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1215,6 +1236,7 @@ class Compartment(ObjectInstance):
         self.vel_func = None
         self.deform_expr = None
         self.deform_func = None
+        self.deform_func_global = None
         self.vel_logic = False
         self.deform_logic = False
 
@@ -1856,17 +1878,22 @@ class Flux(ObjectInstance):
 
         if self.topology in ["volume", "surface"]:
             if self.destination_compartment.deform_logic:
-                udef = self.destination_compartment.deform_func
-                Fcur = d.Identity(3) + d.grad(udef)
+                alt_logic = True
+                for sp in self.species.values():
+                    if not sp.alt_deform_logic:
+                        alt_logic = False
+                if alt_logic:
+                    udef = sp.alt_deform_func
+                    # Jcur = sp.alt_jacobian
+                else:
+                    udef = self.destination_compartment.deform_func
+                    # Jcur = self.destination_compartment.jacobian
+                Fcur = d.Identity(udef.geometric_dimension()) + d.grad(udef)
                 Jcur = d.det(Fcur)
                 if self.topology == "surface":
-                    # Nexpr = d.Expression(("x[0]/R", "x[1]/R", "0.0"), degree=1, R=1)
-                    # Vcur = d.VectorFunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
-                    # N = d.interpolate(Nexpr, Vcur)
-                    N = self.surface.normals
-                    self.integral_factor = Jcur * d.sqrt(
-                        d.inner(d.dot(N, d.inv(Fcur)), d.dot(N, d.inv(Fcur)))
-                    )
+                    self.integral_factor = (
+                        self.destination_compartment.jacobian
+                    )  # d.sqrt(d.inner(areaFactor, areaFactor))
                 else:  # then volume
                     self.integral_factor = Jcur
                     # mult *= Jcur
@@ -1889,16 +1916,18 @@ class Flux(ObjectInstance):
                 #     vol_ref = source_list[0]
                 # else:
                 #     vol_ref = self.destination_compartment
-                udef = self.surface.deform_func
-                Fcur = d.Identity(3) + d.grad(udef)
-                Jcur = d.det(Fcur)
+                # udef = self.surface.deform_func
+                # Fcur = d.Identity(udef.geometric_dimension()) + d.grad(udef)
+                # uglobal = self.surface.deform_func_global
+                # Fglobal = d.Identity(uglobal.geometric_dimension()) + d.grad(uglobal)
+                # areaFactor = d.det(Fglobal) * d.dot(self.surface.normals, d.inv(Fglobal))
+                self.integral_factor = (
+                    self.surface.jacobian
+                )  # d.sqrt(d.inner(areaFactor, areaFactor))
                 # Nexpr = d.Expression(("x[0]/R", "x[1]/R", "0.0"), degree=1, R=1)
                 # Vcur = d.VectorFunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
                 # N = d.interpolate(Nexpr, Vcur)
-                N = self.surface.normals
-                self.integral_factor = Jcur * d.sqrt(
-                    d.inner(d.dot(N, d.inv(Fcur)), d.dot(N, d.inv(Fcur)))
-                )
+                # self.integral_factor = Jcur
                 # mult *= self.integral_factor
             elif (
                 self.destination_compartment.deform_logic
