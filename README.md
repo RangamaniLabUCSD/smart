@@ -85,9 +85,9 @@ SMART is equipped to handle:
 
 The current version of SMART is not compatible with MPI-based mesh parallelization; this feature is in development pending a future release of DOLFIN addressing some issues when using `MeshView`s in parallel. However, SMART users can utilize MPI to run multiple simulations in parallel (one mesh per process), as demonstrated in [Example 3 with MPI](https://github.com/RangamaniLabUCSD/smart/blob/development/examples/example3/example3_multimeshMPI.py).
 
-The general form of the mixed-dimensional partial differential equations (PDEs) solved by SMART, along with mathematical details of the numerical implementation, are documented [here](https://rangamanilabucsd.github.io/smart/docs/math.html).
+The general form of the mixed-dimensional partial differential equations (PDEs) solved by SMART, along with mathematical details of the numerical implementation, are in the [documentation of the mathematical framework](https://rangamanilabucsd.github.io/smart/docs/math.html).
 
-Our API documentation can be accessed [here](https://rangamanilabucsd.github.io/smart/docs/api.html).
+Our [API documentation](https://rangamanilabucsd.github.io/smart/docs/api.html) is also available.
 
 ## Automated tests
 Upon pushing new code to the SMART repository, a number of tests run:
@@ -111,7 +111,7 @@ Detailed contributing guidelines are given [here](https://rangamanilabucsd.githu
 * SMART uses [pandas](https://pandas.pydata.org/) as an intermediate data structure to help organize and process models.
 * SMART uses [Pint](https://pint.readthedocs.io/en/stable/) for unit tracking and conversions.
 * SMART uses [matplotlib](https://matplotlib.org/) to generate plots in examples
-* SMART uses [sympy](https://www.sympy.org/) to allow users to input custom reactions and also to determine the appopriate solution techniques (e.g. testing for non-linearities).
+* SMART uses [sympy](https://www.sympy.org/) to allow users to input custom reactions and also to determine the appropriate solution techniques (e.g. testing for non-linearities).
 * SMART uses [numpy](https://numpy.org/) and [scipy](https://www.scipy.org/) for general array manipulations and basic calculations.
 * SMART uses [tabulate](https://pypi.org/project/tabulate/) to make ASCII tables.
 * SMART uses [termcolor](https://pypi.org/project/termcolor/) for colored terminal output.
