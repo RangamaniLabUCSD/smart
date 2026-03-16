@@ -64,6 +64,7 @@ class ParameterType(str, Enum):
     constant = "constant"
     expression = "expression"
     from_xdmf = "from_xdmf"
+    mesh_quantity = "mesh_quantity"
 
 
 class InvalidObjectException(Exception):
@@ -602,6 +603,7 @@ class Parameter(ObjectInstance):
     is_time_dependent: bool = False
     is_space_dependent: bool = False
     compartment: str = ""
+    mesh_quantity: bool = False
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -732,6 +734,36 @@ class Parameter(ObjectInstance):
         return parameter
 
     @classmethod
+    def mesh_quantity(
+        cls, name, init_val, unit, compartment, group="", notes="", use_preintegration=False
+    ):
+        """ "
+        Initialize as a generic dolfin function over the mesh.
+        """
+        logger.debug(f"Initializing parameter {name} as mesh quantity")
+        if use_preintegration:
+            logger.warning(
+                f"Setting use_preintegration to False for parameter {name}."
+                "Not currently implemented for parameters given as mesh quantities"
+            )
+            use_preintegration = False
+        parameter = cls(
+            name,
+            init_val,
+            unit,
+            group=group,
+            notes=notes,
+            use_preintegration=use_preintegration,
+        )
+        parameter.compartment = compartment
+        # initialize instance
+        parameter.is_time_dependent = False
+        parameter.is_space_dependent = True
+        parameter.type = ParameterType.mesh_quantity
+        parameter.__post_init__()
+        return parameter
+
+    @classmethod
     def from_expression(
         cls,
         name,
@@ -848,7 +880,7 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if self.type == ParameterType.from_xdmf:
+        if self.type == ParameterType.from_xdmf or self.type == ParameterType.mesh_quantity:
             return self.dolfin_function * self.unit
         elif hasattr(self, "dolfin_expression"):
             return self.dolfin_expression * self.unit
@@ -1137,12 +1169,19 @@ class Compartment(ObjectInstance):
         dimensionality: topological dimensionality (e.g. 3 for volume, 2 for surface)
         compartment_units: length units for the compartment
         cell_marker: marker value identifying the compartment in the parent mesh
+        vel: string expressions for advective velocity field within compartment
+        deform: string expressions for deformation field within compartment
     """
 
     name: str
     dimensionality: int
     compartment_units: pint.Unit
     cell_marker: Any
+    # vel: Union[list[str], list[float]] = [0.0, 0.0, 0.0]
+    # deform: Union[list[str], list[float]] = [0.0, 0.0, 0.0]
+    vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    manual_update: bool = False
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1172,6 +1211,12 @@ class Compartment(ObjectInstance):
         self._usplit = dict()
         self.V = None
         self.v = None
+        self.vel_expr = None
+        self.vel_func = None
+        self.deform_expr = None
+        self.deform_func = None
+        self.vel_logic = False
+        self.deform_logic = False
 
     def check_validity(self):
         """
@@ -1745,9 +1790,9 @@ class Flux(ObjectInstance):
             "volume-surface_to_volume",
         ]:
             # intersection of this surface with boundary of source volume(s)
-            logger.debug(
-                "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
-            )
+            # logger.debug(
+            #     "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
+            # )
             self.measure = self.surface.mesh.dx
             self.measure_units = self.surface.compartment_units**self.surface.dimensionality
 
@@ -1785,7 +1830,6 @@ class Flux(ObjectInstance):
             return unit_to_quantity(self._equation_quantity.units)
 
     # Seems like setting this as a @property doesn't cause fenics to recompile
-
     @property
     def form(self):
         """-1 factor because terms are defined as if they were on the
@@ -1804,10 +1848,73 @@ class Flux(ObjectInstance):
             mult = u_mask_new
         else:
             mult = d.Constant(-1.0, name="-1")
+
+        # alphaExpr = d.Expression("1.0", degree=1)
+        # Vcur = d.FunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
+        # self.integral_factor = d.interpolate(alphaExpr, Vcur)
+        # self.integral_factor = alphaExpr
+
+        if self.topology in ["volume", "surface"]:
+            if self.destination_compartment.deform_logic:
+                udef = self.destination_compartment.deform_func
+                Fcur = d.Identity(3) + d.grad(udef)
+                Jcur = d.det(Fcur)
+                if self.topology == "surface":
+                    # Nexpr = d.Expression(("x[0]/R", "x[1]/R", "0.0"), degree=1, R=1)
+                    # Vcur = d.VectorFunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
+                    # N = d.interpolate(Nexpr, Vcur)
+                    N = self.surface.normals
+                    self.integral_factor = Jcur * d.sqrt(
+                        d.inner(d.dot(N, d.inv(Fcur)), d.dot(N, d.inv(Fcur)))
+                    )
+                else:  # then volume
+                    self.integral_factor = Jcur
+                    # mult *= Jcur
+            else:
+                self.integral_factor = d.Expression("1.0", degree=1)
+        elif self.topology in [
+            "volume_to_surface",
+            "surface_to_volume",
+            "volume-volume_to_surface",
+            "volume-surface_to_volume",
+        ]:
+            source_list = list(self.source_compartments.values())
+            if (
+                self.destination_compartment.deform_logic
+                and np.all([source.deform_logic for source in source_list])
+                and self.surface.deform_logic
+            ):
+                # if (self.topology == "volume_to_surface" or
+                #     self.topology == "volume-volume_to_surface"):
+                #     vol_ref = source_list[0]
+                # else:
+                #     vol_ref = self.destination_compartment
+                udef = self.surface.deform_func
+                Fcur = d.Identity(3) + d.grad(udef)
+                Jcur = d.det(Fcur)
+                # Nexpr = d.Expression(("x[0]/R", "x[1]/R", "0.0"), degree=1, R=1)
+                # Vcur = d.VectorFunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
+                # N = d.interpolate(Nexpr, Vcur)
+                N = self.surface.normals
+                self.integral_factor = Jcur * d.sqrt(
+                    d.inner(d.dot(N, d.inv(Fcur)), d.dot(N, d.inv(Fcur)))
+                )
+                # mult *= self.integral_factor
+            elif (
+                self.destination_compartment.deform_logic
+                or np.any([source.deform_logic for source in source_list])
+                or self.surface.deform_logic
+            ):
+                logger.warning("FIX: Ensure that deformation must be continuous across interface")
+                self.integral_factor = d.Expression("1.0", degree=1)
+            else:
+                self.integral_factor = d.Expression("1.0", degree=1)
+
         if self.axisymm:
             return (
                 mult
                 * x[0]
+                * self.integral_factor
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
                 * self.measure
@@ -1815,6 +1922,7 @@ class Flux(ObjectInstance):
         else:
             return (
                 mult
+                * self.integral_factor
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
                 * self.measure
