@@ -11,7 +11,8 @@ repos:
         exclude: |
           (?x)^(
               joss-paper/JOSS_Fig2.png|
-              examples/example2-3d/spine_mesh.xml
+              examples/example2-3d/spine_mesh.xml|
+              examples/example1/spheroid_ellipsoid_mesh.h5
           )$
       - id: check-docstring-first
       - id: debug-statements

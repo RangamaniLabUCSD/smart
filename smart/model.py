@@ -255,6 +255,7 @@ class Model:
 
         logger.debug("Checking validity of model (step 1 of ZZ)", extra=dict(format_type="title"))
         self._init_1_1_check_mesh_dimensionality()
+        self._init_1_1b_CH_chem_potential_init()
         self._init_1_2_check_namespace_conflicts()
         self._init_1_3_check_parameter_dimensionality()
         logger.debug(
@@ -371,6 +372,28 @@ class Model:
 
         for compartment in self.cc:
             compartment.is_volume = compartment.dimensionality == self.max_dim
+
+    def _init_1_1b_CH_chem_potential_init(self):
+        # all CH species require an additional species to be added to track chemical potential
+        # initial value is treated later
+        new_sp = []
+        for species in self.sc:
+            if species.CH:
+                init_chem_potential = 0.0
+                diff_units = self.cc[species.compartment_name].compartment_units ** 2 / unit.sec
+                chem_potential_sp = Species(
+                    f"{species.name}_chem_potential",
+                    init_chem_potential,
+                    unit.dimensionless,
+                    0.0,
+                    diff_units,
+                    species.compartment_name,
+                )
+                chem_potential_sp.is_chem_potential = True
+                new_sp.append(chem_potential_sp)
+                species.chem_potential = chem_potential_sp
+        for sp in new_sp:
+            self.sc.add(sp)
 
     def _init_1_2_check_namespace_conflicts(self):
         """Namespace checks:
@@ -584,6 +607,9 @@ class Model:
 
         all_parameters = set(chain.from_iterable([r.parameters for r in self.rc]))
         all_species = set(chain.from_iterable([r.species for r in self.rc]))
+        for species in self.sc:
+            if species.is_chem_potential:
+                all_species.add(species.name)
         all_compartments = set(chain.from_iterable([r.compartments for r in self.rc]))
         if all_parameters != set(self.pc.keys):
             print_str = (
@@ -987,6 +1013,9 @@ class Model:
         """
         logger.debug("Set function values to initial conditions", extra=dict(format_type="log"))
         for species in self.sc:
+            if species.is_chem_potential:
+                species.D_dolfin = d.Constant(0.0)  # set diffusion to zero (N/A)
+                continue  # then initial condition is set to match concentration of assoc species
             # first, initialize diffusion coefficient
             if isinstance(species.D, float):
                 species.D_dolfin = d.Constant(species.D)
@@ -1024,6 +1053,21 @@ class Model:
                     values[species.dof_map] = values_new[species.dof_map]
                     u_cur.vector().set_local(values)
                     u_cur.vector().apply("insert")
+            if species.CH:
+                lagrange = species.compartment.deform_logic or species.alt_deform_logic
+                if lagrange:
+                    logger.error("CH species are not compatible with Lagrange approach yet!")
+                for ckey in species.chem_potential.u.keys():
+                    A_hat = species.A_hat
+                    phi_cur = species.u[ckey] / species.umax
+                    cfunc = (
+                        d.ln(phi_cur)
+                        - d.ln(1 - phi_cur)
+                        - A_hat * (2 * phi_cur - 1)
+                        + (A_hat / species.umax) * d.div(d.grad(phi_cur))
+                    )
+                    Vc = species.chem_potential.V
+                    species.chem_potential.u[ckey].assign(d.project(cfunc, Vc))
             species.alt_vel_logic = np.any([vel != 0.0 for vel in species.alt_vel])
             species.alt_deform_logic = np.any([deform != 0.0 for deform in species.alt_deform])
             if species.alt_vel_logic and species.alt_deform_logic:
@@ -1339,8 +1383,53 @@ class Model:
                 J = d.Constant(1.0)
             if self.config.flags["axisymmetric_model"]:
                 J = x[0] * J
+            # catch CH case
+            if species.CH:
+                if species.is_chem_potential:
+                    logger.debug(
+                        "Chemical potential equation is defined with concentration,"
+                        "skipping to next species"
+                    )
+                    continue
+                else:
+                    u_c = species.chem_potential._usplit["u"]
+                    v_c = species.chem_potential.v
+                    A_hat = species.A_hat
+                    phi_cur = u / species.umax
+                    df_c = d.ln(phi_cur) - d.ln(1 - phi_cur) - A_hat * (2 * phi_cur - 1)
+                    # CForm scaling factor
+                    CScale = (float(species.D) * species.umax) / (4 * np.pi)  # assuming l^2 = 4*pi
+                    CForm = J * (
+                        (u_c - df_c) * v_c * dx
+                        - (A_hat / species.umax) * d.inner(d.grad(phi_cur), d.grad(v_c)) * dx
+                    )
+                    # chemical potential is in units of kBT for convenience
+                    Dform = J * D * u * d.inner(d.grad(u_c), d.grad(v)) * dx
+                    self.forms.add(
+                        Form(
+                            f"chem_potential_{species.name}",
+                            CForm,
+                            species.chem_potential,
+                            "chem_potential",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                            form_scaling=CScale,
+                        )
+                    )
+                    self.forms.add(
+                        Form(
+                            f"diffusion_{species.name}",
+                            Dform,
+                            species,
+                            "diffusion",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                        )
+                    )
             # diffusion term
-            if species.D == 0:
+            elif species.D == 0:
                 logger.debug(
                     f"Species {species.name} has a diffusion coefficient of 0. "
                     "Skipping creation of diffusive form.",
@@ -1368,8 +1457,6 @@ class Model:
                     )
                 else:
                     Dform = J * D * d.inner(d.grad(u), d.grad(v)) * dx
-                    # exponent is -2 because of two gradients
-
                     self.forms.add(
                         Form(
                             f"diffusion_{species.name}",

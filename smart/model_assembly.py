@@ -988,6 +988,11 @@ class Species(ObjectInstance):
     alt_deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
     alt_vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
     alt_manual_update: bool = False
+    CH: bool = False
+    is_chem_potential: bool = False
+    A_hat: float = 0.0
+    umax: float = 0.0
+    # if this is a CH conc, then we also need fields: chem_potential, A_hat, umax
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1060,6 +1065,12 @@ class Species(ObjectInstance):
             self.D = float(self.D)
         else:
             raise TypeError("Diffusion coefficient must a float, int, or string")
+
+        if self.CH:
+            if not hasattr(self, "A_hat"):
+                raise ValueError("A_hat must be provided for CH species")
+            if not hasattr(self, "umax"):
+                raise ValueError("umax must be provided for CH variable")
 
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()

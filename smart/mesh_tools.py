@@ -582,6 +582,215 @@ def create_axisymm(
     return (dmesh, mf2, mf3)
 
 
+def create_confined(
+    tubeRad: float = 10.0,
+    gapSize: float = 1.0,
+    cellVol: float = 1200.0,
+    hEdge: float = 0,
+    hInnerEdge: float = 0,
+    interface_marker: int = 12,
+    outer_marker: int = 10,
+    inner_vol_tag: int = 2,
+    outer_vol_tag: int = 1,
+    comm: MPI.Comm = d.MPI.comm_world,
+    verbose: bool = False,
+) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
+    """
+    Creates an axisymmetric mesh representing a cell within a cylindrical tube,
+    assuming axisymmetry about the r=0 axis.
+
+    Args:
+        tubeRad: Radius of tube
+        gapSize: Gap between cell and tube wall
+        cellVol: volume of cell (constrains overall geometry)
+        hEdge: maximum mesh size at the outer edge
+        hInnerEdge: maximum mesh size at the edge
+            of the inner compartment
+        interface_marker: The value to mark facets on the interface with
+        outer_marker: The value to mark facets on the outer ellipsoid with
+        inner_vol_tag: The value to mark the inner ellipsoidal volume with
+        outer_vol_tag: The value to mark the outer ellipsoidal volume with
+        comm: MPI communicator to create the mesh with
+        verbose: If true print gmsh output, else skip
+    Returns:
+        Tuple (mesh, facet_marker, cell_marker)
+    """
+    import gmsh
+
+    if tubeRad <= 0:
+        raise ValueError("Tube radius must be greater than 0")
+    if gapSize <= 0 or gapSize >= tubeRad:
+        raise ValueError("Gap between cell membrane and wall must be between 0 and tubeRad")
+    if cellVol <= 0:
+        raise ValueError("Cell volume must be greater than 0")
+
+    Lc = (cellVol - 4 * np.pi * (tubeRad - gapSize) ** 2) / (2 * np.pi * (tubeRad - gapSize))
+    zmax = Lc / 2 + (tubeRad - gapSize) + 10.0
+    rValsOuter = np.array([0.0, tubeRad, tubeRad, 0.0])
+    zValsOuter = np.array([zmax, zmax, -zmax, -zmax])
+    thetaVals = np.linspace(np.pi / 2, 0.0, 20)
+    rValsSphere = (tubeRad - gapSize) * np.cos(thetaVals)
+    zValsSphere = Lc / 2 + (tubeRad - gapSize) * np.sin(thetaVals)
+    maxOuterDim = zmax
+    maxInnerDim = Lc + (tubeRad - gapSize)
+
+    if np.isclose(hEdge, 0):
+        hEdge = 0.1 * maxOuterDim
+    if np.isclose(hInnerEdge, 0):
+        hInnerEdge = 0.2 * maxInnerDim
+    # Create the two axisymmetric body mesh using gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+    gmsh.model.add("axisymm")
+    # first add outer body
+    outer_tag_list = []
+    outer_line_list = []
+    for i in range(len(rValsOuter)):
+        cur_tag = gmsh.model.occ.add_point(rValsOuter[i], 0, zValsOuter[i])
+        outer_tag_list.append(cur_tag)
+        if i > 0:
+            outer_line_list.append(gmsh.model.occ.add_line(cur_tag, outer_tag_list[-2]))
+    # include symm axis
+    outer_line_list.append(gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1]))
+    outer_loop_tag = gmsh.model.occ.add_curve_loop(outer_line_list)
+    cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
+
+    # Add inner shape
+    inner_tag_list1 = []
+    for i in range(len(rValsSphere)):
+        cur_tag = gmsh.model.occ.add_point(rValsSphere[i], 0, zValsSphere[i])
+        inner_tag_list1.append(cur_tag)
+    inner_spline1_tag = gmsh.model.occ.add_spline(inner_tag_list1)
+    inner_tag_list2 = []
+    for i in range(len(rValsSphere)):
+        cur_tag = gmsh.model.occ.add_point(rValsSphere[-(i + 1)], 0, -zValsSphere[-(i + 1)])
+        inner_tag_list2.append(cur_tag)
+    inner_spline2_tag = gmsh.model.occ.add_spline(inner_tag_list2)
+    inner_cyl_line = gmsh.model.occ.add_line(inner_tag_list1[-1], inner_tag_list2[0])
+    symm_inner_tag = gmsh.model.occ.add_line(inner_tag_list1[0], inner_tag_list2[-1])
+    inner_loop_tag = gmsh.model.occ.add_curve_loop(
+        [inner_spline1_tag, inner_cyl_line, inner_spline2_tag, symm_inner_tag]
+    )
+    inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
+    cell_plane_list = [cell_plane_tag]
+    inner_plane_list = [inner_plane_tag]
+
+    outer_volume = []
+    inner_volume = []
+    all_volumes = []
+    inner_marker_list = []
+    outer_marker_list = []
+    for i in range(len(cell_plane_list)):
+        cell_plane_tag = cell_plane_list[i]
+        inner_plane_tag = inner_plane_list[i]
+        # Create interface between 2 objects
+        two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
+            [(2, cell_plane_tag)], [(2, inner_plane_tag)]
+        )
+        gmsh.model.occ.synchronize()
+
+        # Get the outer boundary
+        outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
+        for i in range(len(outer_shell)):
+            outer_marker_list.append(outer_shell[i][1])
+        # Get the inner boundary
+        inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
+        for i in range(len(inner_shell)):
+            inner_marker_list.append(inner_shell[i][1])
+        for tag in outer_shape_map:
+            all_volumes.append(tag[1])
+        for tag in inner_shape_map:
+            inner_volume.append(tag[1])
+
+        for vol in all_volumes:
+            if vol not in inner_volume:
+                outer_volume.append(vol)
+
+        # Add physical markers for facets
+        # set symmetry axis to 0 (no flux)
+        xmin, ymin, zmin = (-hInnerEdge / 10, -hInnerEdge / 10, -1)
+        xmax, ymax, zmax = (hInnerEdge / 10, hInnerEdge / 10, max(zValsOuter) + 1)
+        all_symm_bound = gmsh.model.occ.get_entities_in_bounding_box(
+            xmin, ymin, zmin, xmax, ymax, zmax, dim=1
+        )
+        symm_bound_markers = []
+        for i in range(len(all_symm_bound)):
+            symm_bound_markers.append(all_symm_bound[i][1])
+        # note that this first call sets the symmetry axis to tag 0 and
+        # this is not overwritten by the next calls to add_physical_group
+        gmsh.model.add_physical_group(1, symm_bound_markers, tag=0)
+        gmsh.model.add_physical_group(1, outer_marker_list, tag=outer_marker)
+        gmsh.model.add_physical_group(1, inner_marker_list, tag=interface_marker)
+
+        # Physical markers for "volumes"
+        gmsh.model.add_physical_group(2, outer_volume, tag=outer_vol_tag)
+        gmsh.model.add_physical_group(2, inner_volume, tag=inner_vol_tag)
+
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is hEdge at the PM and hInnerEdge at the inner membrane
+        # between these, the value is interpolated based on the relative distance
+        # between the two membranes.
+        # Inside the inner shape, the value is interpolated between hInnerEdge
+        # and lc3, where lc3 = max(hInnerEdge, 0.2*maxInnerDim)
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*maxOuterDim in the center
+        lc1 = hEdge
+        lc2 = hInnerEdge
+        lc3 = max(hInnerEdge, 0.3 * (tubeRad - gapSize))
+        z_abs = np.abs(z)
+        if z_abs < Lc / 2:
+            if x > (tubeRad - gapSize):
+                in_outer = True
+                # dist_to_outer = tubeRad - x
+                dist_to_inner = x - (tubeRad - gapSize)
+            else:
+                in_outer = False
+                R_rel_inner = x / (tubeRad - gapSize)
+        else:
+            rTest = np.sqrt(x**2 + (z_abs - Lc / 2) ** 2)
+            if rTest > (tubeRad - gapSize):
+                in_outer = True
+                # dist_to_outer = tubeRad - x
+                dist_to_inner = rTest - (tubeRad - gapSize)
+            else:
+                in_outer = False
+                R_rel_inner = rTest / (tubeRad - gapSize)
+
+        if in_outer:
+            lcTest = lc2 + (lc1 - lc2) * (1 - np.exp(-dist_to_inner / 1.0))
+        else:
+            lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
+        return lcTest
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+    gmsh.model.mesh.generate(2)
+    rank = MPI.COMM_WORLD.rank
+    tmp_folder = pathlib.Path(f"tmp_2DCell_{rank}")
+    tmp_folder.mkdir(exist_ok=True)
+    gmsh_file = tmp_folder / "2DCell.msh"
+    gmsh.write(str(gmsh_file))
+    gmsh.finalize()
+
+    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 2, comm)
+    # ensure zero flux condition at r=0 axis
+    for f in d.facets(dmesh):
+        if np.isclose(f.midpoint().x(), 0.0):
+            mf2[f] = 0
+    # remove tmp mesh and tmp folder
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir()
+    return (dmesh, mf2, mf3)
+
+
 def create_cylinders(
     outerRad: float = 1.0,
     innerRad: float = 0.0,
