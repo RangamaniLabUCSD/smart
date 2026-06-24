@@ -1397,12 +1397,11 @@ class Model:
                     A_hat = species.A_hat
                     phi_cur = u / species.umax
                     df_c = d.ln(phi_cur) - d.ln(1 - phi_cur) - A_hat * (2 * phi_cur - 1)
+                    # CForm scaling factor
+                    CScale = (float(species.D) * species.umax) / (4 * np.pi)  # assuming l^2 = 4*pi
                     CForm = J * (
                         (u_c - df_c) * v_c * dx
                         - (A_hat / species.umax) * d.inner(d.grad(phi_cur), d.grad(v_c)) * dx
-                    )
-                    CForm_units = (
-                        species.compartment.compartment_units**species.compartment.dimensionality
                     )
                     # chemical potential is in units of kBT for convenience
                     Dform = J * D * u * d.inner(d.grad(u_c), d.grad(v)) * dx
@@ -1412,9 +1411,10 @@ class Model:
                             CForm,
                             species.chem_potential,
                             "chem_potential",
-                            CForm_units,
+                            Dform_units,
                             True,
                             linear_wrt_comp,
+                            form_scaling=CScale,
                         )
                     )
                     self.forms.add(
