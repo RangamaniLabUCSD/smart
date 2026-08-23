@@ -64,6 +64,7 @@ class ParameterType(str, Enum):
     constant = "constant"
     expression = "expression"
     from_xdmf = "from_xdmf"
+    mesh_quantity = "mesh_quantity"
 
 
 class InvalidObjectException(Exception):
@@ -602,6 +603,7 @@ class Parameter(ObjectInstance):
     is_time_dependent: bool = False
     is_space_dependent: bool = False
     compartment: str = ""
+    mesh_quantity: bool = False
 
     def to_dict(self):
         """Convert to a dict that can be used to recreate the object."""
@@ -732,6 +734,36 @@ class Parameter(ObjectInstance):
         return parameter
 
     @classmethod
+    def mesh_quantity(
+        cls, name, init_val, unit, compartment, group="", notes="", use_preintegration=False
+    ):
+        """ "
+        Initialize as a generic dolfin function over the mesh.
+        """
+        logger.debug(f"Initializing parameter {name} as mesh quantity")
+        if use_preintegration:
+            logger.warning(
+                f"Setting use_preintegration to False for parameter {name}."
+                "Not currently implemented for parameters given as mesh quantities"
+            )
+            use_preintegration = False
+        parameter = cls(
+            name,
+            init_val,
+            unit,
+            group=group,
+            notes=notes,
+            use_preintegration=use_preintegration,
+        )
+        parameter.compartment = compartment
+        # initialize instance
+        parameter.is_time_dependent = False
+        parameter.is_space_dependent = True
+        parameter.type = ParameterType.mesh_quantity
+        parameter.__post_init__()
+        return parameter
+
+    @classmethod
     def from_expression(
         cls,
         name,
@@ -848,7 +880,7 @@ class Parameter(ObjectInstance):
 
     @property
     def dolfin_quantity(self):
-        if self.type == ParameterType.from_xdmf:
+        if self.type == ParameterType.from_xdmf or self.type == ParameterType.mesh_quantity:
             return self.dolfin_function * self.unit
         elif hasattr(self, "dolfin_expression"):
             return self.dolfin_expression * self.unit
@@ -947,12 +979,20 @@ class Species(ObjectInstance):
     """
 
     name: str
-    initial_condition: Any
+    initial_condition: Union[float, int, str, Path]
     concentration_units: pint.Unit
-    D: float
+    D: Union[float, int, str]
     diffusion_units: pint.Unit
     compartment_name: str
     group: str = ""
+    alt_deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    alt_vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    alt_manual_update: bool = False
+    CH: bool = False
+    is_chem_potential: bool = False
+    A_hat: float = 0.0
+    umax: float = 0.0
+    # if this is a CH conc, then we also need fields: chem_potential, A_hat, umax
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -983,6 +1023,13 @@ class Species(ObjectInstance):
         self.v = None
         self.has_subdomain = False
 
+        self.alt_vel_expr = None
+        self.alt_vel_func = None
+        self.alt_deform_expr = None
+        self.alt_deform_func = None
+        self.alt_vel_logic = False
+        self.alt_deform_logic = False
+
         if isinstance(self.initial_condition, float):
             pass
         elif isinstance(self.initial_condition, int):
@@ -1012,6 +1059,19 @@ class Species(ObjectInstance):
         else:
             raise TypeError("initial_condition must be a float or string or path.")
 
+        if isinstance(self.D, float) or isinstance(self.D, str):
+            pass
+        elif isinstance(self.D, int):
+            self.D = float(self.D)
+        else:
+            raise TypeError("Diffusion coefficient must a float, int, or string")
+
+        if self.CH:
+            if not hasattr(self, "A_hat"):
+                raise ValueError("A_hat must be provided for CH species")
+            if not hasattr(self, "umax"):
+                raise ValueError("umax must be provided for CH variable")
+
         self._convert_pint_quantity_to_unit()
         self._check_input_type_validity()
         self._convert_pint_unit_to_quantity()
@@ -1029,7 +1089,7 @@ class Species(ObjectInstance):
             raise ValueError(
                 f"Initial condition for species {self.name} must be greater or equal to 0."
             )
-        if self.D < 0.0:
+        if isinstance(self.D, float) and self.D < 0.0:
             raise ValueError(
                 f"Diffusion coefficient for species {self.name} must be greater or equal to 0."
             )
@@ -1063,7 +1123,10 @@ class Species(ObjectInstance):
 
     @property
     def D_quantity(self):
-        self._Diffusion = self.D * self.diffusion_units
+        if isinstance(self.D, float):
+            self._Diffusion = self.D * self.diffusion_units
+        else:
+            self._Diffusion = f"{self.D} * {self.diffusion_units}"
         return self._Diffusion
 
     @property
@@ -1137,12 +1200,20 @@ class Compartment(ObjectInstance):
         dimensionality: topological dimensionality (e.g. 3 for volume, 2 for surface)
         compartment_units: length units for the compartment
         cell_marker: marker value identifying the compartment in the parent mesh
+        vel: string expressions for advective velocity field within compartment
+        deform: string expressions for deformation field within compartment
     """
 
     name: str
     dimensionality: int
     compartment_units: pint.Unit
     cell_marker: Any
+    # vel: Union[list[str], list[float]] = [0.0, 0.0, 0.0]
+    # deform: Union[list[str], list[float]] = [0.0, 0.0, 0.0]
+    vel: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    deform: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
+    manual_update: bool = False
+    normals: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     def to_dict(self):
         "Convert to a dict that can be used to recreate the object."
@@ -1172,6 +1243,13 @@ class Compartment(ObjectInstance):
         self._usplit = dict()
         self.V = None
         self.v = None
+        self.vel_expr = None
+        self.vel_func = None
+        self.deform_expr = None
+        self.deform_func = None
+        self.deform_func_global = None
+        self.vel_logic = False
+        self.deform_logic = False
 
     def check_validity(self):
         """
@@ -1745,9 +1823,9 @@ class Flux(ObjectInstance):
             "volume-surface_to_volume",
         ]:
             # intersection of this surface with boundary of source volume(s)
-            logger.debug(
-                "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
-            )
+            # logger.debug(
+            #     "DEBUGGING INTEGRATION MEASURE (only fully defined domains are enabled for now)"
+            # )
             self.measure = self.surface.mesh.dx
             self.measure_units = self.surface.compartment_units**self.surface.dimensionality
 
@@ -1785,7 +1863,6 @@ class Flux(ObjectInstance):
             return unit_to_quantity(self._equation_quantity.units)
 
     # Seems like setting this as a @property doesn't cause fenics to recompile
-
     @property
     def form(self):
         """-1 factor because terms are defined as if they were on the
@@ -1804,10 +1881,80 @@ class Flux(ObjectInstance):
             mult = u_mask_new
         else:
             mult = d.Constant(-1.0, name="-1")
+
+        # alphaExpr = d.Expression("1.0", degree=1)
+        # Vcur = d.FunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
+        # self.integral_factor = d.interpolate(alphaExpr, Vcur)
+        # self.integral_factor = alphaExpr
+
+        if self.topology in ["volume", "surface"]:
+            if self.destination_compartment.deform_logic:
+                alt_logic = True
+                for sp in self.species.values():
+                    if not sp.alt_deform_logic:
+                        alt_logic = False
+                if alt_logic:
+                    udef = sp.alt_deform_func
+                    # Jcur = sp.alt_jacobian
+                else:
+                    udef = self.destination_compartment.deform_func
+                    # Jcur = self.destination_compartment.jacobian
+                Fcur = d.Identity(udef.geometric_dimension()) + d.grad(udef)
+                Jcur = d.det(Fcur)
+                if self.topology == "surface":
+                    self.integral_factor = (
+                        self.destination_compartment.jacobian
+                    )  # d.sqrt(d.inner(areaFactor, areaFactor))
+                else:  # then volume
+                    self.integral_factor = Jcur
+                    # mult *= Jcur
+            else:
+                self.integral_factor = d.Expression("1.0", degree=1)
+        elif self.topology in [
+            "volume_to_surface",
+            "surface_to_volume",
+            "volume-volume_to_surface",
+            "volume-surface_to_volume",
+        ]:
+            source_list = list(self.source_compartments.values())
+            if (
+                self.destination_compartment.deform_logic
+                and np.all([source.deform_logic for source in source_list])
+                and self.surface.deform_logic
+            ):
+                # if (self.topology == "volume_to_surface" or
+                #     self.topology == "volume-volume_to_surface"):
+                #     vol_ref = source_list[0]
+                # else:
+                #     vol_ref = self.destination_compartment
+                # udef = self.surface.deform_func
+                # Fcur = d.Identity(udef.geometric_dimension()) + d.grad(udef)
+                # uglobal = self.surface.deform_func_global
+                # Fglobal = d.Identity(uglobal.geometric_dimension()) + d.grad(uglobal)
+                # areaFactor = d.det(Fglobal) * d.dot(self.surface.normals, d.inv(Fglobal))
+                self.integral_factor = (
+                    self.surface.jacobian
+                )  # d.sqrt(d.inner(areaFactor, areaFactor))
+                # Nexpr = d.Expression(("x[0]/R", "x[1]/R", "0.0"), degree=1, R=1)
+                # Vcur = d.VectorFunctionSpace(self.surface.mesh.dolfin_mesh, "P", 1)
+                # N = d.interpolate(Nexpr, Vcur)
+                # self.integral_factor = Jcur
+                # mult *= self.integral_factor
+            elif (
+                self.destination_compartment.deform_logic
+                or np.any([source.deform_logic for source in source_list])
+                or self.surface.deform_logic
+            ):
+                logger.warning("FIX: Ensure that deformation must be continuous across interface")
+                self.integral_factor = d.Expression("1.0", degree=1)
+            else:
+                self.integral_factor = d.Expression("1.0", degree=1)
+
         if self.axisymm:
             return (
                 mult
                 * x[0]
+                * self.integral_factor
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
                 * self.measure
@@ -1815,6 +1962,7 @@ class Flux(ObjectInstance):
         else:
             return (
                 mult
+                * self.integral_factor
                 * self.equation_lambda_eval(input_type="value")
                 * self.destination_species.v
                 * self.measure

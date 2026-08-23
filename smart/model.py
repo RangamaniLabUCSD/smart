@@ -255,6 +255,7 @@ class Model:
 
         logger.debug("Checking validity of model (step 1 of ZZ)", extra=dict(format_type="title"))
         self._init_1_1_check_mesh_dimensionality()
+        self._init_1_1b_CH_chem_potential_init()
         self._init_1_2_check_namespace_conflicts()
         self._init_1_3_check_parameter_dimensionality()
         logger.debug(
@@ -371,6 +372,28 @@ class Model:
 
         for compartment in self.cc:
             compartment.is_volume = compartment.dimensionality == self.max_dim
+
+    def _init_1_1b_CH_chem_potential_init(self):
+        # all CH species require an additional species to be added to track chemical potential
+        # initial value is treated later
+        new_sp = []
+        for species in self.sc:
+            if species.CH:
+                init_chem_potential = 0.0
+                diff_units = self.cc[species.compartment_name].compartment_units ** 2 / unit.sec
+                chem_potential_sp = Species(
+                    f"{species.name}_chem_potential",
+                    init_chem_potential,
+                    unit.dimensionless,
+                    0.0,
+                    diff_units,
+                    species.compartment_name,
+                )
+                chem_potential_sp.is_chem_potential = True
+                new_sp.append(chem_potential_sp)
+                species.chem_potential = chem_potential_sp
+        for sp in new_sp:
+            self.sc.add(sp)
 
     def _init_1_2_check_namespace_conflicts(self):
         """Namespace checks:
@@ -584,6 +607,9 @@ class Model:
 
         all_parameters = set(chain.from_iterable([r.parameters for r in self.rc]))
         all_species = set(chain.from_iterable([r.species for r in self.rc]))
+        for species in self.sc:
+            if species.is_chem_potential:
+                all_species.add(species.name)
         all_compartments = set(chain.from_iterable([r.compartments for r in self.rc]))
         if all_parameters != set(self.pc.keys):
             print_str = (
@@ -829,6 +855,7 @@ class Model:
                     self.child_meshes[compartment.name].dolfin_mesh, "P", 1
                 )
 
+        for compartment in self._all_compartments:  # do this for all compartments to be safe
             if self.parent_mesh.curvature is not None:
                 scalarFunctionSpace = d.FunctionSpace(
                     self.child_meshes[compartment.name].dolfin_mesh, "P", 1
@@ -986,6 +1013,28 @@ class Model:
         """
         logger.debug("Set function values to initial conditions", extra=dict(format_type="log"))
         for species in self.sc:
+            if species.is_chem_potential:
+                species.D_dolfin = d.Constant(0.0)  # set diffusion to zero (N/A)
+                continue  # then initial condition is set to match concentration of assoc species
+            # first, initialize diffusion coefficient
+            if isinstance(species.D, float):
+                species.D_dolfin = d.Constant(species.D)
+            else:  # then this still needs to have free symbols inserted
+                x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+                # Parse the given string to create a sympy expression
+                sym_expr = parse_expr(species.D).subs({"x": x, "y": y, "z": z})
+                free_symbols = [str(x) for x in sym_expr.free_symbols]
+                if not {"x[0]", "x[1]", "x[2]", "curv"}.issuperset(free_symbols):
+                    # could add other keywords for spatial dependence in the future
+                    raise NotImplementedError
+                else:
+                    x = d.SpatialCoordinate(species.compartment.dolfin_mesh)
+                    curv = species.compartment.curv_func
+                    c_code = sym.printing.ccode(sym_expr)
+                    c_code = c_code.replace("log(", "std::log(")
+                    full_expr = d.Expression(c_code, curv=curv, degree=1)
+                    ufunc = d.interpolate(full_expr, species.V)
+                    species.D_dolfin = ufunc
             for ukey in species.u.keys():
                 if isinstance(species.initial_condition, float) or not isinstance(
                     species.initial_condition, str
@@ -1004,6 +1053,76 @@ class Model:
                     values[species.dof_map] = values_new[species.dof_map]
                     u_cur.vector().set_local(values)
                     u_cur.vector().apply("insert")
+            if species.CH:
+                lagrange = species.compartment.deform_logic or species.alt_deform_logic
+                if lagrange:
+                    logger.error("CH species are not compatible with Lagrange approach yet!")
+                for ckey in species.chem_potential.u.keys():
+                    A_hat = species.A_hat
+                    phi_cur = species.u[ckey] / species.umax
+                    cfunc = (
+                        d.ln(phi_cur)
+                        - d.ln(1 - phi_cur)
+                        - A_hat * (2 * phi_cur - 1)
+                        + (A_hat / species.umax) * d.div(d.grad(phi_cur))
+                    )
+                    Vc = species.chem_potential.V
+                    species.chem_potential.u[ckey].assign(d.project(cfunc, Vc))
+            species.alt_vel_logic = np.any([vel != 0.0 for vel in species.alt_vel])
+            species.alt_deform_logic = np.any([deform != 0.0 for deform in species.alt_deform])
+            if species.alt_vel_logic and species.alt_deform_logic:
+                raise ValueError("Cannot prescribe both velocity and deformation")
+            elif species.alt_vel_logic:
+                x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+                vel_expr = [None] * len(species.alt_vel)
+                # then this needs to have free symbols inserted
+                for i in range(len(species.vel)):
+                    if isinstance(species.vel[i], float):
+                        vel_expr[i] = f"{species.alt_vel[i]}"
+                    elif isinstance(species.alt_vel[i], str):
+                        vel_str = species.alt_vel[i]
+                        # Parse the given string to create a sympy expression
+                        sym_expr = parse_expr(vel_str).subs({"x": x, "y": y, "z": z})
+                        free_symbols = [str(x) for x in sym_expr.free_symbols]
+                        if not {"x[0]", "x[1]", "x[2]", "t"}.issuperset(free_symbols):
+                            # could add other keywords for spatial dependence in the future
+                            raise NotImplementedError
+                        else:
+                            vel_expr[i] = sym.printing.ccode(sym_expr)
+                    else:
+                        raise NotImplementedError("Velocity must be float or string")
+                species.alt_vel_expr = d.Expression(vel_expr, degree=1, t=self.T)
+                V_vector = d.VectorFunctionSpace(species.compartment.dolfin_mesh, "P", 1)
+                species.alt_vel_func = d.interpolate(species.alt_vel_expr, V_vector)
+            elif species.alt_deform_logic:
+                x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+                deform_expr = [None] * len(species.alt_deform)
+                # then this needs to have free symbols inserted
+                for i in range(len(species.alt_deform)):
+                    if isinstance(species.alt_deform[i], float):
+                        deform_expr[i] = f"{species.alt_deform[i]}"
+                    elif isinstance(species.alt_deform[i], str):
+                        deform_str = species.alt_deform[i]
+                        # Parse the given string to create a sympy expression
+                        sym_expr = parse_expr(deform_str).subs({"x": x, "y": y, "z": z})
+                        free_symbols = [str(x) for x in sym_expr.free_symbols]
+                        if not {"x[0]", "x[1]", "x[2]", "t"}.issuperset(free_symbols):
+                            # could add other keywords for spatial dependence in the future
+                            raise NotImplementedError
+                        else:
+                            deform_expr[i] = sym.printing.ccode(sym_expr)
+                    else:
+                        raise NotImplementedError("Deformation must be float or string")
+                species.alt_deform_expr = d.Expression(deform_expr, degree=1, t=self.T)
+                V_vector = d.VectorFunctionSpace(species.compartment.dolfin_mesh, "P", 1)
+                V_scalar = d.FunctionSpace(species.compartment.dolfin_mesh, "P", 1)
+                species.alt_deform_func = d.interpolate(species.alt_deform_expr, V_vector)
+                F = d.Identity(species.alt_deform_func.geometric_dimension()) + d.grad(
+                    species.alt_deform_func
+                )
+                species.alt_jacobian = d.project(d.det(F), V_scalar)
+                species.alt_jacobian_prev = d.project(d.det(F), V_scalar)
+                species.alt_deform_prev = d.interpolate(species.alt_deform_expr, V_vector)
 
         for parameter in self.pc:
             if parameter.type == ParameterType.from_xdmf:
@@ -1035,6 +1154,148 @@ class Model:
                     new_vals = vec_new[mesh_map]  # reorder to match dof ordering
                 vec.set_local(new_vals)
                 vec.apply("insert")
+            elif parameter.type == ParameterType.mesh_quantity:
+                if parameter.compartment not in self.cc.keys:
+                    raise ValueError(
+                        f"Compartment name {parameter.compartment} for parameter"
+                        f"{parameter.name} does not match a known compartment"
+                    )
+                V_cur = d.FunctionSpace(self.cc[parameter.compartment].dolfin_mesh, "P", 1)
+                parameter.dolfin_function = d.Function(V_cur)
+                parameter.dolfin_function.vector()[:] = parameter.value
+                parameter.dolfin_function.vector().apply("insert")
+
+        for compartment in self._active_compartments:
+            # if vel is string, generate expr for advection
+            compartment.vel_logic = np.any([vel != 0.0 for vel in compartment.vel])
+            compartment.deform_logic = np.any([deform != 0.0 for deform in compartment.deform])
+            if compartment.vel_logic and compartment.deform_logic:
+                raise ValueError("Cannot prescribe both velocity and deformation")
+            elif compartment.vel_logic:
+                x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+                vel_expr = [None] * len(compartment.vel)
+                # then this needs to have free symbols inserted
+                for i in range(len(compartment.vel)):
+                    if isinstance(compartment.vel[i], float):
+                        vel_expr[i] = f"{compartment.vel[i]}"
+                    elif isinstance(compartment.vel[i], str):
+                        vel_str = compartment.vel[i]
+                        # Parse the given string to create a sympy expression
+                        sym_expr = parse_expr(vel_str).subs({"x": x, "y": y, "z": z})
+                        free_symbols = [str(x) for x in sym_expr.free_symbols]
+                        if not {"x[0]", "x[1]", "x[2]", "t"}.issuperset(free_symbols):
+                            # could add other keywords for spatial dependence in the future
+                            raise NotImplementedError
+                        else:
+                            vel_expr[i] = sym.printing.ccode(sym_expr)
+                    else:
+                        raise NotImplementedError("Velocity must be float or string")
+                compartment.vel_expr = d.Expression(vel_expr, degree=1, t=self.T)
+                V_vector = d.VectorFunctionSpace(compartment.dolfin_mesh, "P", 1)
+                compartment.vel_func = d.interpolate(compartment.vel_expr, V_vector)
+            elif compartment.deform_logic:
+                x, y, z = (sym.Symbol(f"x[{i}]") for i in range(3))
+                deform_expr = [None] * len(compartment.deform)
+                if not compartment.manual_update:
+                    vel_expr = [None] * len(compartment.deform)
+                # then this needs to have free symbols inserted
+                for i in range(len(compartment.deform)):
+                    if isinstance(compartment.deform[i], float):
+                        deform_expr[i] = f"{compartment.deform[i]}"
+                    elif isinstance(compartment.deform[i], str):
+                        deform_str = compartment.deform[i]
+                        # Parse the given string to create a sympy expression
+                        sym_expr = parse_expr(deform_str).subs({"x": x, "y": y, "z": z})
+                        free_symbols = [str(x) for x in sym_expr.free_symbols]
+                        if not {"x[0]", "x[1]", "x[2]", "t"}.issuperset(free_symbols):
+                            # could add other keywords for spatial dependence in the future
+                            raise NotImplementedError
+                        else:
+                            deform_expr[i] = sym.printing.ccode(sym_expr)
+                            if not compartment.manual_update:
+                                vel_str = str(sym.diff(compartment.deform[0], "t"))
+                                vel_sym_expr = parse_expr(vel_str).subs({"x": x, "y": y, "z": z})
+                                vel_expr[i] = sym.printing.ccode(vel_sym_expr)
+                    else:
+                        raise NotImplementedError("Deformation must be float or string")
+                compartment.deform_expr = d.Expression(deform_expr, degree=1, t=self.T)
+                V_vector = d.VectorFunctionSpace(compartment.dolfin_mesh, "P", 1)
+                V_scalar = d.FunctionSpace(compartment.dolfin_mesh, "P", 1)
+                compartment.deform_func = d.interpolate(compartment.deform_expr, V_vector)
+                V_vector_global = d.VectorFunctionSpace(self.parent_mesh.dolfin_mesh, "P", 1)
+                compartment.deform_func_global = d.interpolate(
+                    compartment.deform_expr, V_vector_global
+                )
+                compartment.deform_func_global.set_allow_extrapolation(True)
+                compartment.deform_prev_global = d.interpolate(
+                    compartment.deform_expr, V_vector_global
+                )
+                compartment.deform_prev_global.set_allow_extrapolation(True)
+                if not compartment.manual_update:
+                    compartment.vel_expr = d.Expression(vel_expr, degree=1, t=self.T)
+                    compartment.vel_func = d.interpolate(compartment.vel_expr, V_vector)
+                F = d.Identity(compartment.deform_func.geometric_dimension()) + d.grad(
+                    compartment.deform_func
+                )
+                compartment.deform_prev = d.interpolate(compartment.deform_expr, V_vector)
+                if compartment.is_volume:
+                    compartment.jacobian = d.project(d.det(F), V_scalar)
+                    compartment.jacobian_prev = d.project(d.det(F), V_scalar)
+                else:  # then is a surface and must compute normals
+                    if not np.all(np.array(compartment.normals) == 0):
+                        compartment.normals = d.Expression(compartment.normals, degree=1)
+                    else:
+                        surf_coords = compartment.dolfin_mesh.coordinates()
+                        for c in self.cc:  # find an adjacent volume!
+                            if c.is_volume:
+                                mesh_test = c.dolfin_mesh
+                                test_coords = mesh_test.coordinates()
+                                adjacent = True
+                                for i in range(len(surf_coords)):
+                                    if surf_coords[i] not in test_coords:
+                                        adjacent = False
+                                        break
+                                if adjacent:
+                                    mesh_ref = mesh_test
+                                    break
+                        if not adjacent:
+                            raise ValueError(
+                                "Could not find an adjacent volume to compute normals!"
+                            )
+                        ref_normals = d.FacetNormal(mesh_ref)
+                        Vcur = d.VectorFunctionSpace(mesh_ref, "P", 1)
+                        ucur = d.TrialFunction(Vcur)
+                        vcur = d.TestFunction(Vcur)
+                        ds = d.Measure("ds", mesh_ref)
+                        a = d.inner(ucur, vcur) * ds
+                        lform = d.inner(ref_normals, vcur) * ds
+                        A = d.assemble(a, keep_diagonal=True)
+                        L = d.assemble(lform)
+                        A.ident_zeros()
+                        nh = d.Function(Vcur)
+                        d.solve(A, nh.vector(), L)  # project facet normals onto CG1
+                        Vbound = d.VectorFunctionSpace(compartment.mesh.dolfin_mesh, "P", 1)
+                        norm_calc = d.interpolate(nh, Vbound)
+                        nvec = norm_calc.vector()[:]
+                        # normalize magnitudes for consistency (unit normal)
+                        for i in range(int(len(nvec) / 3)):
+                            vec_cur = nvec[3 * i : 3 * (i + 1)]
+                            mag_cur = np.sqrt(vec_cur[0] ** 2 + vec_cur[1] ** 2 + vec_cur[2] ** 2)
+                            nvec[3 * i : 3 * (i + 1)] = vec_cur / mag_cur
+                        norm_calc.vector().set_local(nvec)
+                        norm_calc.vector().apply("insert")
+                        compartment.normals = norm_calc
+                    compartment.deformed_normals = d.project(compartment.normals, V_vector)
+                    for sp in compartment.species.values():
+                        if sp.alt_deform_logic:
+                            sp.alt_deformed_normals = d.project(
+                                species.compartment.normals, V_vector
+                            )
+                    logger.warning(
+                        "Currently, surface jacobians must be manually assigned in model file"
+                    )
+                    compartment.jacobian = d.project(d.Constant(1.0), V_scalar)
+                    compartment.jacobian_prev = d.project(d.Constant(1.0), V_scalar)
 
     def _init_5_1_reactions_to_fluxes(self):
         """Convert reactions to flux objects"""
@@ -1090,7 +1351,7 @@ class Model:
             # un = species.u['n']
             un = species._usplit["n"]
             v = species.v
-            D = species.D
+            D = species.D_dolfin
             dx = species.compartment.mesh.dx
             Dform_units = (
                 species.diffusion_units
@@ -1102,38 +1363,134 @@ class Model:
                 / unit.s
                 * species.compartment.compartment_units**species.compartment.dimensionality
             )
+            lagrange = species.compartment.deform_logic or species.alt_deform_logic
+            # define current jacobian
+            if lagrange:
+                if species.alt_deform_logic:
+                    udef = species.alt_deform_func
+                    # uprev = species.alt_deform_prev
+                    J = species.alt_jacobian
+                    if not species.compartment.is_volume:
+                        ncur = species.alt_deformed_normals
+                else:
+                    udef = species.compartment.deform_func
+                    # uprev = species.compartment.deform_prev
+                    J = species.compartment.jacobian
+                    if not species.compartment.is_volume:
+                        ncur = species.compartment.deformed_normals
+                F = d.Identity(udef.geometric_dimension()) + d.grad(udef)
+            else:
+                J = d.Constant(1.0)
+            if self.config.flags["axisymmetric_model"]:
+                J = x[0] * J
+            # catch CH case
+            if species.CH:
+                if species.is_chem_potential:
+                    logger.debug(
+                        "Chemical potential equation is defined with concentration,"
+                        "skipping to next species"
+                    )
+                    continue
+                else:
+                    u_c = species.chem_potential._usplit["u"]
+                    v_c = species.chem_potential.v
+                    A_hat = species.A_hat
+                    phi_cur = u / species.umax
+                    df_c = d.ln(phi_cur) - d.ln(1 - phi_cur) - A_hat * (2 * phi_cur - 1)
+                    # CForm scaling factor
+                    CScale = (float(species.D) * species.umax) / (4 * np.pi)  # assuming l^2 = 4*pi
+                    CForm = J * (
+                        (u_c - df_c) * v_c * dx
+                        - (A_hat / species.umax) * d.inner(d.grad(phi_cur), d.grad(v_c)) * dx
+                    )
+                    # chemical potential is in units of kBT for convenience
+                    Dform = J * D * u * d.inner(d.grad(u_c), d.grad(v)) * dx
+                    self.forms.add(
+                        Form(
+                            f"chem_potential_{species.name}",
+                            CForm,
+                            species.chem_potential,
+                            "chem_potential",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                            form_scaling=CScale,
+                        )
+                    )
+                    self.forms.add(
+                        Form(
+                            f"diffusion_{species.name}",
+                            Dform,
+                            species,
+                            "diffusion",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                        )
+                    )
             # diffusion term
-            if species.D == 0:
+            elif species.D == 0:
                 logger.debug(
                     f"Species {species.name} has a diffusion coefficient of 0. "
                     "Skipping creation of diffusive form.",
                     extra=dict(format_type="log"),
                 )
             else:
-                D_constant = d.Constant(D, name=f"D_{species.name}")
-                if self.config.flags["axisymmetric_model"]:
-                    Dform = x[0] * D_constant * d.inner(d.grad(u), d.grad(v)) * dx
+                if lagrange:  # then nonzero advection
+                    # alt Lagrangian form
+                    uderiv = d.dot(d.inv(F.T), d.grad(u))
+                    vderiv = d.dot(d.inv(F.T), d.grad(v))
+                    if not species.compartment.is_volume:  # then account for change in normal dir
+                        uderiv -= ncur * d.dot(ncur, d.dot(d.inv(F.T), d.grad(u)))
+                        vderiv -= ncur * d.dot(ncur, d.dot(d.inv(F.T), d.grad(v)))
+                    Dform = D * J * d.inner(uderiv, vderiv) * dx
+                    self.forms.add(
+                        Form(
+                            f"diffusion_{species.name}",
+                            Dform,
+                            species,
+                            "diffusion",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                        )
+                    )
                 else:
-                    Dform = D_constant * d.inner(d.grad(u), d.grad(v)) * dx
-                # exponent is -2 because of two gradients
-
+                    Dform = J * D * d.inner(d.grad(u), d.grad(v)) * dx
+                    self.forms.add(
+                        Form(
+                            f"diffusion_{species.name}",
+                            Dform,
+                            species,
+                            "diffusion",
+                            Dform_units,
+                            True,
+                            linear_wrt_comp,
+                        )
+                    )
+            if lagrange:  # account for volume changes due to advection
+                logger.info("Bypass, account for advection separately")
+            elif species.compartment.vel_logic or species.alt_vel_logic:  # then nonzero advection
+                if species.alt_vel_logic:
+                    vel = species.alt_vel_func
+                else:
+                    vel = species.compartment.vel_func
+                Aform = J * u * d.inner(vel, d.grad(v)) * dx
+                # J * u * v * d.div(vel) * dx + J * d.inner(v * vel, d.grad(u)) * dx
                 self.forms.add(
                     Form(
-                        f"diffusion_{species.name}",
-                        Dform,
+                        f"advection_{species.name}",
+                        Aform,
                         species,
-                        "diffusion",
-                        Dform_units,
+                        "advection",
+                        mass_form_units,
                         True,
                         linear_wrt_comp,
                     )
                 )
 
             # mass (time derivative) terms
-            if self.config.flags["axisymmetric_model"]:
-                Muform = x[0] * (u) * v / self.dT * dx
-            else:
-                Muform = (u) * v / self.dT * dx
+            Muform = J * u * v / self.dT * dx
             self.forms.add(
                 Form(
                     f"mass_u_{species.name}",
@@ -1145,10 +1502,7 @@ class Model:
                     linear_wrt_comp,
                 )
             )
-            if self.config.flags["axisymmetric_model"]:
-                Munform = x[0] * (-un) * v / self.dT * dx
-            else:
-                Munform = (-un) * v / self.dT * dx
+            Munform = J * (-un) * v / self.dT * dx
             self.forms.add(
                 Form(
                     f"mass_un_{species.name}",
@@ -1618,6 +1972,7 @@ class Model:
             ),
         )
         self.update_time_dependent_parameters()
+
         if self.config.solver["use_snes"]:
             logger.info("Solving using PETSc.SNES Solver", dict(format_type="log"))
             self.stopwatches["snes all"].start()
@@ -1783,7 +2138,51 @@ class Model:
         # self.data['tvec'].update(self.t)
         # self.data['dtvec'].update(self.dt)
 
+        # apply advection correction if using Lagrangian approach
+        for compartment in self._active_compartments:
+            if compartment.deform_logic:
+                # Vtest = d.FunctionSpace(compartment.dolfin_mesh, "P", 1)
+                # dxTest = d.Measure("dx", compartment.dolfin_mesh)
+                Jcur = compartment.jacobian
+                Jprev = compartment.jacobian_prev
+                for sp in compartment.species.values():
+                    if not sp.alt_deform_logic:
+                        u_advected = d.project(sp.u["u"] * Jprev / Jcur, sp.V)
+                        # check mass conservation
+                        # massPrev = d.assemble_mixed(Jprev * sp.sol * dxTest)
+                        # massCur = d.assemble_mixed(Jcur * u_advected * dxTest)
+                        # if np.abs((massCur-massPrev)/massPrev) > 1e-8:
+                        #     logger.warning("May need to add correction factor here!!!")
+                        uvec = sp.u["u"].vector()[:]
+                        uvec[sp.dof_map] = u_advected.vector()[:]
+                        for key in ["u", "n"]:
+                            sp.u[key].vector().set_local(uvec)
+                            sp.u[key].vector().apply("insert")
+
+                # now assign current deformation to previous deformation
+                compartment.deform_prev.assign(compartment.deform_func.copy(deepcopy=True))
+                compartment.jacobian_prev.assign(compartment.jacobian.copy(deepcopy=True))
+                compartment.deform_prev_global.assign(
+                    compartment.deform_func_global.copy(deepcopy=True)
+                )
+
+        for species in self.sc:
+            if species.alt_deform_logic:
+                Jcur = species.alt_jacobian
+                Jprev = species.alt_jacobian_prev
+                u_advected = d.project(species.u["u"] * Jprev / Jcur, species.V)
+                uvec = species.u["u"].vector()[:]
+                uvec[species.dof_map] = u_advected.vector()[:]
+                for key in ["u", "n"]:
+                    species.u[key].vector().set_local(uvec)
+                    species.u[key].vector().apply("insert")
+
+                # now assign current deformation to previous deformation
+                species.alt_deform_prev.assign(species.alt_deform_func.copy(deepcopy=True))
+                species.alt_jacobian_prev.assign(species.alt_jacobian.copy(deepcopy=True))
+
         self.update_solution()  # assign most recently computed solution to "previous solution"
+
         # self.adjust_dt() # adjusts dt based on number of nonlinear iterations required
         # self.stopwatch("Total time step", stop=True)
         self.stopwatches["Total time step"].stop()
@@ -1854,6 +2253,35 @@ class Model:
         t = float(self.t)
         dt = float(self.dt)
         tn = float(self.tn)
+
+        # Update velocity or deformation if applicable
+        for compartment in self._active_compartments:
+            if compartment.vel_logic and not compartment.manual_update:
+                Vcur = compartment.vel_func.function_space()
+                compartment.vel_func.assign(d.interpolate(compartment.vel_expr, Vcur))
+            elif compartment.deform_logic and not compartment.manual_update:
+                Vcur = compartment.deform_func.function_space()
+                compartment.deform_func.assign(d.interpolate(compartment.deform_expr, Vcur))
+                compartment.vel_func.assign(d.interpolate(compartment.vel_expr, Vcur))
+                F = d.Identity(compartment.deform_func.geometric_dimension()) + d.grad(
+                    compartment.deform_func
+                )
+                V_scalar = compartment.jacobian.function_space()
+                compartment.jacobian.assign(d.project(d.det(F), V_scalar))
+
+        # Update species-specific velocity or deformation if applicable
+        for species in self.sc:
+            if species.alt_vel_logic and not species.alt_manual_update:
+                Vcur = species.alt_vel_func.function_space()
+                species.alt_vel_func.assign(d.interpolate(species.alt_vel_expr, Vcur))
+            elif species.alt_deform_logic and not species.alt_manual_update:
+                Vcur = species.alt_deform_func.function_space()
+                species.alt_deform_func.assign(d.interpolate(species.alt_deform_expr, Vcur))
+                F = d.Identity(species.alt_deform_func.geometric_dimension()) + d.grad(
+                    species.alt_deform_func
+                )
+                V_scalar = species.alt_jacobian.function_space()
+                species.alt_jacobian.assign(d.project(d.det(F), V_scalar))
 
         # Update time dependent parameters
         for parameter_name, parameter in self.pc.items:

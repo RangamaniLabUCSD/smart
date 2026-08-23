@@ -152,6 +152,10 @@ class ParentMesh(_Mesh):
           as an xml or xdmf file containing a vertex mesh function of type double
         extra_keys (list): list of names of extra keys to load from hdf5 mesh
           file, specifying other subdomains besides main compartments (optional)
+        key_for_cells (string): a string specifying the extra key to use as a
+          mesh function to define cell markers in mesh (optional)
+        key_for_facets (string): a string specifying the extra key to use as a
+          mesh function to define facet markers in mesh (optional)
     """
 
     mesh_filename: str
@@ -161,6 +165,8 @@ class ParentMesh(_Mesh):
     use_partition: bool
     curvature: d.MeshFunction
     extra_keys: list = []
+    key_for_cells: str = ""
+    key_for_facets: str = ""
 
     def __init__(
         self,
@@ -171,6 +177,8 @@ class ParentMesh(_Mesh):
         mpi_comm=d.MPI.comm_world,
         curvature=None,
         extra_keys=[],
+        key_for_cells="",
+        key_for_facets="",
     ):
         super().__init__(name)
         self.use_partition = use_partition
@@ -201,6 +209,30 @@ class ParentMesh(_Mesh):
         else:
             # Otherwise just take what we got
             self.curvature = curvature
+
+        # set cells and/or facets according to extra keys if applicable
+        if key_for_cells != "":
+            try:
+                idx = self.extra_keys.index(key_for_cells)
+            except ValueError:
+                raise ValueError(f"'{key_for_cells}' does not match an extra key")
+            assert self.subdomains[idx].dim() == self.dimensionality, (
+                f"Mesh function associated with '{key_for_cells}' "
+                "does not match mesh cell dimension"
+            )
+            self.mf["cells"] = self.subdomains[idx]
+            logger.info(f"Cell mesh function loaded from key '{key_for_cells}'")
+        if key_for_facets != "":
+            try:
+                idx = self.extra_keys.index(key_for_facets)
+            except ValueError:
+                raise ValueError(f"'{key_for_cells}' does not match an extra key")
+            assert self.subdomains[idx].dim() == self.dimensionality - 1, (
+                f"Mesh function associated with '{key_for_facets}' "
+                "does not match mesh facet dimension"
+            )
+            self.mf["facets"] = self.subdomains[idx]
+            logger.info(f"Facet mesh function loaded from key '{key_for_facets}'")
 
     def get_mesh_from_id(self, id):
         "Find the mesh that has the matching id."
@@ -290,8 +322,9 @@ class ParentMesh(_Mesh):
         assert len(self.child_meshes) > 0
 
         # Init mesh functions
-        self.mf["cells"] = self._read_parent_mesh_function_from_file(volume_dim)
-        if self.has_surface:
+        if "cells" not in self.mf.keys():
+            self.mf["cells"] = self._read_parent_mesh_function_from_file(volume_dim)
+        if self.has_surface and "facets" not in self.mf.keys():
             self.mf["facets"] = self._read_parent_mesh_function_from_file(surface_dim)
 
         # If any cell markers are given as a list we also create mesh
